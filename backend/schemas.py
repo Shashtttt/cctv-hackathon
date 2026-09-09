@@ -1,0 +1,206 @@
+"""
+IBVAP — Pydantic v2 request/response schemas for all REST API endpoints.
+"""
+
+from __future__ import annotations
+
+import datetime
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, Field
+
+
+# ── Camera schemas ─────────────────────────────────────────────────────────────
+
+class FencePointSchema(BaseModel):
+    x: float = Field(ge=0.0, le=1.0)
+    y: float = Field(ge=0.0, le=1.0)
+
+
+class CameraCreateRequest(BaseModel):
+    id: str
+    code: str
+    name: str
+    location: str = ""
+    rtsp_url: str
+    fps: int = 30
+    resolution: str = "1080p FHD"
+    mode: str = "STANDARD"
+    analytics_modes: List[str] = ["HUMAN", "VEHICLE", "FRS", "ANPR"]
+    fence_points: List[FencePointSchema] = []
+    rtsp_reconnect_attempts: int = 5
+
+
+class CameraUpdateRequest(BaseModel):
+    status: Optional[str] = None
+    mode: Optional[str] = None
+    analytics_modes: Optional[List[str]] = None
+    fence_points: Optional[List[FencePointSchema]] = None
+
+
+class CameraResponse(BaseModel):
+    id: str
+    code: str
+    name: str
+    location: str
+    rtsp_url: str
+    status: str
+    fps: int
+    resolution: str
+    mode: str
+    analytics_modes: List[str]
+    fence_points: List[FencePointSchema]
+    last_frame_at: Optional[datetime.datetime]
+
+
+# ── Alert schemas ──────────────────────────────────────────────────────────────
+
+class AlertResponse(BaseModel):
+    id: str
+    camera_id: str
+    timestamp: datetime.datetime
+    category: str
+    severity: str
+    title: str
+    description: str
+    target_id: Optional[str]
+    status: str
+    snapshot_path: Optional[str]
+    frs_match_name: Optional[str]
+    frs_match_score: Optional[float]
+    plate_text: Optional[str]
+
+
+class AlertListResponse(BaseModel):
+    items: List[AlertResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class AlertStatusUpdate(BaseModel):
+    status: str   # ACKNOWLEDGED | DISPATCHED | RESOLVED
+
+
+# ── FRS schemas ────────────────────────────────────────────────────────────────
+
+class FRSSubjectCreate(BaseModel):
+    id: Optional[str] = None
+    name: str
+    alias: str = ""
+    category: str = "Persons of Interest"
+    threat_level: str = "MEDIUM"
+    avatar_url: str = ""
+    notes: str = ""
+
+
+class FRSSubjectResponse(BaseModel):
+    id: str
+    name: str
+    alias: str
+    category: str
+    threat_level: str
+    avatar_url: str
+    notes: str
+    has_embedding: bool
+    last_seen: Optional[str]
+    last_seen_at: Optional[datetime.datetime]
+    enrolled_at: datetime.datetime
+
+
+class EmbeddingEnrollRequest(BaseModel):
+    """Upload a face embedding vector directly (128 floats)."""
+    subject_id: str
+    embedding: List[float] = Field(min_length=128, max_length=512)
+
+
+# ── ANPR schemas ───────────────────────────────────────────────────────────────
+
+class ANPRVehicleCreate(BaseModel):
+    plate: str
+    owner: str = "Unknown"
+    status: str = "SUSPICIOUS"
+    vehicle_type: str = ""
+    threat_level: str = "HIGH"
+    notes: str = ""
+    flagged_date: Optional[str] = None
+
+
+class ANPRVehicleResponse(BaseModel):
+    plate: str
+    owner: str
+    status: str
+    vehicle_type: str
+    threat_level: str
+    notes: str
+    flagged_date: Optional[str]
+
+
+# ── Analytics schemas ──────────────────────────────────────────────────────────
+
+class AlertSummaryResponse(BaseModel):
+    total: int
+    hours: int
+    by_severity: Dict[str, int]
+    by_category: Dict[str, int]
+
+
+class WorkerStatusResponse(BaseModel):
+    camera_id: str
+    pid: Optional[int]
+    alive: bool
+    exit_code: Optional[int]
+    result_queue_depth: int
+
+
+# ── Generic responses ──────────────────────────────────────────────────────────
+
+class SuccessResponse(BaseModel):
+    success: bool = True
+    message: str = "OK"
+
+
+class HealthResponse(BaseModel):
+    status: str
+    platform: str
+    version: str
+    ai_engine: str
+    active_cameras: int
+    queue_depth: int
+
+
+# ── Auth schemas ──────────────────────────────────────────────────────────────
+
+class UserRegisterRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+    full_name: str = "Surveillance Officer"
+    role: str = "OPERATOR"              # COMMANDER | OPERATOR | ANALYST | ADMIN
+    clearance_level: str = "SECRET"     # CONFIDENTIAL | SECRET | TOP_SECRET
+    badge_number: Optional[str] = "SEC-8821"
+    department: Optional[str] = "Sector-4 Border Defense"
+
+
+class UserLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class UserResponse(BaseModel):
+    id: str
+    username: str
+    email: str
+    full_name: str
+    role: str
+    clearance_level: str
+    badge_number: str
+    department: str
+    created_at: str
+    last_login_at: Optional[str] = None
+
+
+class AuthTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+

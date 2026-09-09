@@ -1,0 +1,334 @@
+:root {
+  --bg-dark: #070a12;
+  --bg-card: #0d121f;
+  --bg-card-hover: #121829;
+  --bg-sidebar: #090d18;
+  --bg-pill: #131b2e;
+  --border-color: #192338;
+  --border-glow: #1e2d4a;
+  
+  --text-main: #f1f5f9;
+  --text-muted: #64748b;
+  --text-sub: #94a3b8;
+  
+  --cyan-primary: #00f2fe;
+  --cyan-glow: rgba(0, 242, 254, 0.25);
+  --cyan-bg: rgba(0, 242, 254, 0.08);
+  
+  --red-alert: #ff3b3b;
+  --red-glow: rgba(255, 59, 59, 0.3);
+  --red-bg: rgba(255, 59, 59, 0.12);
+  
+  --green-online: #10b981;
+  --green-glow: rgba(16, 185, 129, 0.3);
+  --green-bg: rgba(16, 185, 129, 0.12);
+  
+  --purple-node: #8b5cf6;
+  --purple-glow: rgba(139, 92, 246, 0.3);
+  --purple-bg: rgba(139, 92, 246, 0.12);
+  
+  --yellow-warn: #f59e0b;
+  --yellow-glow: rgba(245, 158, 11, 0.3);
+  --yellow-bg: rgba(245, 158, 11, 0.12);
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-dark);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Layout App Container */
+.app-container {
+  display: flex;
+  min-height: 100vh;
+  width: 100vw;
+  background-color: var(--bg-dark);
+}
+
+/* Main Content Area */
+.main-layout {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.content-wrapper {
+  padding: 20px 28px 36px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Grid Layout */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 20px;
+}
+
+@media (max-width: 1200px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.left-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.bottom-row-grid {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 20px;
+}
+
+@media (max-width: 1200px) {
+  .bottom-row-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Common Tactical Card */
+.tactical-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 18px 20px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tactical-card:hover {
+  border-color: var(--border-glow);
+}
+
+/* Card Header */
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.card-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.card-title-icon {
+  color: var(--cyan-primary);
+  display: flex;
+  align-items: center;
+}
+
+.card-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-main);
+}
+
+.card-subtitle {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+}
+
+/* Tactical Badges & Pills */
+.pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.pill-cyan {
+  background: var(--cyan-bg);
+  color: var(--cyan-primary);
+  border-color: rgba(0, 242, 254, 0.3);
+}
+
+.pill-green {
+  background: var(--green-bg);
+  color: var(--green-online);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.pill-red {
+  background: var(--red-bg);
+  color: var(--red-alert);
+  border-color: rgba(255, 59, 59, 0.3);
+}
+
+.pill-purple {
+  background: var(--purple-bg);
+  color: var(--purple-node);
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.pill-yellow {
+  background: var(--yellow-bg);
+  color: var(--yellow-warn);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.pill-muted {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-sub);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Pulsing Status Dot */
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  position: relative;
+}
+
+.dot-green {
+  background-color: var(--green-online);
+  box-shadow: 0 0 8px var(--green-online);
+}
+
+.dot-red {
+  background-color: var(--red-alert);
+  box-shadow: 0 0 8px var(--red-alert);
+}
+
+.dot-cyan {
+  background-color: var(--cyan-primary);
+  box-shadow: 0 0 8px var(--cyan-primary);
+}
+
+.pulse-ring::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  right: -3px;
+  bottom: -3px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  animation: pulse-out 1.8s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+
+@keyframes pulse-out {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+/* Scanline Overlay Effect for Video / Radar */
+.scanlines {
+  position: relative;
+}
+
+.scanlines::before {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+  z-index: 2;
+  background-size: 100% 3px, 6px 100%;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* Action Buttons */
+.btn-tactical {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-pill);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: var(--font-mono);
+}
+
+.btn-tactical:hover {
+  background: #182238;
+  border-color: var(--cyan-primary);
+  color: var(--cyan-primary);
+}
+
+.btn-primary {
+  background: rgba(0, 242, 254, 0.12);
+  border-color: rgba(0, 242, 254, 0.4);
+  color: var(--cyan-primary);
+}
+
+.btn-primary:hover {
+  background: rgba(0, 242, 254, 0.25);
+  box-shadow: 0 0 12px var(--cyan-glow);
+}

@@ -1,0 +1,38 @@
+# ── IBVAP Backend Dependencies ───────────────────────────────────────────────
+# Install with: pip install -r requirements.txt
+
+# Web Framework
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+websockets>=12.0
+python-multipart>=0.0.9       # File upload support (FRS photo enrollment)
+
+# Settings
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+
+# Database
+aiosqlite>=0.20.0
+aiofiles>=23.2.1               # Async snapshot file I/O
+
+# Computer Vision & AI (Core)
+opencv-python-headless>=4.9.0  # Use headless for server; no GUI needed
+numpy>=1.26.0
+
+# YOLOv8 — Human, Vehicle & License-Plate Detection
+ultralytics>=8.2.0
+
+# ONNX Runtime — YuNet (face detection) + SFace (face recognition)
+onnxruntime>=1.18.0            # CPU runtime
+# onnxruntime-gpu>=1.18.0     # Uncomment if CUDA GPU is available
+
+# ANPR — OCR
+easyocr>=1.7.1
+Pillow>=10.3.0
+
+# Fuzzy Plate Matching
+python-Levenshtein>=0.25.0
+
+# Security (future: JWT auth for operator login)
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4

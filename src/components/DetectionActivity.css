@@ -1,0 +1,96 @@
+.detection-activity-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 0.72rem;
+  color: var(--text-sub);
+}
+
+.legend-box {
+  width: 8px;
+  height: 8px;
+  display: inline-block;
+  border-radius: 2px;
+}
+
+.cyan-box {
+  background-color: var(--cyan-primary);
+  box-shadow: 0 0 6px var(--cyan-primary);
+}
+
+.white-box {
+  background-color: #ffffff;
+}
+
+.chart-container-wrapper {
+  position: relative;
+  width: 100%;
+  padding-top: 10px;
+}
+
+/* PEAK 17 PERS Callout Badge matching screenshot */
+.peak-callout-badge {
+  position: absolute;
+  top: 0px;
+  right: 18px;
+  background: var(--red-alert);
+  color: #ffffff;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 4px;
+  box-shadow: 0 0 10px var(--red-glow);
+  z-index: 5;
+  animation: pulse-peak 2s infinite ease-in-out;
+}
+
+.peak-callout-badge::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 4px solid var(--red-alert);
+}
+
+@keyframes pulse-peak {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.custom-chart-tooltip {
+  background: #090e1a;
+  border: 1px solid var(--border-color);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.tooltip-header {
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 2px;
+}
+
+.tooltip-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cyan-text { color: var(--cyan-primary); }
+.white-text { color: #ffffff; }
