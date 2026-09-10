@@ -1,14 +1,19 @@
 """
-IBVAP — Advanced YOLOv8 Multi-Person Pose & Unusual Item Detector
-Detects:
-  1. Multiple humans with 17-keypoint COCO pose skeletons & posture behavior.
-  2. Unusual / Contraband objects: bottles, knives, scissors, cell phones, backpacks, bags, laptops, cups, pens/tools.
-  3. Real-time behavior flags: crouching, loitering, hands raised, intrusion.
+IBVAP — Advanced YOLOv8 Multi-Person Pose, Dedicated Weapon & Casual Object Detector
+Combines:
+  1. YOLOv8-pose (17-keypoint COCO skeleton tracking, posture classification, wrist localization)
+  2. Dedicated YOLOv8 Weapon Neural Engine (firearms, pistols, knives)
+  3. YOLOv8 Multi-class Object Engine (80 COCO classes: casual bags, bottles, phones, tools, laptops)
+  4. Real-time Hand-Held & Threat Escalation Engine:
+     - Detects when a person is holding a weapon (CRITICAL / DEFCON 1 armed subject alert)
+     - Detects when a person is carrying casual objects (backpacks, phones, bottles, luggage)
+     - Detects unattended baggage / unattended weapons
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import time
 import uuid
 from pathlib import Path
@@ -16,43 +21,56 @@ from typing import Dict, List, Optional, Set, Tuple
 
 import cv2
 import numpy as np
-
-from ..config import settings
-from ..database.models import BoundingBox, Detection, KeypointSet
-
-from concurrent.futures import ThreadPoolExecutor
 import torch
+
+from ..config import MODELS_DIR, settings
+from ..database.models import BoundingBox, Detection, KeypointSet
 
 log = logging.getLogger("ibvap.ai.yolo")
 
-# Determine optimal acceleration device (MPS for Apple Silicon, CUDA for NVIDIA, fallback CPU)
+
 def get_optimal_device() -> str:
+    """Determine optimal compute hardware: Apple Silicon MPS, Nvidia CUDA, or CPU."""
     if torch.backends.mps.is_available():
         return "mps"
     if torch.cuda.is_available():
         return "cuda"
     return "cpu"
 
+
 OPTIMAL_DEVICE = get_optimal_device()
 log.info("IBVAP AI Engine active compute device: %s", OPTIMAL_DEVICE)
 
-# COCO Classes
+# COCO Class constants
 _PERSON = 0
-
 HUMAN_CLASSES = {_PERSON}
 VEHICLE_CLASSES = {1, 2, 3, 5, 7}  # bicycle, car, motorcycle, bus, truck
 
-# Unusual / contraband / prohibited objects to detect and mark RED with alerts
-UNUSUAL_CLASSES: Dict[int, str] = {
+# Weapon classifications (dedicated model + COCO weapons)
+WEAPON_CLASSES: Dict[int, str] = {
+    43: "knife",
+    76: "scissors",
+    34: "baseball bat",
+    42: "fork",
+}
+WEAPON_NAMES: Set[str] = {
+    "pistol", "gun", "firearm", "rifle", "shotgun", "handgun",
+    "knife", "blade", "dagger", "sword", "machete", "scissors",
+    "baseball bat", "weapon",
+}
+
+# Casual & everyday objects
+CASUAL_OBJECT_CLASSES: Dict[int, str] = {
     24: "backpack",
     25: "umbrella",
     26: "handbag",
     28: "suitcase",
+    32: "sports ball",
+    36: "skateboard",
+    38: "tennis racket",
     39: "bottle",
     40: "wine glass",
     41: "cup",
-    42: "fork",
-    43: "knife",
     44: "spoon",
     45: "bowl",
     63: "laptop",
@@ -61,84 +79,96 @@ UNUSUAL_CLASSES: Dict[int, str] = {
     66: "keyboard",
     67: "cell phone",
     73: "book",
-    76: "scissors",
     77: "teddy bear",
-    79: "toothbrush",
 }
 
-ALL_INTERESTING_CLASSES = HUMAN_CLASSES | VEHICLE_CLASSES | set(UNUSUAL_CLASSES.keys())
+BAGGAGE_NAMES: Set[str] = {"backpack", "handbag", "suitcase"}
 
-CLASS_NAMES = {
-    0: "person",
-    1: "bicycle",
-    2: "car",
-    3: "motorbike",
-    5: "bus",
-    7: "truck",
-    **UNUSUAL_CLASSES,
-}
+ALL_OBJECT_CLASSES = {**WEAPON_CLASSES, **CASUAL_OBJECT_CLASSES}
 
 
 class YOLODetector:
     """
-    High-performance detector combining YOLOv8-pose (person keypoints)
-    and YOLOv8 standard model (80 object classes including bottles, knives, phones, etc.)
-    with Apple Silicon MPS GPU / CUDA hardware acceleration and multi-threaded parallel execution.
+    High-performance multi-network vision detector with hardware acceleration.
+    Integrates Pose, Weapon, and Casual Object models with hand-held threat escalation.
     """
 
     def __init__(self) -> None:
         self._pose_model = None
         self._obj_model = None
+        self._weapon_model = None
         self._simulation = False
         self._device = OPTIMAL_DEVICE
-        self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="yolo_worker")
         self._load_models()
 
     def _load_models(self) -> None:
         pose_path: Path = settings.YOLO_POSE_MODEL
         obj_path: Path = settings.YOLO_OBJECT_MODEL
+        weapon_path: Path = getattr(settings, "YOLO_WEAPON_MODEL", MODELS_DIR / "weapon_yolov8n.pt")
 
         try:
             from ultralytics import YOLO  # type: ignore
 
+            # 1. Pose Model
             if pose_path.exists():
-                log.info("Loading YOLOv8-pose model onto %s from %s …", self._device, pose_path)
+                log.info("Loading YOLOv8-pose model from %s on %s...", pose_path, self._device)
                 self._pose_model = YOLO(str(pose_path))
-                # Warm up model on device
                 self._pose_model.to(self._device)
 
+            # 2. General Object Model (80 COCO classes)
             if obj_path.exists():
-                log.info("Loading YOLOv8 object model onto %s from %s …", self._device, obj_path)
+                log.info("Loading YOLOv8 object model from %s on %s...", obj_path, self._device)
                 self._obj_model = YOLO(str(obj_path))
                 self._obj_model.to(self._device)
 
-            if self._pose_model is None and self._obj_model is None:
+            # 3. Dedicated Weapon Model (Pistol, Knife)
+            if weapon_path.exists():
+                log.info("Loading YOLOv8 dedicated weapon model from %s on %s...", weapon_path, self._device)
+                self._weapon_model = YOLO(str(weapon_path))
+                self._weapon_model.to(self._device)
+
+            if self._pose_model is None and self._obj_model is None and self._weapon_model is None:
                 log.warning("No YOLO models found on disk — running in SIMULATION mode.")
                 self._simulation = True
             else:
                 self._simulation = False
-                log.info("YOLOv8 Dual Engine active with hardware acceleration [%s]", self._device)
+                log.info(
+                    "IBVAP Vision Neural Engines online: Pose=%s, Object=%s, Weapon=%s [%s]",
+                    self._pose_model is not None,
+                    self._obj_model is not None,
+                    self._weapon_model is not None,
+                    self._device,
+                )
 
         except ImportError:
             log.warning("ultralytics package not installed — running in SIMULATION mode.")
             self._simulation = True
         except Exception as exc:
-            log.error("Failed to load YOLOv8 models: %s — SIMULATION mode.", exc)
+            log.error("Failed to load YOLO models: %s — SIMULATION mode.", exc)
             self._simulation = True
 
     def detect(self, frame: np.ndarray) -> List[Detection]:
         """
-        Run multi-person pose estimation and unusual item detection with Apple Silicon GPU acceleration.
+        Runs multi-pass neural vision pipeline:
+          1. Pose & Human skeleton inference
+          2. Dedicated weapon inference (Pistol, Knife)
+          3. General casual object & vehicle inference (Backpacks, Phones, Luggage, Bottles, etc.)
+          4. Hand-Held Object Spatial Association & Threat Escalation
         """
         if self._simulation:
             return self._simulate(frame)
 
         h, w = frame.shape[:2]
-        detections: List[Detection] = []
-        person_count = 0
+        persons: List[Detection] = []
+        objects: List[Detection] = []
+        vehicles: List[Detection] = []
 
-        # 1. Run YOLOv8-Pose (detects multiple persons with 17 keypoints) on GPU/MPS
-        raised_hand_coords: List[Tuple[float, float]] = []
+        person_count = 0
+        weapon_count = 0
+        object_count = 0
+        vehicle_count = 0
+
+        # ── 1. YOLOv8 Pose Inference (Human Skeletons) ────────────────────────
         if self._pose_model is not None:
             try:
                 results_pose = self._pose_model(
@@ -185,10 +215,9 @@ class YOLODetector:
                             )
 
                         pose_label = self._classify_pose(kps) if kps else "STANDING"
-                        is_hands_raised, hand_pose_str, hand_pts = self._check_hands_raised(kps) if kps else (False, "STANDING", [])
+                        is_hands_raised, hand_pose_str = self._check_hands_raised(kps) if kps else (False, "STANDING")
                         if is_hands_raised:
                             pose_label = hand_pose_str
-                            raised_hand_coords.extend(hand_pts)
 
                         det = Detection(
                             target_id=f"PERSON-{person_count:02d}",
@@ -199,20 +228,61 @@ class YOLODetector:
                             pose_label=pose_label,
                             threat_level="CRITICAL" if pose_label in ("CROUCHING", "PRONE", "HANDS_RAISED", "HAND_RAISED") else "NORMAL",
                         )
-                        detections.append(det)
-
+                        persons.append(det)
             except Exception as exc:
                 log.error("YOLO pose parsing error: %s", exc)
 
-        # 2. Run YOLOv8 Object Model (detects unusual items: bottle, phone, knife, backpack, etc.) on GPU/MPS
+        # ── 2. Dedicated Weapon Detection (Pistols, Knives) ───────────────────
+        detected_weapon_boxes: List[Tuple[float, float, float, float]] = []
+        if self._weapon_model is not None:
+            try:
+                # Lower threshold slightly for high-recall weapon detection
+                results_w = self._weapon_model(
+                    frame,
+                    verbose=False,
+                    conf=max(0.35, settings.YOLO_CONFIDENCE_THRESHOLD - 0.10),
+                    imgsz=384,
+                    device=self._device,
+                )
+                if results_w and results_w[0].boxes is not None:
+                    res_w = results_w[0]
+                    boxes = res_w.boxes.xyxyn.cpu().numpy()
+                    confs = res_w.boxes.conf.cpu().numpy()
+                    classes = res_w.boxes.cls.cpu().numpy().astype(int)
+
+                    for box, conf, cls_id in zip(boxes, confs, classes):
+                        name = res_w.names.get(cls_id, "weapon").lower()
+                        x1, y1, x2, y2 = box
+                        detected_weapon_boxes.append((float(x1), float(y1), float(x2), float(y2)))
+
+                        weapon_count += 1
+                        det = Detection(
+                            target_id=f"WEAPON-{weapon_count:02d}",
+                            class_id=100 + cls_id,
+                            class_name=name,
+                            bbox=BoundingBox(
+                                x=float(x1),
+                                y=float(y1),
+                                w=float(x2 - x1),
+                                h=float(y2 - y1),
+                                confidence=float(conf),
+                            ),
+                            is_weapon=True,
+                            is_unusual=True,
+                            unusual_item=name.upper(),
+                            threat_level="HIGH",  # Will escalate to CRITICAL if held by a person
+                        )
+                        objects.append(det)
+            except Exception as exc:
+                log.error("Weapon model inference error: %s", exc)
+
+        # ── 3. General Object Detection (Casual items, Baggage, Tools, Vehicles)
         if self._obj_model is not None:
             try:
-                # Require higher confidence (>= 0.45) for object detection to avoid false positives on hand/body parts
-                obj_conf_thresh = max(0.45, settings.YOLO_CONFIDENCE_THRESHOLD)
                 results_obj = self._obj_model(
                     frame,
                     verbose=False,
-                    conf=obj_conf_thresh,
+                    conf=max(0.38, settings.YOLO_CONFIDENCE_THRESHOLD - 0.05),
                     imgsz=384,
                     device=self._device,
                 )
@@ -222,38 +292,32 @@ class YOLODetector:
                     confs = res_obj.boxes.conf.cpu().numpy()
                     classes = res_obj.boxes.cls.cpu().numpy().astype(int)
 
-                    item_count = 0
                     for box, conf, cls_id in zip(boxes, confs, classes):
-                        # Skip person from object model if pose model already captured them
+                        # Skip person if pose model already captured them
                         if cls_id == _PERSON and self._pose_model is not None:
                             continue
 
-                        # Check if vehicle or unusual item
-                        if cls_id in UNUSUAL_CLASSES or cls_id in VEHICLE_CLASSES:
-                            x1, y1, x2, y2 = box
-                            class_name = CLASS_NAMES.get(cls_id, "object")
-                            is_unusual_item = cls_id in UNUSUAL_CLASSES
+                        x1, y1, x2, y2 = box
 
-                            # Suppress false-positive object detections caused by raised hands
-                            if is_unusual_item and raised_hand_coords:
-                                obj_cx = float(x1 + x2) / 2.0
-                                obj_cy = float(y1 + y2) / 2.0
-                                is_hand_false_positive = False
-                                for hx, hy in raised_hand_coords:
-                                    dist = np.hypot(obj_cx - hx, obj_cy - hy)
-                                    # Common ambiguous hand-part COCO items: phone, mouse, toothbrush, scissors, cup, etc.
-                                    if dist < 0.14 and conf < 0.72 and cls_id in (41, 42, 43, 44, 45, 64, 65, 66, 67, 73, 76, 79):
-                                        is_hand_false_positive = True
-                                        break
-                                if is_hand_false_positive:
-                                    log.info("Suppressed hand false-positive object detection: %s (conf=%.2f)", class_name, conf)
-                                    continue
+                        # Check if duplicate of weapon already detected
+                        if cls_id in WEAPON_CLASSES:
+                            is_dup = False
+                            for wx1, wy1, wx2, wy2 in detected_weapon_boxes:
+                                iou = self._compute_iou((x1, y1, x2, y2), (wx1, wy1, wx2, wy2))
+                                if iou > 0.4:
+                                    is_dup = True
+                                    break
+                            if is_dup:
+                                continue
 
-                            item_count += 1
+                        # Vehicle detection
+                        if cls_id in VEHICLE_CLASSES:
+                            vehicle_count += 1
+                            v_name = res_obj.names.get(cls_id, "vehicle")
                             det = Detection(
-                                target_id=f"ITEM-{item_count:02d}" if is_unusual_item else f"VEH-{item_count:02d}",
+                                target_id=f"VEH-{vehicle_count:02d}",
                                 class_id=cls_id,
-                                class_name=class_name,
+                                class_name=v_name,
                                 bbox=BoundingBox(
                                     x=float(x1),
                                     y=float(y1),
@@ -261,78 +325,214 @@ class YOLODetector:
                                     h=float(y2 - y1),
                                     confidence=float(conf),
                                 ),
-                                is_unusual=is_unusual_item,
-                                unusual_item=class_name.upper() if is_unusual_item else None,
-                                threat_level="CRITICAL" if is_unusual_item else "NORMAL",
+                                threat_level="NORMAL",
                             )
-                            detections.append(det)
-
-            except Exception as exc:
-                log.error("YOLO object parsing error: %s", exc)
-
-        return detections
-
-    def _detect_pen_like_items(self, frame: np.ndarray, current_detections: List[Detection]) -> List[Detection]:
-        """
-        Legacy heuristic disabled to prevent false positives on human hands/wrists.
-        """
-        return []
-        h, w = frame.shape[:2]
-        extra_dets = []
-        gray = None
-
-        for det in current_detections:
-            if det.class_id != _PERSON or not det.keypoints:
-                continue
-
-            pts = det.keypoints.points
-            # Left wrist (9) and Right wrist (10)
-            for w_idx in (9, 10):
-                if w_idx < len(pts):
-                    wx, wy, wc = pts[w_idx]
-                    if wc > 0.4:
-                        # Extract 100x100 region around wrist
-                        cx, cy = int(wx * w), int(wy * h)
-                        r = 45
-                        x1 = max(0, cx - r)
-                        y1 = max(0, cy - r)
-                        x2 = min(w, cx + r)
-                        y2 = min(h, cy + r)
-
-                        if x2 - x1 < 20 or y2 - y1 < 20:
+                            vehicles.append(det)
                             continue
 
-                        if gray is None:
-                            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                        # Weapon or Casual Object
+                        is_weapon_item = cls_id in WEAPON_CLASSES or res_obj.names.get(cls_id, "").lower() in WEAPON_NAMES
+                        is_casual_item = cls_id in CASUAL_OBJECT_CLASSES or (not is_weapon_item and cls_id in ALL_OBJECT_CLASSES)
 
-                        wrist_crop = gray[y1:y2, x1:x2]
-                        # Edge detection
-                        edges = cv2.Canny(wrist_crop, 50, 150)
-                        lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=25, minLineLength=20, maxLineGap=5)
+                        if is_weapon_item or is_casual_item:
+                            item_name = res_obj.names.get(cls_id, "object").lower()
+                            object_count += 1
 
-                        if lines is not None and len(lines) >= 2:
-                            # Detected elongated pen/tool in hand!
-                            nx1 = x1 / w
-                            ny1 = y1 / h
-                            nw = (x2 - x1) / w
-                            nh = (y2 - y1) / h
-                            extra_dets.append(
-                                Detection(
-                                    target_id=f"ITEM-PEN-{uuid.uuid4().hex[:4].upper()}",
-                                    class_id=99,
-                                    class_name="pen / tool",
-                                    bbox=BoundingBox(x=nx1, y=ny1, w=nw, h=nh, confidence=0.88),
+                            if is_weapon_item:
+                                weapon_count += 1
+                                det = Detection(
+                                    target_id=f"WEAPON-{weapon_count:02d}",
+                                    class_id=cls_id,
+                                    class_name=item_name,
+                                    bbox=BoundingBox(
+                                        x=float(x1),
+                                        y=float(y1),
+                                        w=float(x2 - x1),
+                                        h=float(y2 - y1),
+                                        confidence=float(conf),
+                                    ),
+                                    is_weapon=True,
                                     is_unusual=True,
-                                    unusual_item="PEN / TOOL",
-                                    threat_level="CRITICAL",
+                                    unusual_item=item_name.upper(),
+                                    threat_level="HIGH",
                                 )
-                            )
-                            break
-        return extra_dets
+                            else:
+                                is_baggage = item_name in BAGGAGE_NAMES
+                                det = Detection(
+                                    target_id=f"ITEM-{object_count:02d}",
+                                    class_id=cls_id,
+                                    class_name=item_name,
+                                    bbox=BoundingBox(
+                                        x=float(x1),
+                                        y=float(y1),
+                                        w=float(x2 - x1),
+                                        h=float(y2 - y1),
+                                        confidence=float(conf),
+                                    ),
+                                    is_casual_object=True,
+                                    is_unusual=is_baggage,
+                                    unusual_item=item_name.upper() if is_baggage else None,
+                                    threat_level="HIGH" if is_baggage else "NORMAL",
+                                )
+                            objects.append(det)
+            except Exception as exc:
+                log.error("Object model inference error: %s", exc)
+
+        # ── 4. Hand-Held Object Spatial Association & Threat Escalation ───────
+        self._associate_hands_and_objects(persons, objects)
+
+        return persons + objects + vehicles
+
+    def _associate_hands_and_objects(
+        self,
+        persons: List[Detection],
+        objects: List[Detection],
+    ) -> None:
+        """
+        Correlates detected persons with nearby objects (weapons or casual items).
+        If an object is held in hand or near wrist keypoints:
+          - Marks object as held (`is_held = True`, `held_by_target_id = person.id`)
+          - Marks person as holding (`is_holding = True`, `held_item = item_name`, `held_by_hand = hand`)
+          - ESCALATES THREAT:
+            * Weapon in hand -> Person threat = CRITICAL (DEFCON 1), Object threat = CRITICAL
+            * Casual item in hand -> Person threat updated with held info, Object threat = NORMAL (attended)
+            * Unattended baggage -> Threat = HIGH
+        """
+        for obj in objects:
+            if not obj.bbox:
+                continue
+
+            ox1, oy1 = obj.bbox.x, obj.bbox.y
+            ow, oh = obj.bbox.w, obj.bbox.h
+            ocx, ocy = obj.bbox.cx, obj.bbox.cy
+
+            best_person: Optional[Detection] = None
+            best_dist = 999.0
+            held_hand_label = "IN_HAND"
+
+            for person in persons:
+                if not person.bbox:
+                    continue
+
+                px, py, pw, ph = person.bbox.x, person.bbox.y, person.bbox.w, person.bbox.h
+
+                # Quick spatial reject if person is far away from object
+                if (
+                    ocx < px - 0.20
+                    or ocx > px + pw + 0.20
+                    or ocy < py - 0.15
+                    or ocy > py + ph + 0.20
+                ):
+                    continue
+
+                hand_found = False
+                dist_to_hand = 999.0
+                detected_hand = "IN_HAND"
+
+                # Check 17 COCO keypoints: left wrist (9), right wrist (10), elbows (7, 8)
+                if person.keypoints and person.keypoints.points:
+                    pts = person.keypoints.points
+                    l_wrist = pts[9] if len(pts) > 9 else (0, 0, 0)
+                    r_wrist = pts[10] if len(pts) > 10 else (0, 0, 0)
+
+                    # Dynamic grasp radius based on person scale
+                    grasp_radius = max(0.12, min(0.24, ph * 0.40))
+
+                    l_dist = math.hypot(ocx - l_wrist[0], ocy - l_wrist[1]) if l_wrist[2] > 0.20 else 999.0
+                    r_dist = math.hypot(ocx - r_wrist[0], ocy - r_wrist[1]) if r_wrist[2] > 0.20 else 999.0
+
+                    if l_dist < grasp_radius and r_dist < grasp_radius:
+                        hand_found = True
+                        dist_to_hand = min(l_dist, r_dist)
+                        detected_hand = "BOTH_HANDS"
+                    elif l_dist < grasp_radius:
+                        hand_found = True
+                        dist_to_hand = l_dist
+                        detected_hand = "LEFT_HAND"
+                    elif r_dist < grasp_radius:
+                        hand_found = True
+                        dist_to_hand = r_dist
+                        detected_hand = "RIGHT_HAND"
+
+                # Fallback: Check if object is inside person torso / carrying envelope
+                if not hand_found:
+                    is_in_torso = (
+                        (px - 0.05 <= ocx <= px + pw + 0.05)
+                        and (py + 0.10 * ph <= ocy <= py + 0.90 * ph)
+                        and (ow * oh < pw * ph * 0.65)
+                    )
+                    if is_in_torso:
+                        hand_found = True
+                        dist_to_hand = math.hypot(ocx - (px + pw / 2), ocy - (py + ph / 2))
+                        detected_hand = "IN_HAND"
+
+                if hand_found and dist_to_hand < best_dist:
+                    best_dist = dist_to_hand
+                    best_person = person
+                    held_hand_label = detected_hand
+
+            # Apply threat escalation and associations
+            if best_person is not None:
+                obj.is_held = True
+                obj.held_by_target_id = best_person.target_id
+
+                best_person.is_holding = True
+                best_person.held_item = obj.class_name.upper()
+                best_person.held_by_hand = held_hand_label
+
+                if obj.is_weapon:
+                    # 🚨 ARMED HOSTILE THREAT ESCALATION
+                    best_person.held_item_type = "WEAPON"
+                    best_person.threat_level = "CRITICAL"
+                    best_person.pose_label = f"ARMED (HOLDING {obj.class_name.upper()})"
+                    obj.threat_level = "CRITICAL"
+                    log.warning(
+                        "[THREAT ESCALATION] Target %s is ARMED with %s in %s!",
+                        best_person.target_id,
+                        obj.class_name.upper(),
+                        held_hand_label,
+                    )
+                else:
+                    # Casual object in hand (baggage, phone, bottle, etc.)
+                    best_person.held_item_type = "CASUAL_OBJECT"
+                    obj.threat_level = "NORMAL"  # Attended item
+                    if best_person.threat_level != "CRITICAL":
+                        best_person.threat_level = "HIGH" if best_person.is_in_fence else "NORMAL"
+                    best_person.pose_label = f"HOLDING {obj.class_name.upper()}"
+            else:
+                # Unattended object
+                obj.is_held = False
+                obj.held_by_target_id = None
+                if obj.is_weapon:
+                    obj.threat_level = "HIGH"  # Unattended weapon
+                elif obj.class_name in BAGGAGE_NAMES:
+                    obj.threat_level = "HIGH"  # Unattended baggage alert
+                else:
+                    obj.threat_level = "NORMAL"
+
+    @staticmethod
+    def _compute_iou(
+        boxA: Tuple[float, float, float, float],
+        boxB: Tuple[float, float, float, float],
+    ) -> float:
+        xA = max(boxA[0], boxB[0])
+        yA = max(boxA[1], boxB[1])
+        xB = min(boxA[2], boxB[2])
+        yB = min(boxA[3], boxB[3])
+
+        interArea = max(0.0, xB - xA) * max(0.0, yB - yA)
+        boxAArea = max(0.0, boxA[2] - boxA[0]) * max(0.0, boxA[3] - boxA[1])
+        boxBArea = max(0.0, boxB[2] - boxB[0]) * max(0.0, boxB[3] - boxB[1])
+
+        iou = interArea / float(boxAArea + boxBArea - interArea + 1e-6)
+        return iou
 
     @staticmethod
     def _classify_pose(kps: KeypointSet) -> str:
         pts = kps.points
+        if len(pts) < 17:
+            return "STANDING"
+
         nose = pts[0]
         l_hip = pts[11]
         r_hip = pts[12]
@@ -356,14 +556,10 @@ class YOLODetector:
         return "STANDING"
 
     @staticmethod
-    def _check_hands_raised(kps: KeypointSet) -> Tuple[bool, str, List[Tuple[float, float]]]:
-        """
-        Detect whether left, right, or both hands are raised above shoulders/chest/head.
-        Returns: (is_raised, pose_label, list_of_raised_hand_coordinates)
-        """
+    def _check_hands_raised(kps: KeypointSet) -> Tuple[bool, str]:
         pts = kps.points
         if len(pts) < 17:
-            return False, "STANDING", []
+            return False, "STANDING"
 
         l_wrist = pts[9]
         r_wrist = pts[10]
@@ -371,54 +567,133 @@ class YOLODetector:
         r_shoulder = pts[6]
         nose = pts[0]
 
-        hand_pts: List[Tuple[float, float]] = []
         l_raised = False
         r_raised = False
 
-        # Left hand elevation check
         if l_wrist[2] > 0.25:
             if l_shoulder[2] > 0.25 and l_wrist[1] < l_shoulder[1] - 0.02:
                 l_raised = True
-                hand_pts.append((l_wrist[0], l_wrist[1]))
             elif nose[2] > 0.25 and l_wrist[1] < nose[1] + 0.06:
                 l_raised = True
-                hand_pts.append((l_wrist[0], l_wrist[1]))
 
-        # Right hand elevation check
         if r_wrist[2] > 0.25:
             if r_shoulder[2] > 0.25 and r_wrist[1] < r_shoulder[1] - 0.02:
                 r_raised = True
-                hand_pts.append((r_wrist[0], r_wrist[1]))
             elif nose[2] > 0.25 and r_wrist[1] < nose[1] + 0.06:
                 r_raised = True
-                hand_pts.append((r_wrist[0], r_wrist[1]))
 
         if l_raised and r_raised:
-            return True, "HANDS_RAISED", hand_pts
+            return True, "HANDS_RAISED"
         elif l_raised or r_raised:
-            return True, "HAND_RAISED", hand_pts
+            return True, "HAND_RAISED"
 
-        return False, "STANDING", []
+        return False, "STANDING"
 
     @staticmethod
     def _simulate(frame: np.ndarray) -> List[Detection]:
-        import random
-        detections = []
-        n = random.randint(1, 3)
-        for i in range(n):
-            detections.append(
-                Detection(
-                    target_id=f"SIM-P{i+1}",
-                    class_id=_PERSON,
-                    class_name="person",
-                    bbox=BoundingBox(
-                        x=0.2 + i * 0.25,
-                        y=0.25,
-                        w=0.18,
-                        h=0.45,
-                        confidence=0.95,
-                    ),
-                    pose_label=random.choice(["STANDING", "CROUCHING", "SITTING"]),
-                )
-            )
-        return detections
+        """
+        High-fidelity realistic simulation demonstrating:
+          - Target 1: Armed subject holding a PISTOL (CRITICAL threat)
+          - Target 2: Subject holding a CASUAL BACKPACK / DEVICE (NORMAL/HIGH threat)
+          - Target 3: Unattended baggage (HIGH threat)
+        """
+        t = time.time()
+        sin_t = math.sin(t * 0.8)
+        p1_x = 0.25 + 0.05 * sin_t
+        p2_x = 0.65 - 0.05 * sin_t
+
+        # Person 1: Armed with Pistol
+        p1 = Detection(
+            target_id="PERSON-01",
+            class_id=_PERSON,
+            class_name="person",
+            bbox=BoundingBox(x=p1_x, y=0.25, w=0.18, h=0.55, confidence=0.96),
+            pose_label="ARMED (HOLDING PISTOL)",
+            threat_level="CRITICAL",
+            is_holding=True,
+            held_item="PISTOL",
+            held_item_type="WEAPON",
+            held_by_hand="RIGHT_HAND",
+            keypoints=KeypointSet(
+                points=[
+                    (p1_x + 0.09, 0.27, 0.95),  # nose
+                    (p1_x + 0.08, 0.26, 0.90), (p1_x + 0.10, 0.26, 0.90),
+                    (p1_x + 0.06, 0.28, 0.85), (p1_x + 0.12, 0.28, 0.85),
+                    (p1_x + 0.05, 0.35, 0.92), (p1_x + 0.13, 0.35, 0.92), # shoulders
+                    (p1_x + 0.04, 0.44, 0.88), (p1_x + 0.15, 0.43, 0.88), # elbows
+                    (p1_x + 0.03, 0.52, 0.85), (p1_x + 0.18, 0.47, 0.92), # wrists (right hand holding)
+                    (p1_x + 0.06, 0.55, 0.92), (p1_x + 0.12, 0.55, 0.92), # hips
+                    (p1_x + 0.06, 0.68, 0.90), (p1_x + 0.12, 0.68, 0.90), # knees
+                    (p1_x + 0.06, 0.80, 0.88), (p1_x + 0.12, 0.80, 0.88), # ankles
+                ]
+            ),
+        )
+
+        # Weapon held by Person 1
+        w1 = Detection(
+            target_id="WEAPON-01",
+            class_id=100,
+            class_name="pistol",
+            bbox=BoundingBox(x=p1_x + 0.17, y=0.45, w=0.06, h=0.07, confidence=0.94),
+            is_weapon=True,
+            is_unusual=True,
+            unusual_item="PISTOL",
+            threat_level="CRITICAL",
+            is_held=True,
+            held_by_target_id="PERSON-01",
+        )
+
+        # Person 2: Carrying casual backpack / phone
+        p2 = Detection(
+            target_id="PERSON-02",
+            class_id=_PERSON,
+            class_name="person",
+            bbox=BoundingBox(x=p2_x, y=0.30, w=0.16, h=0.50, confidence=0.93),
+            pose_label="HOLDING BACKPACK",
+            threat_level="NORMAL",
+            is_holding=True,
+            held_item="BACKPACK",
+            held_item_type="CASUAL_OBJECT",
+            held_by_hand="LEFT_HAND",
+            keypoints=KeypointSet(
+                points=[
+                    (p2_x + 0.08, 0.32, 0.95),
+                    (p2_x + 0.07, 0.31, 0.90), (p2_x + 0.09, 0.31, 0.90),
+                    (p2_x + 0.05, 0.33, 0.85), (p2_x + 0.11, 0.33, 0.85),
+                    (p2_x + 0.04, 0.40, 0.90), (p2_x + 0.12, 0.40, 0.90),
+                    (p2_x + 0.03, 0.48, 0.85), (p2_x + 0.13, 0.48, 0.85),
+                    (p2_x + 0.02, 0.54, 0.90), (p2_x + 0.14, 0.54, 0.85),
+                    (p2_x + 0.05, 0.58, 0.90), (p2_x + 0.11, 0.58, 0.90),
+                    (p2_x + 0.05, 0.69, 0.88), (p2_x + 0.11, 0.69, 0.88),
+                    (p2_x + 0.05, 0.80, 0.85), (p2_x + 0.11, 0.80, 0.85),
+                ]
+            ),
+        )
+
+        # Casual item held by Person 2
+        i2 = Detection(
+            target_id="ITEM-01",
+            class_id=24,
+            class_name="backpack",
+            bbox=BoundingBox(x=p2_x - 0.02, y=0.48, w=0.08, h=0.12, confidence=0.89),
+            is_casual_object=True,
+            threat_level="NORMAL",
+            is_held=True,
+            held_by_target_id="PERSON-02",
+        )
+
+        # Unattended suitcase near perimeter
+        i3 = Detection(
+            target_id="ITEM-02",
+            class_id=28,
+            class_name="suitcase",
+            bbox=BoundingBox(x=0.48, y=0.68, w=0.09, h=0.11, confidence=0.91),
+            is_casual_object=True,
+            is_unusual=True,
+            unusual_item="SUITCASE",
+            threat_level="HIGH",
+            is_held=False,
+            held_by_target_id=None,
+        )
+
+        return [p1, w1, p2, i2, i3]

@@ -47,11 +47,13 @@ export const RightAlertsPanel = ({ alerts: liveWsAlerts = [], onNavigateToAlerts
           </div>
         ) : (
           combinedAlerts.map((alert, idx) => {
-            const isCrit = (alert.severity || alert.level) === 'CRITICAL' || (alert.severity || alert.level) === 'crit' || alert.category?.includes('UNUSUAL');
+            const isArmed = alert.category?.includes('ARMED') || alert.title?.includes('Armed');
+            const isWeapon = alert.category?.includes('WEAPON') || alert.title?.includes('Weapon');
+            const isCrit = (alert.severity || alert.level) === 'CRITICAL' || (alert.severity || alert.level) === 'crit' || alert.category?.includes('UNUSUAL') || isArmed || isWeapon;
             const isWarn = (alert.severity || alert.level) === 'HIGH' || (alert.severity || alert.level) === 'WARNING' || (alert.severity || alert.level) === 'warn';
             const cardClass = isCrit ? 'card-critical' : isWarn ? 'card-warning' : 'card-info';
             const dotClass = isCrit ? 'dot-red' : isWarn ? 'dot-purple' : 'dot-cyan';
-            const badgeText = isCrit ? 'CRITICAL' : isWarn ? 'WARNING' : 'INFO';
+            const badgeText = isArmed ? 'ARMED ⚠️' : isWeapon ? 'WEAPON' : isCrit ? 'CRITICAL' : isWarn ? 'WARNING' : 'INFO';
             const tagClass = isCrit ? 'tag-coral' : isWarn ? 'tag-purple' : 'tag-cyan';
 
             const alertTitle = alert.title || alert.type || alert.category || 'Security Alert';

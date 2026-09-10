@@ -97,7 +97,61 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
 
         const dets = liveDetections || [];
 
-        // Draw each detected target (People & Unusual Contraband Items)
+        // 1. Draw Tether Lines between persons and held items
+        dets.forEach((det) => {
+          if (det.is_holding && det.held_item) {
+            const heldObj = dets.find((o) => o.held_by_target_id === det.target_id && o.bbox);
+            if (heldObj && det.bbox) {
+              const px1 = det.bbox.x * cw;
+              const py1 = det.bbox.y * ch;
+              const pw = det.bbox.w * cw;
+              const ph = det.bbox.h * ch;
+
+              const ox1 = heldObj.bbox.x * cw;
+              const oy1 = heldObj.bbox.y * ch;
+              const ow = heldObj.bbox.w * cw;
+              const oh = heldObj.bbox.h * ch;
+
+              const objCenter = { x: ox1 + ow / 2, y: oy1 + oh / 2 };
+              let startPt = { x: px1 + pw / 2, y: py1 + ph / 2 };
+
+              if (det.keypoints && det.keypoints.length >= 11) {
+                const lWrist = det.keypoints[9];
+                const rWrist = det.keypoints[10];
+                if (det.held_by_hand === 'LEFT_HAND' && lWrist && lWrist.conf > 0.2) {
+                  startPt = { x: lWrist.x * cw, y: lWrist.y * ch };
+                } else if (det.held_by_hand === 'RIGHT_HAND' && rWrist && rWrist.conf > 0.2) {
+                  startPt = { x: rWrist.x * cw, y: rWrist.y * ch };
+                } else if (rWrist && rWrist.conf > 0.2) {
+                  startPt = { x: rWrist.x * cw, y: rWrist.y * ch };
+                } else if (lWrist && lWrist.conf > 0.2) {
+                  startPt = { x: lWrist.x * cw, y: lWrist.y * ch };
+                }
+              }
+
+              const tetherColor = det.held_item_type === 'WEAPON' ? '#FF0033' : '#00F2FE';
+              ctx.save();
+              ctx.strokeStyle = tetherColor;
+              ctx.lineWidth = det.held_item_type === 'WEAPON' ? 2.5 : 1.5;
+              ctx.setLineDash([4, 3]);
+              ctx.shadowColor = tetherColor;
+              ctx.shadowBlur = 8;
+              ctx.beginPath();
+              ctx.moveTo(startPt.x, startPt.y);
+              ctx.lineTo(objCenter.x, objCenter.y);
+              ctx.stroke();
+
+              ctx.setLineDash([]);
+              ctx.fillStyle = tetherColor;
+              ctx.beginPath();
+              ctx.arc(objCenter.x, objCenter.y, 4, 0, 2 * Math.PI);
+              ctx.fill();
+              ctx.restore();
+            }
+          }
+        });
+
+        // 2. Draw each detected target
         dets.forEach((det) => {
           if (!det.bbox) return;
 
@@ -106,14 +160,23 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
           const bw = det.bbox.w * cw;
           const bh = det.bbox.h * ch;
 
-          const isUnusual = det.is_unusual || det.unusual_item;
+          const isArmed = det.is_holding && det.held_item_type === 'WEAPON';
+          const isWeapon = det.is_weapon;
+          const isHoldingCasual = det.is_holding && det.held_item_type === 'CASUAL_OBJECT';
+          const isUnattendedBag = ['backpack', 'suitcase', 'handbag'].includes(det.class_name?.toLowerCase()) && !det.is_held;
+          const isUnusual = det.is_unusual || det.unusual_item || isWeapon || isArmed;
           const isHandRaised = ['HANDS_RAISED', 'HAND_RAISED'].includes(det.pose_label);
           const isCriticalPose = ['CROUCHING', 'PRONE'].includes(det.pose_label);
-          const isAlert = isUnusual || isCriticalPose || isHandRaised;
+          const isAlert = isUnusual || isCriticalPose || isHandRaised || isArmed || isWeapon;
 
-          // RED for unusual contraband items, AMBER GOLD for raised hand gesture, CYAN for people, YELLOW for vehicles
           let boxColor = det.class_id === 0 ? '#00F2FE' : '#FBBF24';
-          if (isUnusual) {
+          if (isArmed || isWeapon) {
+            boxColor = '#FF0033';
+          } else if (isUnattendedBag) {
+            boxColor = '#F97316';
+          } else if (isHoldingCasual) {
+            boxColor = '#06B6D4';
+          } else if (isUnusual) {
             boxColor = '#FF0033';
           } else if (isHandRaised) {
             boxColor = '#F59E0B';
@@ -126,30 +189,31 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
           ctx.strokeStyle = boxColor;
           ctx.lineWidth = isAlert ? 3 : 2;
           ctx.shadowColor = boxColor;
-          ctx.shadowBlur = isAlert ? 14 : 6;
+          ctx.shadowBlur = isAlert ? 16 : 6;
           ctx.strokeRect(bx, by, bw, bh);
 
           // 2. Corner Bracket Reticles
           const cornerSize = Math.min(18, Math.max(6, bw / 4));
           ctx.lineWidth = isAlert ? 4 : 3;
-          // Top-Left
           ctx.beginPath();
-          ctx.moveTo(bx, by + cornerSize);
-          ctx.lineTo(bx, by);
-          ctx.lineTo(bx + cornerSize, by);
-          // Top-Right
-          ctx.moveTo(bx + bw - cornerSize, by);
-          ctx.lineTo(bx + bw, by);
-          ctx.lineTo(bx + bw, by + cornerSize);
-          // Bottom-Left
-          ctx.moveTo(bx, by + bh - cornerSize);
-          ctx.lineTo(bx, by + bh);
-          ctx.lineTo(bx + cornerSize, by + bh);
-          // Bottom-Right
-          ctx.moveTo(bx + bw - cornerSize, by + bh);
-          ctx.lineTo(bx + bw, by + bh);
-          ctx.lineTo(bx + bw, by + bh - cornerSize);
+          ctx.moveTo(bx, by + cornerSize); ctx.lineTo(bx, by); ctx.lineTo(bx + cornerSize, by);
+          ctx.moveTo(bx + bw - cornerSize, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + cornerSize);
+          ctx.moveTo(bx, by + bh - cornerSize); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + cornerSize, by + bh);
+          ctx.moveTo(bx + bw - cornerLen || cornerSize, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - cornerSize);
           ctx.stroke();
+
+          // Crosshair on armed targets
+          if (isArmed || isWeapon) {
+            const cx = bx + bw / 2;
+            const cy = by + bh / 2;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath();
+            ctx.moveTo(cx - 12, cy); ctx.lineTo(cx + 12, cy);
+            ctx.moveTo(cx, cy - 12); ctx.lineTo(cx, cy + 12);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
           ctx.restore();
 
           // 3. Draw 17-Keypoint Pose Skeleton for Humans
@@ -164,7 +228,7 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
                 const kp1 = kps[i1];
                 const kp2 = kps[i2];
                 if (kp1.conf > 0.35 && kp2.conf > 0.35) {
-                  ctx.strokeStyle = isUnusual ? '#FF0033' : isHandRaised ? '#F59E0B' : '#10B981';
+                  ctx.strokeStyle = isArmed ? '#FF0033' : isHoldingCasual ? '#06B6D4' : isHandRaised ? '#F59E0B' : '#10B981';
                   ctx.beginPath();
                   ctx.moveTo(kp1.x * cw, kp1.y * ch);
                   ctx.lineTo(kp2.x * cw, kp2.y * ch);
@@ -176,7 +240,7 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
             // Draw joints
             kps.forEach((kp) => {
               if (kp.conf > 0.35) {
-                ctx.fillStyle = isUnusual ? '#FF0033' : isHandRaised ? '#FBBF24' : '#00F2FE';
+                ctx.fillStyle = isArmed ? '#FF0033' : isHoldingCasual ? '#06B6D4' : isHandRaised ? '#FBBF24' : '#00F2FE';
                 ctx.beginPath();
                 ctx.arc(kp.x * cw, kp.y * ch, 3.5, 0, 2 * Math.PI);
                 ctx.fill();
@@ -187,7 +251,15 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
 
           // 4. Tactical Floating Label Tag
           let labelText = '';
-          if (isUnusual) {
+          if (isArmed) {
+            labelText = `🚨 ARMED SUBJECT: HOLDING ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+          } else if (isHoldingCasual) {
+            labelText = `📦 HOLDING: ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+          } else if (isWeapon) {
+            labelText = `🚨 WEAPON: ${det.class_name.toUpperCase()} [${((det.confidence || 0.9) * 100).toFixed(0)}%]`;
+          } else if (isUnattendedBag) {
+            labelText = `⚠️ UNATTENDED BAGGAGE: ${det.class_name.toUpperCase()}`;
+          } else if (isUnusual) {
             labelText = `⚠️ UNUSUAL: ${(det.unusual_item || det.class_name).toUpperCase()}`;
           } else if (isHandRaised) {
             labelText = `✋ ${det.target_id || 'PERSON'} [${det.pose_label.replace('_', ' ')}]`;
@@ -199,7 +271,7 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
           const textWidth = ctx.measureText(labelText).width;
           const tagY = Math.max(by - 20, 2);
 
-          ctx.fillStyle = isUnusual ? 'rgba(40, 5, 12, 0.92)' : isHandRaised ? 'rgba(42, 28, 5, 0.92)' : 'rgba(10, 16, 28, 0.90)';
+          ctx.fillStyle = (isArmed || isWeapon) ? 'rgba(45, 5, 15, 0.94)' : isUnattendedBag ? 'rgba(38, 20, 5, 0.94)' : isHandRaised ? 'rgba(42, 28, 5, 0.92)' : 'rgba(10, 16, 28, 0.90)';
           ctx.fillRect(bx, tagY, textWidth + 12, 18);
           ctx.strokeStyle = boxColor;
           ctx.lineWidth = 1;
@@ -210,14 +282,17 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
         });
 
         // 5. HUD Top Status Overlay
-        ctx.fillStyle = 'rgba(10, 16, 28, 0.85)';
-        ctx.fillRect(10, 10, 310, 24);
-        ctx.strokeStyle = 'rgba(0, 242, 254, 0.4)';
-        ctx.strokeRect(10, 10, 310, 24);
+        const armedCnt = dets.filter((d) => d.is_holding && d.held_item_type === 'WEAPON').length;
+        const weaponCnt = dets.filter((d) => d.is_weapon).length;
+        const hudW = armedCnt > 0 ? 460 : 380;
+        ctx.fillStyle = 'rgba(10, 16, 28, 0.88)';
+        ctx.fillRect(10, 10, hudW, 24);
+        ctx.strokeStyle = armedCnt > 0 ? 'rgba(255, 0, 51, 0.8)' : 'rgba(0, 242, 254, 0.4)';
+        ctx.strokeRect(10, 10, hudW, 24);
         ctx.font = 'bold 10px JetBrains Mono, monospace';
-        ctx.fillStyle = webcamTelemetry.unusualCount > 0 ? '#FF0033' : '#10B981';
+        ctx.fillStyle = armedCnt > 0 || weaponCnt > 0 ? '#FF0033' : '#10B981';
         ctx.fillText(
-          `C-01 AI • MPS GPU ACCELERATED • ${webcamTelemetry.actualFps || 30} FPS • ${webcamTelemetry.lastLatencyMs || 10}ms`,
+          `C-01 AI • ${webcamTelemetry.actualFps || 30} FPS • ${webcamTelemetry.lastLatencyMs || 10}ms • PPL:${dets.filter((d) => d.class_id === 0).length} • ARMED:${armedCnt} • WEAPONS:${weaponCnt}`,
           16,
           26
         );

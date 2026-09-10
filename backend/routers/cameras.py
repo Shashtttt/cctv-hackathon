@@ -192,19 +192,28 @@ async def ingest_camera_frame(cam_id: str, request: Request):
 
     if "application/json" in content_type:
         body = await request.json()
-        b64_str = body.get("image", "")
+        b64_str = body.get("image") or body.get("frame_base64", "")
+        if not b64_str:
+            raise HTTPException(status_code=400, detail="No base64 image data found in request.")
         if "," in b64_str:
             b64_str = b64_str.split(",", 1)[1]
-        raw_bytes = base64.b64decode(b64_str)
+        try:
+            raw_bytes = base64.b64decode(b64_str)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid base64 payload: {str(e)}")
+        if not raw_bytes:
+            raise HTTPException(status_code=400, detail="Decoded image payload is empty.")
         nparr = np.frombuffer(raw_bytes, np.uint8)
         frame_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     else:
         raw_bytes = await request.body()
+        if not raw_bytes:
+            raise HTTPException(status_code=400, detail="Empty request body received.")
         nparr = np.frombuffer(raw_bytes, np.uint8)
         frame_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
     if frame_bgr is None or frame_bgr.size == 0:
-        raise HTTPException(status_code=400, detail="Invalid image data received.")
+        raise HTTPException(status_code=400, detail="Invalid image data received or failed to decode.")
 
     analyzer = DirectAIAnalyzer.get_instance()
     result = analyzer.process_frame(
@@ -238,6 +247,14 @@ async def ingest_camera_frame(cam_id: str, request: Request):
                 "is_unusual": d.is_unusual,
                 "unusual_item": d.unusual_item,
                 "threat_level": d.threat_level,
+                "is_weapon": getattr(d, "is_weapon", False),
+                "is_casual_object": getattr(d, "is_casual_object", False),
+                "is_holding": getattr(d, "is_holding", False),
+                "held_item": getattr(d, "held_item", None),
+                "held_item_type": getattr(d, "held_item_type", None),
+                "held_by_hand": getattr(d, "held_by_hand", None),
+                "is_held": getattr(d, "is_held", False),
+                "held_by_target_id": getattr(d, "held_by_target_id", None),
                 "bbox": {
                     "x": d.bbox.x,
                     "y": d.bbox.y,

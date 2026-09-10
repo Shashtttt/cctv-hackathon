@@ -70,6 +70,14 @@ class Detection:
     is_unusual: bool = False
     unusual_item: Optional[str] = None
     threat_level: str = "NORMAL"
+    is_weapon: bool = False
+    is_casual_object: bool = False
+    is_holding: bool = False
+    held_item: Optional[str] = None
+    held_item_type: Optional[str] = None        # "WEAPON" | "CASUAL_OBJECT"
+    held_by_hand: Optional[str] = None          # "LEFT_HAND" | "RIGHT_HAND" | "BOTH_HANDS" | "IN_HAND"
+    is_held: bool = False
+    held_by_target_id: Optional[str] = None
 
 
 @dataclass

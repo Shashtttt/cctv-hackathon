@@ -123,14 +123,22 @@ const AlertsEventsPage = () => {
         // Map backend alerts to UI model
         const mapped = res.items.map((item) => {
           const sev = (item.severity || 'info').toLowerCase();
-          const isCrit = sev === 'critical';
-          const isWarn = sev === 'warning';
+          const isArmed = item.category?.includes('ARMED') || item.title?.includes('Armed');
+          const isWeapon = item.category?.includes('WEAPON') || item.title?.includes('Weapon');
+          const isBaggage = item.category?.includes('BAGGAGE') || item.title?.includes('Baggage');
+          const isCrit = sev === 'critical' || isArmed || isWeapon;
+          const isWarn = sev === 'warning' || isBaggage;
+
           return {
             id: item.id,
-            severity: sev,
-            severityText: (item.severity || 'INFO').toUpperCase(),
+            severity: isCrit ? 'critical' : isWarn ? 'warning' : 'info',
+            severityText: isArmed ? 'CRITICAL (ARMED)' : isCrit ? 'CRITICAL' : isWarn ? 'WARNING' : 'INFO',
             eventType: item.title || item.category || 'Security Event',
-            typeIcon: item.category === 'INTRUSION' || isCrit ? (
+            typeIcon: isArmed || isWeapon ? (
+              <ShieldAlert size={16} className="text-red" />
+            ) : isBaggage ? (
+              <AlertCircle size={16} className="text-yellow" />
+            ) : item.category === 'INTRUSION' || isCrit ? (
               <UserX size={16} className="text-red" />
             ) : item.category === 'LOITERING' ? (
               <Clock size={16} className="text-yellow" />
@@ -143,10 +151,10 @@ const AlertsEventsPage = () => {
             ),
             objectId: item.target_id || (item.plate_text ? 'V-021' : 'P-102'),
             objectIdGreen: item.category === 'FRS_MATCH' || item.category === 'ANPR',
-            personStatus: item.frs_match_name ? 'AUTHORIZED' : isCrit ? 'UNAUTHORIZED' : '--',
-            statusType: item.frs_match_name ? 'auth-green' : isCrit ? 'unauth-red' : 'unauth-yellow',
-            rolePlate: item.plate_text || item.frs_match_name || '--',
-            rolePlateType: item.plate_text ? 'plate-green' : item.frs_match_name ? 'role-cyan' : '',
+            personStatus: isArmed ? 'ARMED HOSTILE' : isWeapon ? 'WEAPON SECURED' : isBaggage ? 'UNATTENDED BAG' : item.frs_match_name ? 'AUTHORIZED' : isCrit ? 'UNAUTHORIZED' : '--',
+            statusType: isArmed || isWeapon ? 'unauth-red' : isBaggage ? 'unauth-yellow' : item.frs_match_name ? 'auth-green' : isCrit ? 'unauth-red' : 'unauth-yellow',
+            rolePlate: item.plate_text || item.frs_match_name || (isArmed ? 'DEFCON 1' : '--'),
+            rolePlateType: item.plate_text ? 'plate-green' : item.frs_match_name ? 'role-cyan' : isArmed ? 'unauth-red' : '',
             activity: item.description || item.title || 'Monitored Trace',
             activityType: isCrit ? 'breach-red' : isWarn ? 'loitering-yellow' : 'grey-tag',
             status: item.status || 'ACTIVE',

@@ -24,6 +24,9 @@ backend/.venv/
 venv/
 ENV/
 env/
+.env
+*.env
+backend/.env
 
 # Databases & Local Storage
 *.db

@@ -138,7 +138,61 @@ class DirectAIAnalyzer:
                     alerts.append(alert)
 
             # Unusual Item / Contraband alert (bottle, knife, pen, phone, bag, scissors)
-            if det.is_unusual or det.unusual_item:
+            # ── Weapon & Hand-Held Threat Alerts ──────────────────────────────
+            if getattr(det, "is_holding", False):
+                if getattr(det, "held_item_type", "") == "WEAPON":
+                    alert = self._make_alert(
+                        camera_id=camera_id,
+                        category="ARMED_PERSON",
+                        severity="CRITICAL",
+                        title=f"CRITICAL: Armed Subject Holding {det.held_item} [{camera_code}]",
+                        description=f"Subject {det.target_id} confirmed wielding {det.held_item} in {det.held_by_hand or 'hand'}. Immediate DEFCON 1 response required.",
+                        target_id=det.target_id,
+                    )
+                    if alert:
+                        alerts.append(alert)
+                elif getattr(det, "held_item_type", "") == "CASUAL_OBJECT" and (det.is_in_fence or det.loiter_seconds > 8):
+                    alert = self._make_alert(
+                        camera_id=camera_id,
+                        category="SUSPICIOUS_CARRIER",
+                        severity="HIGH",
+                        title=f"Suspicious Item Carrier: {det.held_item} [{camera_code}]",
+                        description=f"Subject {det.target_id} carrying {det.held_item} ({det.held_by_hand or 'in hand'}) in monitored perimeter zone.",
+                        target_id=det.target_id,
+                    )
+                    if alert:
+                        alerts.append(alert)
+
+            # Unattended weapon alert
+            if getattr(det, "is_weapon", False) and not getattr(det, "is_held", False):
+                w_name = (det.unusual_item or det.class_name).upper()
+                alert = self._make_alert(
+                    camera_id=camera_id,
+                    category="UNATTENDED_WEAPON",
+                    severity="HIGH",
+                    title=f"Unattended Weapon: {w_name} [{camera_code}]",
+                    description=f"Unattended weapon '{w_name}' detected without handler in live field (Confidence: {det.bbox.confidence:.1%}).",
+                    target_id=det.target_id,
+                )
+                if alert:
+                    alerts.append(alert)
+
+            # Unattended baggage alert (backpack, suitcase, handbag)
+            if det.class_name in ("backpack", "suitcase", "handbag") and not getattr(det, "is_held", False):
+                b_name = det.class_name.upper()
+                alert = self._make_alert(
+                    camera_id=camera_id,
+                    category="UNATTENDED_BAGGAGE",
+                    severity="HIGH",
+                    title=f"Unattended Baggage: {b_name} [{camera_code}]",
+                    description=f"Unattended luggage/baggage '{b_name}' left stationary in perimeter sector.",
+                    target_id=det.target_id,
+                )
+                if alert:
+                    alerts.append(alert)
+
+            # General unusual / contraband item alert
+            if (det.is_unusual or det.unusual_item) and not getattr(det, "is_weapon", False) and not getattr(det, "is_held", False):
                 item_name = (det.unusual_item or det.class_name).upper()
                 alert = self._make_alert(
                     camera_id=camera_id,
@@ -273,21 +327,59 @@ class DirectAIAnalyzer:
         ]
 
         # Draw Detections
+        # 1. Draw Tether Lines between persons and held items
+        for det in detections:
+            if getattr(det, "is_holding", False) and getattr(det, "held_item", None):
+                # Locate the corresponding held item
+                for obj in detections:
+                    if getattr(obj, "held_by_target_id", None) == det.target_id and obj.bbox:
+                        px1, py1, px2, py2 = det.bbox.to_pixel(w, h)
+                        ox1, oy1, ox2, oy2 = obj.bbox.to_pixel(w, h)
+                        obj_center = ((ox1 + ox2) // 2, (oy1 + oy2) // 2)
+
+                        # Find wrist if available
+                        wrist_pt = None
+                        if det.keypoints and det.keypoints.points:
+                            pts = det.keypoints.points
+                            l_wrist = pts[9] if len(pts) > 9 else (0, 0, 0)
+                            r_wrist = pts[10] if len(pts) > 10 else (0, 0, 0)
+                            if det.held_by_hand == "LEFT_HAND" and l_wrist[2] > 0.2:
+                                wrist_pt = (int(l_wrist[0] * w), int(l_wrist[1] * h))
+                            elif det.held_by_hand == "RIGHT_HAND" and r_wrist[2] > 0.2:
+                                wrist_pt = (int(r_wrist[0] * w), int(r_wrist[1] * h))
+                            elif l_wrist[2] > 0.2 or r_wrist[2] > 0.2:
+                                chosen = l_wrist if l_wrist[2] > r_wrist[2] else r_wrist
+                                wrist_pt = (int(chosen[0] * w), int(chosen[1] * h))
+
+                        start_pt = wrist_pt if wrist_pt else ((px1 + px2) // 2, (py1 + py2) // 2)
+                        tether_color = (0, 0, 255) if det.held_item_type == "WEAPON" else (0, 242, 254)
+                        cv2.line(frame, start_pt, obj_center, tether_color, 2, cv2.LINE_AA)
+                        cv2.circle(frame, obj_center, 4, tether_color, -1, cv2.LINE_AA)
+
+        # 2. Draw Detections & Skeletons
         for det in detections:
             x1, y1, x2, y2 = det.bbox.to_pixel(w, h)
-            is_unusual = det.is_unusual or det.is_in_fence or (det.frs_match_score and det.frs_match_score >= 0.6)
+            is_armed = getattr(det, "is_holding", False) and getattr(det, "held_item_type", "") == "WEAPON"
+            is_weapon = getattr(det, "is_weapon", False)
+            is_holding_casual = getattr(det, "is_holding", False) and getattr(det, "held_item_type", "") == "CASUAL_OBJECT"
+            is_unattended_bag = det.class_name in ("backpack", "suitcase", "handbag") and not getattr(det, "is_held", False)
+            is_unusual = det.is_unusual or det.is_in_fence or is_weapon or is_armed
             is_hand_raised = det.pose_label in ("HANDS_RAISED", "HAND_RAISED")
-            is_critical = is_unusual or det.pose_label in ("CROUCHING", "PRONE")
+            is_critical = is_armed or is_weapon or det.pose_label in ("CROUCHING", "PRONE")
 
-            # RED for critical unusual contraband, Amber/Gold for hand raised gesture, Cyan for people, Yellow for vehicles
-            if is_unusual:
-                colour = (0, 0, 255)
+            # Color scheme
+            if is_armed or is_weapon:
+                colour = (0, 0, 255)        # Tactical Red
+            elif is_unattended_bag:
+                colour = (0, 140, 255)      # Warning Amber / Orange
+            elif is_holding_casual:
+                colour = (11, 158, 245)     # Cyan-Gold
             elif is_hand_raised:
-                colour = (11, 158, 245)  # Amber Gold (BGR)
+                colour = (11, 158, 245)     # Amber
             elif det.class_id == 0:
-                colour = (254, 242, 0) if False else (254, 242, 0) if False else (0, 242, 254)
+                colour = (0, 242, 254)      # Cyber Blue / Cyan
             else:
-                colour = (0, 215, 255)
+                colour = (0, 215, 255)      # Yellow
 
             # Draw Main Box
             thickness = 3 if is_critical else 2
@@ -324,12 +416,20 @@ class DirectAIAnalyzer:
 
             # Label Construction
             label_parts = []
-            if det.is_unusual:
+            if is_armed:
+                label_parts.append(f"🚨 ARMED: HOLDING {det.held_item} ({det.held_by_hand or 'HAND'})")
+            elif is_holding_casual:
+                label_parts.append(f"📦 HOLDING: {det.held_item} ({det.held_by_hand or 'HAND'})")
+            elif is_weapon:
+                label_parts.append(f"🚨 WEAPON: {det.class_name.upper()}")
+            elif is_unattended_bag:
+                label_parts.append(f"⚠️ UNATTENDED BAGGAGE: {det.class_name.upper()}")
+            elif det.is_unusual:
                 label_parts.append(f"⚠️ UNUSUAL: {(det.unusual_item or det.class_name).upper()}")
             else:
                 label_parts.append(f"{det.target_id} {det.class_name.upper()}")
 
-            if det.pose_label and det.class_id == 0:
+            if det.pose_label and det.class_id == 0 and not is_armed and not is_holding_casual:
                 label_parts.append(f"[{det.pose_label}]")
             if det.frs_match_name:
                 label_parts.append(f"FRS:{det.frs_match_name} ({det.frs_match_score:.0%})")
@@ -346,12 +446,14 @@ class DirectAIAnalyzer:
 
         # Tactical HUD
         alert_cnt = len(alerts)
-        unusual_cnt = sum(1 for d in detections if d.is_unusual)
         people_cnt = sum(1 for d in detections if d.class_id == 0)
+        armed_cnt = sum(1 for d in detections if getattr(d, "is_holding", False) and getattr(d, "held_item_type", "") == "WEAPON")
+        weapons_cnt = sum(1 for d in detections if getattr(d, "is_weapon", False))
+        casual_cnt = sum(1 for d in detections if getattr(d, "is_casual_object", False))
 
-        hud = f"{camera_code} AI | PEOPLE: {people_cnt} | UNUSUAL ITEMS: {unusual_cnt} | ALERTS: {alert_cnt}"
-        hud_color = (0, 0, 255) if (alert_cnt > 0 or unusual_cnt > 0) else (0, 242, 254)
-        cv2.putText(frame, hud, (20, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.55, hud_color, 2 if unusual_cnt > 0 else 1, cv2.LINE_AA)
+        hud = f"{camera_code} AI | PPL:{people_cnt} | ARMED:{armed_cnt} | WEAPONS:{weapons_cnt} | ITEMS:{casual_cnt} | ALERTS:{alert_cnt}"
+        hud_color = (0, 0, 255) if (armed_cnt > 0 or weapons_cnt > 0 or alert_cnt > 0) else (0, 242, 254)
+        cv2.putText(frame, hud, (20, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.52, hud_color, 2 if (armed_cnt > 0 or weapons_cnt > 0) else 1, cv2.LINE_AA)
 
         encode_params = [cv2.IMWRITE_JPEG_QUALITY, 85]
         _, buf = cv2.imencode(".jpg", frame, encode_params)

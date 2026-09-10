@@ -95,6 +95,11 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
         if (res.data && res.data.success) {
           const dets = res.data.detections || [];
           const unusualCount = dets.filter((d) => d.is_unusual || d.unusual_item || d.threat_level === 'CRITICAL').length;
+          const weaponsCount = dets.filter((d) => d.is_weapon).length;
+          const armedCount = dets.filter((d) => d.is_holding && d.held_item_type === 'WEAPON').length;
+          const holdingCount = dets.filter((d) => d.is_holding).length;
+          const casualCount = dets.filter((d) => d.is_casual_object || (d.is_holding && d.held_item_type === 'CASUAL_OBJECT')).length;
+
           setLiveDetections(dets);
           if (res.data.annotated_frame) {
             setLatestAnnotatedFrame(res.data.annotated_frame);
@@ -103,6 +108,10 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
             ...prev,
             detectionsCount: dets.length,
             unusualCount,
+            weaponsCount,
+            armedCount,
+            holdingCount,
+            casualCount,
             alertsCount: res.data.alerts_count || 0,
             detections: dets,
             lastLatencyMs: Math.round(dt),

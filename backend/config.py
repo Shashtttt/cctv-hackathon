@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     # ── Security ─────────────────────────────────────────────────────────────
     API_SECRET_KEY: str = "CHANGE_ME_IN_PRODUCTION_USE_STRONG_RANDOM_KEY"
-    ALLOWED_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    ALLOWED_ORIGINS: list[str] | str = ["http://localhost:5173", "http://localhost:3000"]
 
     # ── Database ──────────────────────────────────────────────────────────────
     DATABASE_URL: str = f"sqlite+aiosqlite:///{DB_PATH}"
@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     # ── AI Model Paths ────────────────────────────────────────────────────────
     YOLO_POSE_MODEL: Path = MODELS_DIR / "yolov8n-pose.pt"
     YOLO_OBJECT_MODEL: Path = MODELS_DIR / "yolov8n.pt"
+    YOLO_WEAPON_MODEL: Path = MODELS_DIR / "weapon_yolov8n.pt"
     YOLO_LP_MODEL: Path = MODELS_DIR / "yolov8n-lp.pt"         # License plate detector
     YUNET_FACE_MODEL: Path = MODELS_DIR / "face_detection_yunet_2023mar.onnx"
     SFACE_FACE_MODEL: Path = MODELS_DIR / "face_recognition_sface_2021dec.onnx"
@@ -67,8 +68,21 @@ class Settings(BaseSettings):
     GPU_DEVICE: str = "mps"                        # 'mps' (Apple Silicon) | 'cuda' (Nvidia) | 'cpu'
     FRAME_SKIP_RATIO: int = 1                      # Process every N-th frame (1 = all)
 
-    @field_validator("SNAPSHOT_DIR", "YOLO_POSE_MODEL", "YUNET_FACE_MODEL",
-                     "SFACE_FACE_MODEL", mode="before")
+    @field_validator("ALLOWED_ORIGINS", mode="before")
+    @classmethod
+    def parse_allowed_origins(cls, v: object) -> list[str]:
+        if isinstance(v, str):
+            if v.startswith("[") and v.endswith("]"):
+                import json
+                try:
+                    return json.loads(v)
+                except Exception:
+                    pass
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
+
+    @field_validator("SNAPSHOT_DIR", "YOLO_POSE_MODEL", "YOLO_OBJECT_MODEL",
+                     "YOLO_WEAPON_MODEL", "YUNET_FACE_MODEL", "SFACE_FACE_MODEL", mode="before")
     @classmethod
     def coerce_path(cls, v: object) -> Path:
         return Path(v)
@@ -82,6 +96,8 @@ class Settings(BaseSettings):
         """Print warnings for missing model files (non-fatal; falls back to simulation mode)."""
         for attr, path in [
             ("YOLO_POSE_MODEL", self.YOLO_POSE_MODEL),
+            ("YOLO_OBJECT_MODEL", self.YOLO_OBJECT_MODEL),
+            ("YOLO_WEAPON_MODEL", self.YOLO_WEAPON_MODEL),
             ("YUNET_FACE_MODEL", self.YUNET_FACE_MODEL),
             ("SFACE_FACE_MODEL", self.SFACE_FACE_MODEL),
         ]:

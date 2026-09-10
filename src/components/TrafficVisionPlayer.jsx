@@ -185,6 +185,63 @@ export const TrafficVisionPlayer = ({
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, cw, ch);
 
+        // 1. Draw Tether Lines between persons and held items
+        realDetections.forEach((det) => {
+          if (det.is_holding && det.held_item) {
+            const heldObj = realDetections.find((o) => o.held_by_target_id === det.target_id && o.bbox);
+            if (heldObj && det.bbox) {
+              const px1 = det.bbox.x * cw;
+              const py1 = det.bbox.y * ch;
+              const pw = det.bbox.w * cw;
+              const ph = det.bbox.h * ch;
+
+              const ox1 = heldObj.bbox.x * cw;
+              const oy1 = heldObj.bbox.y * ch;
+              const ow = heldObj.bbox.w * cw;
+              const oh = heldObj.bbox.h * ch;
+
+              const objCenter = { x: ox1 + ow / 2, y: oy1 + oh / 2 };
+              let startPt = { x: px1 + pw / 2, y: py1 + ph / 2 };
+
+              // Check if wrist keypoint is available
+              if (det.keypoints && det.keypoints.length >= 11) {
+                const lWrist = det.keypoints[9];
+                const rWrist = det.keypoints[10];
+                if (det.held_by_hand === 'LEFT_HAND' && lWrist && lWrist.conf > 0.2) {
+                  startPt = { x: lWrist.x * cw, y: lWrist.y * ch };
+                } else if (det.held_by_hand === 'RIGHT_HAND' && rWrist && rWrist.conf > 0.2) {
+                  startPt = { x: rWrist.x * cw, y: rWrist.y * ch };
+                } else if (rWrist && rWrist.conf > 0.2) {
+                  startPt = { x: rWrist.x * cw, y: rWrist.y * ch };
+                } else if (lWrist && lWrist.conf > 0.2) {
+                  startPt = { x: lWrist.x * cw, y: lWrist.y * ch };
+                }
+              }
+
+              const tetherColor = det.held_item_type === 'WEAPON' ? '#FF0033' : '#00F2FE';
+              ctx.save();
+              ctx.strokeStyle = tetherColor;
+              ctx.lineWidth = det.held_item_type === 'WEAPON' ? 2.5 : 1.5;
+              ctx.setLineDash([4, 3]);
+              ctx.shadowColor = tetherColor;
+              ctx.shadowBlur = 8;
+              ctx.beginPath();
+              ctx.moveTo(startPt.x, startPt.y);
+              ctx.lineTo(objCenter.x, objCenter.y);
+              ctx.stroke();
+
+              // Draw pulsating joint ring at held object center
+              ctx.setLineDash([]);
+              ctx.fillStyle = tetherColor;
+              ctx.beginPath();
+              ctx.arc(objCenter.x, objCenter.y, 4, 0, 2 * Math.PI);
+              ctx.fill();
+              ctx.restore();
+            }
+          }
+        });
+
+        // 2. Draw Target Bounding Boxes, Reticles & Labels
         realDetections.forEach((det) => {
           if (!det.bbox) return;
 
@@ -193,44 +250,88 @@ export const TrafficVisionPlayer = ({
           const bw = det.bbox.w * cw;
           const bh = det.bbox.h * ch;
 
-          const isUnusual = det.is_unusual || det.unusual_item || det.threat_level === 'CRITICAL';
-          const boxColor = isUnusual ? '#FF0033' : (det.class_id === 0 ? '#00F2FE' : '#FBBF24');
+          const isArmed = det.is_holding && det.held_item_type === 'WEAPON';
+          const isWeapon = det.is_weapon;
+          const isHoldingCasual = det.is_holding && det.held_item_type === 'CASUAL_OBJECT';
+          const isUnattendedBag = ['backpack', 'suitcase', 'handbag'].includes(det.class_name?.toLowerCase()) && !det.is_held;
+          const isUnusual = det.is_unusual || det.unusual_item || isWeapon || isArmed;
+          const isHandRaised = ['HANDS_RAISED', 'HAND_RAISED'].includes(det.pose_label);
+          const isCritical = isArmed || isWeapon || isUnusual || det.threat_level === 'CRITICAL';
+
+          let boxColor = '#00F2FE';
+          if (isArmed || isWeapon) {
+            boxColor = '#FF0033';  // Red Alert
+          } else if (isUnattendedBag) {
+            boxColor = '#F97316';  // Amber
+          } else if (isHoldingCasual) {
+            boxColor = '#06B6D4';  // Cyan-Teal
+          } else if (isHandRaised) {
+            boxColor = '#F59E0B';  // Gold
+          } else if (det.class_id === 0) {
+            boxColor = '#00F2FE';  // Human Cyan
+          } else {
+            boxColor = '#FBBF24';  // Vehicle / other
+          }
 
           ctx.save();
           ctx.strokeStyle = boxColor;
-          ctx.lineWidth = isUnusual ? 3 : 2;
+          ctx.lineWidth = isCritical ? 3 : 2;
           ctx.shadowColor = boxColor;
-          ctx.shadowBlur = isUnusual ? 14 : 6;
+          ctx.shadowBlur = isCritical ? 16 : 6;
           ctx.strokeRect(bx, by, bw, bh);
 
-          // Corner brackets
-          const cornerLen = Math.min(14, bw / 3);
-          ctx.lineWidth = 3;
+          // Corner Reticle Brackets
+          const cornerLen = Math.min(16, bw / 3);
+          ctx.lineWidth = isCritical ? 3.5 : 2.5;
           ctx.beginPath();
           ctx.moveTo(bx, by + cornerLen); ctx.lineTo(bx, by); ctx.lineTo(bx + cornerLen, by);
           ctx.moveTo(bx + bw - cornerLen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + cornerLen);
           ctx.moveTo(bx, by + bh - cornerLen); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + cornerLen, by + bh);
           ctx.moveTo(bx + bw - cornerLen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - cornerLen);
           ctx.stroke();
+
+          // Crosshair reticle on armed subjects
+          if (isArmed || isWeapon) {
+            const cx = bx + bw / 2;
+            const cy = by + bh / 2;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath();
+            ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 10, cy);
+            ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy + 10);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
           ctx.restore();
 
           // Label
           ctx.save();
-          ctx.fillStyle = isUnusual ? 'rgba(255, 0, 51, 0.9)' : 'rgba(8, 14, 24, 0.9)';
-          const text = isUnusual
-            ? `⚠️ UNUSUAL: ${(det.unusual_item || det.class_name).toUpperCase()}`
-            : `${(det.class_name || 'TARGET').toUpperCase()} [${((det.confidence || 0.9) * 100).toFixed(0)}%] ${det.pose_label ? `• ${det.pose_label}` : ''}`;
-          
+          let text = '';
+          if (isArmed) {
+            text = `🚨 ARMED SUBJECT: HOLDING ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+          } else if (isHoldingCasual) {
+            text = `📦 HOLDING: ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+          } else if (isWeapon) {
+            text = `🚨 WEAPON: ${det.class_name.toUpperCase()} [${((det.confidence || 0.9) * 100).toFixed(0)}%]`;
+          } else if (isUnattendedBag) {
+            text = `⚠️ UNATTENDED BAGGAGE: ${det.class_name.toUpperCase()}`;
+          } else if (isUnusual) {
+            text = `⚠️ UNUSUAL: ${(det.unusual_item || det.class_name).toUpperCase()}`;
+          } else {
+            text = `${(det.class_name || 'TARGET').toUpperCase()} [${((det.confidence || 0.9) * 100).toFixed(0)}%] ${det.pose_label ? `• ${det.pose_label}` : ''}`;
+          }
+
           ctx.font = 'bold 11px JetBrains Mono, monospace';
           const textWidth = ctx.measureText(text).width;
           const tagY = Math.max(by - 20, 4);
 
+          ctx.fillStyle = isCritical ? 'rgba(40, 5, 12, 0.94)' : isUnattendedBag ? 'rgba(38, 20, 5, 0.94)' : 'rgba(8, 14, 24, 0.90)';
           ctx.fillRect(bx, tagY, textWidth + 12, 18);
           ctx.strokeStyle = boxColor;
           ctx.lineWidth = 1;
           ctx.strokeRect(bx, tagY, textWidth + 12, 18);
 
-          ctx.fillStyle = '#FFFFFF';
+          ctx.fillStyle = boxColor;
           ctx.fillText(text, bx + 6, tagY + 13);
           ctx.restore();
         });
@@ -314,12 +415,23 @@ export const TrafficVisionPlayer = ({
         <div className="tv-hud-osd">
           <div className="tv-hud-chip">
             <Cpu size={12} className="text-emerald-400" />
-            <span>YOLOv8 MPS GPU • {aiTelemetry.latencyMs}ms</span>
+            <span>YOLOv8 Dual Engine • {aiTelemetry.latencyMs}ms</span>
           </div>
           <div className="tv-hud-chip">
             <Activity size={12} className="text-cyan-400" />
             <span>TARGETS: {aiTelemetry.detectionsCount}</span>
           </div>
+          {realDetections.some((d) => d.is_holding && d.held_item_type === 'WEAPON') && (
+            <div className="tv-hud-chip" style={{ background: 'rgba(255, 0, 51, 0.25)', borderColor: '#FF0033' }}>
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+              <span className="text-red-400 font-bold">ARMED SUBJECT DETECTED</span>
+            </div>
+          )}
+          {realDetections.some((d) => d.is_weapon) && (
+            <div className="tv-hud-chip" style={{ background: 'rgba(255, 0, 51, 0.15)', borderColor: '#FF0033' }}>
+              <span className="text-red-400 font-bold">WEAPON CONFIRMED</span>
+            </div>
+          )}
           <div className="tv-hud-chip">
             <Radio size={12} className="text-yellow-400" />
             <span>{currentCam.viewers || 1420} VIEWERS</span>

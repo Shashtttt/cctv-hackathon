@@ -53,11 +53,11 @@ def download_file(url: str, dest_path: Path, desc: str) -> bool:
         urllib.request.urlretrieve(url, str(temp_path), reporthook=_progress)
         print()
         temp_path.replace(dest_path)
-        print(f"    [✓] Successfully downloaded: {dest_path.name} ({dest_path.stat().st_size:,} bytes)")
+        print(f"    [OK] Successfully downloaded: {dest_path.name} ({dest_path.stat().st_size:,} bytes)")
         return True
     except Exception as exc:
         print()
-        print(f"    [✗] Download failed: {exc}")
+        print(f"    [FAIL] Download failed: {exc}")
         if temp_path.exists():
             temp_path.unlink()
         return False
@@ -71,9 +71,9 @@ def verify_models(models_dir: Path) -> None:
     for filename, info in MODELS.items():
         dest = models_dir / filename
         if dest.exists() and dest.stat().st_size >= info["min_size_bytes"]:
-            print(f"  [✓] {filename:<36} ({dest.stat().st_size / 1024 / 1024:.2f} MB) — {info['desc']}")
+            print(f"  [OK] {filename:<36} ({dest.stat().st_size / 1024 / 1024:.2f} MB) -- {info['desc']}")
         else:
-            print(f"  [✗] {filename:<36} (MISSING or incomplete) — fallback simulation active")
+            print(f"  [FAIL] {filename:<36} (MISSING or incomplete) -- fallback simulation active")
 
     print("=" * 60)
 

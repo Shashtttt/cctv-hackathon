@@ -12,15 +12,26 @@ export const ActiveDetections = () => {
       const res = await fetchAlerts({ limit: 4 });
       if (res && res.items && res.items.length > 0) {
         const mapped = res.items.map((item, idx) => {
-          const isCrit = item.severity === 'CRITICAL' || item.category?.includes('UNUSUAL');
-          const isWarn = item.severity === 'HIGH' || item.severity === 'WARNING';
+          const isArmed = item.category?.includes('ARMED') || item.title?.includes('Armed');
+          const isWeapon = item.category?.includes('WEAPON') || item.title?.includes('Weapon');
+          const isBaggage = item.category?.includes('BAGGAGE') || item.title?.includes('Baggage');
+          const isCrit = item.severity === 'CRITICAL' || item.category?.includes('UNUSUAL') || isArmed || isWeapon;
+          const isWarn = item.severity === 'HIGH' || item.severity === 'WARNING' || isBaggage;
+
+          let badgeText = 'Verified Entity';
+          if (isArmed) badgeText = '🚨 LETHAL ARMED THREAT';
+          else if (isWeapon) badgeText = '⚠️ WEAPON DETECTED';
+          else if (isBaggage) badgeText = '📦 UNATTENDED BAGGAGE';
+          else if (isCrit) badgeText = '⚠️ Critical Alert Active';
+          else if (isWarn) badgeText = 'Flagged Activity';
+
           return {
             id: item.target_id || `TRK-${item.id?.substring(0, 4) || (100 + idx)}`,
-            type: (item.category || item.title || 'DETECTION').toUpperCase(),
+            type: (isArmed ? 'ARMED SUBJECT' : isWeapon ? 'WEAPON DETECTED' : isBaggage ? 'UNATTENDED BAGGAGE' : item.category || item.title || 'DETECTION').toUpperCase(),
             sub: item.description || `Camera: ${item.camera_id || 'CAM-01'}`,
-            conf: item.frs_match_score ? `${(item.frs_match_score * 100).toFixed(0)}%` : '94%',
+            conf: item.frs_match_score ? `${(item.frs_match_score * 100).toFixed(0)}%` : '95%',
             cam: `Camera ${(item.camera_id || 'CAM-01').toUpperCase()}`,
-            badge: isCrit ? '⚠️ Threat Alert Active' : isWarn ? 'Flagged Activity' : 'Verified Entity',
+            badge: badgeText,
             theme: isCrit ? 'red' : isWarn ? 'purple' : 'green',
             icon: isCrit ? <AlertTriangle size={18} /> : isWarn ? <Eye size={18} /> : <ShieldCheck size={18} />
           };
