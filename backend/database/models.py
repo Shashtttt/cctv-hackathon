@@ -140,17 +140,23 @@ class AlertRecord:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
+            "camera_id": self.camera_id,
             "cameraId": self.camera_id,
             "timestamp": self.timestamp.isoformat(),
             "category": self.category,
             "severity": self.severity,
             "title": self.title,
             "description": self.description,
+            "target_id": self.target_id,
             "targetId": self.target_id,
             "status": self.status,
+            "snapshot_path": self.snapshot_path,
             "snapshotPath": self.snapshot_path,
+            "frs_match_name": self.frs_match_name,
             "frsMatchName": self.frs_match_name,
+            "frs_match_score": self.frs_match_score,
             "frsMatchScore": self.frs_match_score,
+            "plate_text": self.plate_text,
             "plateText": self.plate_text,
         }
 

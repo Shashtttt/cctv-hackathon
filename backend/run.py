@@ -11,7 +11,7 @@ if str(ROOT_DIR) not in sys.path:
 if __name__ == "__main__":
     print("=" * 65)
     print("  IBVAP — AI Border Surveillance Video Analytics Platform")
-    print("  Backend API Server: http://127.0.0.1:8000")
-    print("  Interactive Docs:   http://127.0.0.1:8000/api/docs")
+    print("  Backend API Server: http://0.0.0.0:8000 (Local: http://127.0.0.1:8000)")
+    print("  Interactive Docs:   http://0.0.0.0:8000/api/docs")
     print("=" * 65)
-    uvicorn.run("backend.main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)

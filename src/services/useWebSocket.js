@@ -43,13 +43,24 @@ export const useWebSocket = () => {
             const data = JSON.parse(event.data);
             if (data.type === 'ALERT' && data.payload) {
               const p = data.payload;
+              const rawCam = p.camera_id || p.cameraId || '';
+              const camStr = rawCam ? rawCam.toUpperCase() : 'BOP-01';
               const newAlert = {
                 id: p.id || String(Date.now()),
-                type: p.category || 'Security Alert',
-                camera: p.camera_id ? p.camera_id.toUpperCase() : 'CAM',
+                type: p.category || p.title || 'Security Alert',
+                category: p.category,
+                camera: camStr,
+                camera_id: rawCam || 'cam-01',
+                cameraId: rawCam || 'cam-01',
+                target_id: p.target_id || p.targetId,
+                targetId: p.target_id || p.targetId,
+                title: p.title,
                 text: p.title || p.description || 'Alert detected',
+                description: p.description,
                 time: new Date(p.timestamp || Date.now()).toLocaleTimeString(),
-                level: (p.severity || 'info').toLowerCase() === 'critical' ? 'crit' : (p.severity || 'info').toLowerCase() === 'warning' ? 'warn' : 'info',
+                timestamp: p.timestamp || new Date().toISOString(),
+                severity: p.severity || 'HIGH',
+                level: (p.severity || 'info').toLowerCase() === 'critical' ? 'crit' : (p.severity || 'info').toLowerCase() === 'warning' || (p.severity || '').toLowerCase() === 'high' ? 'warn' : 'info',
               };
               setAlerts((prev) => [newAlert, ...prev.slice(0, 19)]);
             } else if (data.type === 'PING') {

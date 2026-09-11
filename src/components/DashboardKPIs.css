@@ -142,3 +142,10 @@
   color: var(--text-muted);
   margin: 0 2px;
 }
+
+@media (max-width: 580px) {
+  .dashboard-kpi-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}

@@ -19,18 +19,18 @@ import {
   Eye,
   Truck,
   UserCheck,
-  Zap,
   Sliders,
   CheckCircle2,
   Shield,
-  Cpu
+  Cpu,
+  Smartphone
 } from 'lucide-react';
 import { fetchCameras, fetchAlerts, acknowledgeAlert, getCameraStreamUrl } from '../services/apiService';
 import { useWebcamBridge } from '../services/useWebcamBridge';
 import { TrafficVisionPlayer } from '../components/TrafficVisionPlayer';
 import { CameraDetailModal } from '../components/CameraDetailModal';
 import { INDIA_TRAFFIC_CAMERAS } from '../services/trafficVisionCatalog';
-import { Camera as CameraIcon, Globe, Sparkles } from 'lucide-react';
+import { Camera as CameraIcon, Globe } from 'lucide-react';
 import './LiveSurveillancePage.css';
 
 // COCO Skeleton limb connections
@@ -55,16 +55,23 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
   const webcamVideoRef = useRef(null);
   const overlayCanvasRef = useRef(null);
 
-  // Laptop Camera AI bridge with MPS hardware acceleration
+  // Dynamic Device & Physical Camera AI bridge
   const {
     isWebcamActive,
     localStream,
     startWebcam,
     stopWebcam,
+    switchCamera,
+    selectCamera,
     liveDetections,
     latestAnnotatedFrame,
     telemetry: webcamTelemetry,
     webcamError,
+    deviceInfo,
+    availableCameras,
+    activeDeviceId,
+    activeCameraLabel,
+    facingMode,
   } = useWebcamBridge('cam-01', 25, webcamVideoRef);
 
   // Attach local media stream directly to video element for 60 FPS zero-lag playback
@@ -199,7 +206,7 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
           ctx.moveTo(bx, by + cornerSize); ctx.lineTo(bx, by); ctx.lineTo(bx + cornerSize, by);
           ctx.moveTo(bx + bw - cornerSize, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + cornerSize);
           ctx.moveTo(bx, by + bh - cornerSize); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + cornerSize, by + bh);
-          ctx.moveTo(bx + bw - cornerLen || cornerSize, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - cornerSize);
+          ctx.moveTo(bx + bw - cornerSize, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - cornerSize);
           ctx.stroke();
 
           // Crosshair on armed targets
@@ -378,9 +385,17 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
             if (!isWebcamActive) startWebcam();
           }}
         >
-          <CameraIcon size={15} className={isWebcamActive ? 'text-green pulse-ring' : 'text-sub'} />
-          <span>💻 LAPTOP CAMERA AI</span>
-          <span className="mode-tab-badge">APPLE MPS</span>
+          {deviceInfo.isMobile ? (
+            <Smartphone size={15} className={isWebcamActive ? 'text-green pulse-ring' : 'text-sub'} />
+          ) : (
+            <CameraIcon size={15} className={isWebcamActive ? 'text-green pulse-ring' : 'text-sub'} />
+          )}
+          <span>
+            {deviceInfo.isMobile ? '📱 MOBILE CAMERA AI' : deviceInfo.isTablet ? '📟 TABLET CAMERA AI' : '💻 DEVICE CAMERA AI'}
+          </span>
+          <span className="mode-tab-badge">
+            {isWebcamActive ? (facingMode === 'environment' ? 'REAR CAM' : 'FRONT CAM') : '60FPS AI'}
+          </span>
         </button>
 
         <button
@@ -470,11 +485,15 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
           <button 
             className={`btn-action font-mono ${isWebcamActive ? 'btn-red' : 'btn-cyan'}`}
             onClick={isWebcamActive ? stopWebcam : () => { startWebcam(); setViewMode('webcam'); }}
-            title="Toggle Laptop Webcam AI Stream"
+            title={`Toggle ${deviceInfo?.platformName || 'Device'} Camera AI Stream`}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
           >
-            <CameraIcon size={13} className={isWebcamActive ? 'pulse-ring' : ''} />
-            <span>{isWebcamActive ? 'STOP LAPTOP CAMERA' : 'USE LAPTOP CAMERA AI'}</span>
+            {deviceInfo?.isMobile ? <Smartphone size={13} className={isWebcamActive ? 'pulse-ring' : ''} /> : <CameraIcon size={13} className={isWebcamActive ? 'pulse-ring' : ''} />}
+            <span>
+              {isWebcamActive 
+                ? (deviceInfo?.isMobile ? 'STOP MOBILE CAM' : 'STOP DEVICE CAM') 
+                : (deviceInfo?.isMobile ? 'USE MOBILE CAMERA AI' : 'USE DEVICE CAMERA AI')}
+            </span>
           </button>
 
           <button className="icon-action-btn" onClick={loadData} title="Refresh Telemetry">
@@ -495,17 +514,43 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
       {/* 2x2 Video Camera Grid */}
       <div className={`video-streams-grid layout-${layoutGrid}`} style={{ display: viewMode === 'trafficvision' ? 'none' : 'grid' }}>
         
-        {/* CAMERA 1: C-01 NORTH GATE / LAPTOP CAMERA */}
+        {/* CAMERA 1: DYNAMIC DEVICE CAMERA / C-01 */}
         <div className={`camera-feed-card ${isWebcamActive ? 'active-webcam-card' : ''} ${hasUnusualThreat ? 'unusual-alert-glow' : ''}`}>
           <div className="feed-header">
             <div className="feed-header-title">
               <Video size={15} className={isWebcamActive ? 'text-green' : 'text-cyan'} />
-              <span className="feed-name">{isWebcamActive ? 'C-01 LAPTOP CAMERA (60 FPS AI)' : 'C-01 NORTH GATE'}</span>
+              <span className="feed-name">{isWebcamActive ? `C-01 ${activeCameraLabel.toUpperCase()}` : 'C-01 NORTH GATE / LOCAL'}</span>
               <span className={`feed-mode-tag ${isWebcamActive ? 'pill-green' : ''}`}>
-                {isWebcamActive ? `${webcamTelemetry.actualFps || 30} FPS • GPU` : 'OPT-4K'}
+                {isWebcamActive ? `${webcamTelemetry.actualFps || 30} FPS • ${deviceInfo.isMobile ? 'MOBILE' : 'AI ENGINE'}` : 'OPT-4K'}
               </span>
             </div>
             <div className="feed-header-right">
+              {isWebcamActive && (
+                <button 
+                  className="camera-flip-btn font-mono"
+                  onClick={switchCamera}
+                  title="Switch or flip camera (Rear / Front / External)"
+                >
+                  <RefreshCw size={12} className="camera-flip-icon" />
+                  <span>{facingMode === 'environment' ? 'FLIP FRONT' : 'FLIP REAR'}</span>
+                </button>
+              )}
+
+              {availableCameras && availableCameras.length > 1 && (
+                <select
+                  value={activeDeviceId || ''}
+                  onChange={(e) => selectCamera(e.target.value)}
+                  className="camera-device-select font-mono"
+                  title="Select Hardware Camera"
+                >
+                  {availableCameras.map((cam, idx) => (
+                    <option key={cam.deviceId || idx} value={cam.deviceId}>
+                      {cam.label || `Camera ${idx + 1}`}
+                    </option>
+                  ))}
+                </select>
+              )}
+
               <span className={`pill-badge ${hasUnusualThreat ? 'pill-red' : isWebcamActive ? 'pill-green' : 'pill-green'} status-pill-sm`}>
                 <span className={`status-dot ${hasUnusualThreat ? 'dot-red pulse-ring' : isWebcamActive ? 'dot-green pulse-ring' : 'dot-green'}`}></span> 
                 {hasUnusualThreat
@@ -546,32 +591,64 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
               />
             )}
 
+            {webcamError && (
+              <div className="camera-error-banner font-mono">
+                <AlertTriangle size={16} className="text-red flex-shrink-0" style={{ marginTop: '2px' }} />
+                <div className="camera-error-msg">
+                  <div>{webcamError}</div>
+                  {typeof window !== 'undefined' && window.location.protocol === 'http:' && !['localhost', '127.0.0.1'].includes(window.location.hostname) && (
+                    <div style={{ marginTop: '8px' }}>
+                      <button
+                        onClick={() => { window.location.href = `https://${window.location.host}`; }}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 12px',
+                          background: '#00ffff',
+                          color: '#000000',
+                          fontWeight: '700',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          border: 'none',
+                          fontSize: '11px',
+                        }}
+                      >
+                        <Shield size={12} />
+                        <span>SWITCH TO SECURE HTTPS (ENABLES CAMERA)</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {!isWebcamActive && (
               <button 
-                onClick={startWebcam}
+                onClick={() => startWebcam()}
                 className="webcam-launch-overlay-btn font-mono"
-                title="Click to activate laptop camera AI analysis"
+                title="Click to activate device camera AI analysis"
               >
-                <CameraIcon size={14} />
-                <span>START LAPTOP CAMERA AI</span>
+                {deviceInfo.isMobile ? <Smartphone size={14} /> : <CameraIcon size={14} />}
+                <span>START {deviceInfo.isMobile ? 'MOBILE' : 'DEVICE'} CAMERA AI</span>
               </button>
             )}
 
             <div className="embedded-video-timestamp font-mono">
-              {new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC CH-01 {isWebcamActive ? 'GPU-ACCEL' : 'REC'}
+              {new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC CH-01 {isWebcamActive ? (deviceInfo.isMobile ? 'MOBILE-AI' : 'GPU-ACCEL') : 'REC'}
             </div>
 
             <div className="feed-overlay-top-left-box font-mono">
               <div className="green-utc-time">{new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC</div>
               <div className="fps-mbps-info">
                 {isWebcamActive 
-                  ? `YOLOv8-POSE + OBJECTS • ${webcamTelemetry.lastLatencyMs || 10}ms • ${webcamTelemetry.actualFps || 30} FPS`
+                  ? `${activeCameraLabel.toUpperCase()} • ${webcamTelemetry.lastLatencyMs || 10}ms • ${webcamTelemetry.actualFps || 30} FPS`
                   : 'CH-01 • REC 30FPS • 4.2 Mbps'}
               </div>
             </div>
 
             <div className="feed-overlay-top-right-box font-mono">
-              {isWebcamActive ? 'LAPTOP CAMERA LIVE FEED (60 FPS)' : 'NORTH GATE ENTRY LIVE'}
+              {isWebcamActive ? `${activeCameraLabel.toUpperCase()} LIVE FEED` : 'NORTH GATE ENTRY LIVE'}
             </div>
 
             {/* Detections summary overlay when webcam is active */}
@@ -598,9 +675,19 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
             )}
 
             <div className="feed-overlay-controls">
+              {isWebcamActive && (
+                <button onClick={switchCamera} title="Flip camera" className="mobile-touch-btn">
+                  <RefreshCw size={13} />
+                </button>
+              )}
               <button title="Pan"><Hand size={13} /></button>
               <button title="Zoom"><ZoomIn size={13} /></button>
-              <button title="Fullscreen"><Maximize2 size={13} /></button>
+              <button 
+                title="Fullscreen"
+                onClick={() => setExpandedModalCamera(isWebcamActive ? { isWebcam: true } : (cameras[0] || { id: 'cam-01', code: 'C-01', name: 'North Gate' }))}
+              >
+                <Maximize2 size={13} />
+              </button>
             </div>
           </div>
 
@@ -610,7 +697,7 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
               <span>
                 {isWebcamActive ? (
                   <>
-                    <strong>AI Engine: YOLOv8 Parallel GPU (MPS)</strong> | <strong>Detections: {webcamTelemetry.detectionsCount}</strong> | <strong>Unusual Items: {webcamTelemetry.unusualCount}</strong> | <strong>Alerts: {webcamTelemetry.alertsCount}</strong>
+                    <strong>Device: {deviceInfo.platformName}</strong> | <strong>Camera: {activeCameraLabel}</strong> | <strong>Targets: {webcamTelemetry.detectionsCount}</strong> | <strong>Alerts: {webcamTelemetry.alertsCount}</strong>
                   </>
                 ) : (
                   <>
@@ -619,7 +706,7 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
                 )}
               </span>
             </div>
-            <span className="footer-right font-mono">{isWebcamActive ? 'WEBCAM_GPU_STREAM' : 'SECTOR_GATE_ALPHA'}</span>
+            <span className="footer-right font-mono">{isWebcamActive ? (deviceInfo.isMobile ? 'MOBILE_STREAM_ACTIVE' : 'DEVICE_STREAM_ACTIVE') : 'SECTOR_GATE_ALPHA'}</span>
           </div>
         </div>
 

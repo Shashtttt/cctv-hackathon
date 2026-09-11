@@ -219,3 +219,40 @@
   color: #ffffff;
 }
 
+/* Dynamic Mobile Responsiveness for Header */
+@media (max-width: 768px) {
+  .top-header {
+    padding: 0 12px;
+    height: 48px;
+  }
+
+  .cluster-status-pill {
+    padding: 4px 8px;
+    gap: 6px;
+  }
+
+  .cluster-text {
+    font-size: 0.62rem;
+    max-width: 140px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .header-right-actions {
+    gap: 8px;
+  }
+
+  .zulu-clock-container {
+    display: none;
+  }
+
+  .operator-info-text {
+    display: none;
+  }
+
+  .operator-header-pill {
+    padding: 4px 6px;
+  }
+}
+

@@ -257,7 +257,7 @@ export const CameraDetailModal = ({
     a.click();
   };
 
-  const camName = camera?.name || (isWebcam ? 'Laptop Webcam (Apple Silicon MPS)' : 'Sector Camera');
+  const camName = camera?.name || (isWebcam ? (camera?.deviceLabel || 'Physical Device Camera (AI Engine)') : 'Sector Camera');
   const camCode = camera?.code || (isWebcam ? 'C-01 AI' : 'CAM-01');
   const camLocation = camera?.location || (isWebcam ? 'Local Terminal Command Post' : 'Sector-4 Perimeter');
 

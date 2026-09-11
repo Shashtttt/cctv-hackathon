@@ -75,8 +75,8 @@ export const ActiveDetections = () => {
             Awaiting live detection frames from AI pipeline...
           </div>
         ) : (
-          detections.map((item) => (
-            <div key={item.id} className={`detection-item-card theme-${item.theme}`}>
+          detections.map((item, idx) => (
+            <div key={`${item.id}-${idx}`} className={`detection-item-card theme-${item.theme}`}>
               {/* Top Row inside Item */}
               <div className="item-top-row">
                 <div className="item-icon-box">

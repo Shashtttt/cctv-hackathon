@@ -542,3 +542,44 @@
   color: var(--cyan-primary);
   box-shadow: 0 0 8px var(--cyan-glow);
 }
+
+/* Dynamic Mobile Responsiveness for Alerts Page */
+@media (max-width: 768px) {
+  .alerts-page-container {
+    gap: 12px;
+  }
+
+  .title-heading-line h2 {
+    font-size: 1.3rem;
+  }
+
+  .title-with-badge {
+    gap: 10px;
+  }
+
+  .bell-title-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .alerts-filter-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .search-input-box {
+    max-width: 100% !important;
+    width: 100%;
+  }
+
+  .filter-select-group {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .alerts-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}

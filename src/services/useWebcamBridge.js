@@ -1,19 +1,36 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
+import { getDevicePlatform, enumerateDeviceCameras } from '../utils/deviceDetector';
 
 export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVideoRef = null) => {
   const [isWebcamActive, setIsWebcamActive] = useState(false);
   const [localStream, setLocalStream] = useState(null);
   const [latestAnnotatedFrame, setLatestAnnotatedFrame] = useState(null);
   const [liveDetections, setLiveDetections] = useState([]);
+  
+  // Dynamic Device & Physical Hardware State
+  const [deviceInfo, setDeviceInfo] = useState(() => getDevicePlatform());
+  const [availableCameras, setAvailableCameras] = useState([]);
+  const [activeDeviceId, setActiveDeviceId] = useState(null);
+  const [facingMode, setFacingMode] = useState(() => (getDevicePlatform().isMobile ? 'environment' : 'user'));
+  const [activeCameraLabel, setActiveCameraLabel] = useState(
+    getDevicePlatform().isMobile ? 'Mobile Rear Camera' : 'Integrated HD Camera'
+  );
+
   const [telemetry, setTelemetry] = useState({
     detectionsCount: 0,
     unusualCount: 0,
+    weaponsCount: 0,
+    armedCount: 0,
+    holdingCount: 0,
+    casualCount: 0,
     alertsCount: 0,
     detections: [],
     actualFps: 0,
     lastLatencyMs: 0,
     deviceMode: 'MPS GPU Accelerated',
+    deviceType: getDevicePlatform().deviceType,
+    platformName: getDevicePlatform().platformName,
   });
   const [webcamError, setWebcamError] = useState(null);
 
@@ -24,6 +41,31 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
   const isIngestingRef = useRef(false);
   const frameCountRef = useRef(0);
   const fpsTimerRef = useRef(Date.now());
+
+  // Enumerate hardware cameras on mount
+  useEffect(() => {
+    const detect = async () => {
+      const p = getDevicePlatform();
+      setDeviceInfo(p);
+      const cams = await enumerateDeviceCameras();
+      setAvailableCameras(cams);
+      if (cams.length > 0) {
+        // Pick optimal default camera
+        const preferred = p.isMobile ? cams.find((c) => c.isBack) || cams[0] : cams[0];
+        setActiveDeviceId(preferred.deviceId);
+        setActiveCameraLabel(preferred.label);
+      }
+    };
+    detect();
+
+    // Listen for device connects/disconnects (e.g. plugging in a USB camera)
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', detect);
+      return () => {
+        navigator.mediaDevices.removeEventListener('devicechange', detect);
+      };
+    }
+  }, []);
 
   const getVideoElement = () => {
     if (externalVideoRef && externalVideoRef.current) {
@@ -115,6 +157,8 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
             alertsCount: res.data.alerts_count || 0,
             detections: dets,
             lastLatencyMs: Math.round(dt),
+            deviceType: deviceInfo.deviceType,
+            platformName: deviceInfo.platformName,
           }));
         }
       }).catch(() => {
@@ -127,23 +171,73 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
     if (isRunningRef.current) {
       setTimeout(sendFrame, Math.max(15, 1000 / targetFps));
     }
-  }, [cameraId, targetFps, externalVideoRef]);
+  }, [cameraId, targetFps, externalVideoRef, deviceInfo]);
 
-  const startWebcam = useCallback(async () => {
+  const startWebcam = useCallback(async (preferredDeviceId = null, preferredFacingMode = null) => {
     setWebcamError(null);
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (window.location.protocol === 'http:' && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+          throw new Error(
+            `Mobile browser security requires HTTPS to stream camera over LAN. Switch to https://${window.location.host} to enable mobile camera.`
+          );
+        }
+        throw new Error("Camera API not supported or disabled in this browser.");
+      }
+
+      // Stop existing stream if changing cameras
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+
+      const targetDevice = preferredDeviceId || activeDeviceId;
+      const targetFacing = preferredFacingMode || facingMode;
+
+      // Video constraints: match exact deviceId if available, fallback to facingMode
+      const videoConstraints = {
+        width: { ideal: 1280, min: 640 },
+        height: { ideal: 720, min: 360 },
+        frameRate: { ideal: 30, max: 60 },
+      };
+
+      if (targetDevice) {
+        videoConstraints.deviceId = { exact: targetDevice };
+      } else if (deviceInfo.isMobile) {
+        videoConstraints.facingMode = { ideal: targetFacing };
+      } else {
+        videoConstraints.facingMode = 'user';
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 360 },
-          frameRate: { ideal: 30, max: 60 },
-          facingMode: 'user',
-        },
+        video: videoConstraints,
         audio: false,
       });
 
       streamRef.current = stream;
       setLocalStream(stream);
+
+      // Track active camera label
+      const activeTrack = stream.getVideoTracks()[0];
+      if (activeTrack) {
+        const label = activeTrack.label;
+        if (label) {
+          setActiveCameraLabel(label);
+        }
+        const settings = activeTrack.getSettings ? activeTrack.getSettings() : {};
+        if (settings.deviceId) {
+          setActiveDeviceId(settings.deviceId);
+        }
+        if (settings.facingMode) {
+          setFacingMode(settings.facingMode);
+        }
+      }
+
+      // Re-enumerate cameras now that permission has been granted (labels are populated)
+      const refreshedCams = await enumerateDeviceCameras();
+      if (refreshedCams.length > 0) {
+        setAvailableCameras(refreshedCams);
+      }
 
       if (!internalVideoRef.current) {
         const v = document.createElement('video');
@@ -170,10 +264,53 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
       sendFrame();
     } catch (err) {
       console.error('Camera permission or device error:', err);
-      setWebcamError(err.message || 'Unable to access camera.');
+      let msg = err.message || 'Unable to access camera on this device.';
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        msg = 'Camera permission was denied. Please tap the lock icon in your browser address bar and allow camera access.';
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        msg = 'No physical camera device was detected on this hardware.';
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        msg = 'Camera hardware is currently in use by another application or browser tab.';
+      }
+      setWebcamError(msg);
       setIsWebcamActive(false);
     }
-  }, [sendFrame, externalVideoRef]);
+  }, [activeDeviceId, facingMode, deviceInfo, sendFrame, externalVideoRef]);
+
+  // Flip or switch between available cameras
+  const switchCamera = useCallback(async () => {
+    if (availableCameras.length > 1) {
+      const currentIndex = availableCameras.findIndex((c) => c.deviceId === activeDeviceId);
+      const nextIndex = (currentIndex + 1) % availableCameras.length;
+      const nextCam = availableCameras[nextIndex];
+      setActiveDeviceId(nextCam.deviceId);
+      setActiveCameraLabel(nextCam.label);
+      setFacingMode(nextCam.facingMode);
+      if (isWebcamActive) {
+        await startWebcam(nextCam.deviceId, nextCam.facingMode);
+      }
+    } else {
+      // Toggle facingMode if device IDs aren't distinct
+      const nextFacing = facingMode === 'environment' ? 'user' : 'environment';
+      setFacingMode(nextFacing);
+      setActiveCameraLabel(nextFacing === 'environment' ? 'Mobile Rear Camera' : 'Front User Camera');
+      if (isWebcamActive) {
+        await startWebcam(null, nextFacing);
+      }
+    }
+  }, [availableCameras, activeDeviceId, facingMode, isWebcamActive, startWebcam]);
+
+  const selectCamera = useCallback(async (deviceId) => {
+    const target = availableCameras.find((c) => c.deviceId === deviceId);
+    if (target) {
+      setActiveDeviceId(target.deviceId);
+      setActiveCameraLabel(target.label);
+      setFacingMode(target.facingMode);
+      if (isWebcamActive) {
+        await startWebcam(target.deviceId, target.facingMode);
+      }
+    }
+  }, [availableCameras, isWebcamActive, startWebcam]);
 
   useEffect(() => {
     return () => {
@@ -186,9 +323,16 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
     localStream,
     startWebcam,
     stopWebcam,
+    switchCamera,
+    selectCamera,
     liveDetections,
     latestAnnotatedFrame,
     telemetry,
     webcamError,
+    deviceInfo,
+    availableCameras,
+    activeDeviceId,
+    activeCameraLabel,
+    facingMode,
   };
 };

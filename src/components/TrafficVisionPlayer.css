@@ -409,3 +409,53 @@
   cursor: pointer;
   box-shadow: 0 0 12px rgba(0, 242, 254, 0.3);
 }
+
+/* Dynamic Mobile Responsiveness for TrafficVision Player */
+@media (max-width: 768px) {
+  .tv-player-header {
+    padding: 8px 12px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .tv-header-left {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .tv-header-right {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .tv-video-wrapper {
+    height: 250px !important;
+    min-height: 220px !important;
+  }
+
+  .tv-carousel-track {
+    gap: 6px;
+    padding: 6px;
+  }
+
+  .tv-carousel-card {
+    min-width: 150px;
+    max-width: 150px;
+    padding: 6px;
+  }
+
+  .tv-hud-top-left {
+    top: 8px;
+    left: 8px;
+    transform: scale(0.9);
+    transform-origin: top left;
+  }
+
+  .tv-hud-top-right {
+    top: 8px;
+    right: 8px;
+    transform: scale(0.9);
+    transform-origin: top right;
+  }
+}

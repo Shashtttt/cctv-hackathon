@@ -1191,3 +1191,182 @@
   border: 1px solid rgba(16, 185, 129, 0.4);
   color: #10b981;
 }
+
+/* ── Dynamic Device Camera Controls ────────────────────────── */
+.camera-flip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0, 242, 254, 0.12);
+  border: 1px solid rgba(0, 242, 254, 0.35);
+  border-radius: 4px;
+  color: var(--cyan-primary);
+  padding: 3px 8px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.camera-flip-btn:hover {
+  background: rgba(0, 242, 254, 0.25);
+  box-shadow: 0 0 8px var(--cyan-glow);
+}
+
+.camera-flip-btn:hover .camera-flip-icon {
+  transform: rotate(180deg);
+  transition: transform 0.3s ease;
+}
+
+.camera-device-select {
+  background: #090e1a;
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  border-radius: 4px;
+  color: var(--cyan-primary);
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  cursor: pointer;
+  outline: none;
+  max-width: 140px;
+}
+
+.camera-error-banner {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  background: rgba(239, 68, 68, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid #ff3b3b;
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  z-index: 10;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+  animation: slideDown 0.3s ease-out;
+}
+
+.camera-error-msg {
+  font-size: 0.7rem;
+  color: #ffffff;
+  line-height: 1.35;
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* ── Dynamic Mobile Responsiveness for Surveillance Page ───── */
+@media (max-width: 768px) {
+  .surveillance-page-container {
+    gap: 12px;
+  }
+
+  .page-header-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .page-header-pills {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .page-main-title h2 {
+    font-size: 1.25rem;
+  }
+
+  .surveillance-mode-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding: 6px;
+    gap: 8px;
+  }
+
+  .mode-tab-btn {
+    white-space: nowrap;
+    padding: 8px 12px;
+    font-size: 0.72rem;
+    flex-shrink: 0;
+  }
+
+  .surveillance-control-strip {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .control-left-group {
+    flex-direction: column;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .select-dropdown-box {
+    width: 100%;
+  }
+
+  .custom-select {
+    width: 100%;
+  }
+
+  .control-right-group {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  /* Single Column Full-Width Feed Grid on Mobile */
+  .video-streams-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px;
+  }
+
+  .feed-viewport {
+    height: 260px !important;
+    min-height: 240px !important;
+  }
+
+  .feed-header {
+    padding: 8px 10px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .feed-name {
+    font-size: 0.75rem;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .feed-header-right {
+    gap: 6px;
+  }
+
+  .status-pill-sm {
+    font-size: 0.6rem;
+    padding: 2px 6px;
+  }
+
+  .feed-footer-strip {
+    padding: 6px 10px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .footer-right {
+    font-size: 0.58rem;
+  }
+
+  .camera-device-select {
+    max-width: 110px;
+  }
+}
