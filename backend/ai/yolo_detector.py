@@ -236,12 +236,12 @@ class YOLODetector:
         detected_weapon_boxes: List[Tuple[float, float, float, float]] = []
         if self._weapon_model is not None:
             try:
-                # Lower threshold slightly for high-recall weapon detection
+                # Sensitive threshold for high-recall weapon detection
                 results_w = self._weapon_model(
                     frame,
                     verbose=False,
-                    conf=max(0.35, settings.YOLO_CONFIDENCE_THRESHOLD - 0.10),
-                    imgsz=384,
+                    conf=0.22,
+                    imgsz=640,
                     device=self._device,
                 )
                 if results_w and results_w[0].boxes is not None:
@@ -276,14 +276,15 @@ class YOLODetector:
             except Exception as exc:
                 log.error("Weapon model inference error: %s", exc)
 
-        # ── 3. General Object Detection (Casual items, Baggage, Tools, Vehicles)
+        # ── 3. General Object Detection (Casual items, Phones, Baggage, Tools, Vehicles)
         if self._obj_model is not None:
             try:
+                # Highly sensitive threshold (0.18) for rapid recall of cell phones, bottles, electronics
                 results_obj = self._obj_model(
                     frame,
                     verbose=False,
-                    conf=max(0.38, settings.YOLO_CONFIDENCE_THRESHOLD - 0.05),
-                    imgsz=384,
+                    conf=0.18,
+                    imgsz=640,
                     device=self._device,
                 )
                 if results_obj and results_obj[0].boxes is not None:
@@ -330,12 +331,17 @@ class YOLODetector:
                             vehicles.append(det)
                             continue
 
-                        # Weapon or Casual Object
-                        is_weapon_item = cls_id in WEAPON_CLASSES or res_obj.names.get(cls_id, "").lower() in WEAPON_NAMES
-                        is_casual_item = cls_id in CASUAL_OBJECT_CLASSES or (not is_weapon_item and cls_id in ALL_OBJECT_CLASSES)
+                        # Determine if weapon or casual object (cell phone, bottle, book, etc.)
+                        item_name = res_obj.names.get(cls_id, "object").lower()
+                        is_weapon_item = (
+                            cls_id in WEAPON_CLASSES
+                            or item_name in WEAPON_NAMES
+                            or any(w in item_name for w in ("knife", "gun", "pistol", "rifle", "dagger", "sword", "weapon", "firearm"))
+                        )
+                        # All other COCO objects (cell phone, laptop, bottle, cup, etc.) are valid casual objects
+                        is_casual_item = not is_weapon_item and cls_id != _PERSON and cls_id not in VEHICLE_CLASSES
 
                         if is_weapon_item or is_casual_item:
-                            item_name = res_obj.names.get(cls_id, "object").lower()
                             object_count += 1
 
                             if is_weapon_item:
@@ -358,6 +364,8 @@ class YOLODetector:
                                 )
                             else:
                                 is_baggage = item_name in BAGGAGE_NAMES
+                                is_phone = "phone" in item_name or "cell" in item_name
+                                is_monitored = is_baggage or is_phone or item_name in ("bottle", "laptop", "scissors", "remote")
                                 det = Detection(
                                     target_id=f"ITEM-{object_count:02d}",
                                     class_id=cls_id,
@@ -370,8 +378,8 @@ class YOLODetector:
                                         confidence=float(conf),
                                     ),
                                     is_casual_object=True,
-                                    is_unusual=is_baggage,
-                                    unusual_item=item_name.upper() if is_baggage else None,
+                                    is_unusual=is_monitored,
+                                    unusual_item=item_name.upper(),
                                     threat_level="HIGH" if is_baggage else "NORMAL",
                                 )
                             objects.append(det)
@@ -389,8 +397,8 @@ class YOLODetector:
         objects: List[Detection],
     ) -> None:
         """
-        Correlates detected persons with nearby objects (weapons or casual items).
-        If an object is held in hand or near wrist keypoints:
+        Correlates detected persons with nearby objects (weapons, cell phones, casual items).
+        If an object is held in hand, near ear/head, or in front of upper body:
           - Marks object as held (`is_held = True`, `held_by_target_id = person.id`)
           - Marks person as holding (`is_holding = True`, `held_item = item_name`, `held_by_hand = hand`)
           - ESCALATES THREAT:
@@ -405,6 +413,7 @@ class YOLODetector:
             ox1, oy1 = obj.bbox.x, obj.bbox.y
             ow, oh = obj.bbox.w, obj.bbox.h
             ocx, ocy = obj.bbox.cx, obj.bbox.cy
+            is_phone = "phone" in obj.class_name.lower() or "cell" in obj.class_name.lower()
 
             best_person: Optional[Detection] = None
             best_dist = 999.0
@@ -416,12 +425,12 @@ class YOLODetector:
 
                 px, py, pw, ph = person.bbox.x, person.bbox.y, person.bbox.w, person.bbox.h
 
-                # Quick spatial reject if person is far away from object
+                # Spatial reject if person is far away from object
                 if (
-                    ocx < px - 0.20
-                    or ocx > px + pw + 0.20
+                    ocx < px - 0.25
+                    or ocx > px + pw + 0.25
                     or ocy < py - 0.15
-                    or ocy > py + ph + 0.20
+                    or ocy > py + ph + 0.25
                 ):
                     continue
 
@@ -429,19 +438,29 @@ class YOLODetector:
                 dist_to_hand = 999.0
                 detected_hand = "IN_HAND"
 
-                # Check 17 COCO keypoints: left wrist (9), right wrist (10), elbows (7, 8)
+                # Check 17 COCO keypoints: wrists (9, 10), elbows (7, 8), ears (3, 4)
                 if person.keypoints and person.keypoints.points:
                     pts = person.keypoints.points
                     l_wrist = pts[9] if len(pts) > 9 else (0, 0, 0)
                     r_wrist = pts[10] if len(pts) > 10 else (0, 0, 0)
+                    l_ear = pts[3] if len(pts) > 3 else (0, 0, 0)
+                    r_ear = pts[4] if len(pts) > 4 else (0, 0, 0)
 
                     # Dynamic grasp radius based on person scale
-                    grasp_radius = max(0.12, min(0.24, ph * 0.40))
+                    grasp_radius = max(0.14, min(0.30, ph * 0.45))
 
                     l_dist = math.hypot(ocx - l_wrist[0], ocy - l_wrist[1]) if l_wrist[2] > 0.20 else 999.0
                     r_dist = math.hypot(ocx - r_wrist[0], ocy - r_wrist[1]) if r_wrist[2] > 0.20 else 999.0
 
-                    if l_dist < grasp_radius and r_dist < grasp_radius:
+                    # Check ear proximity for phone usage
+                    l_ear_dist = math.hypot(ocx - l_ear[0], ocy - l_ear[1]) if (is_phone and l_ear[2] > 0.20) else 999.0
+                    r_ear_dist = math.hypot(ocx - r_ear[0], ocy - r_ear[1]) if (is_phone and r_ear[2] > 0.20) else 999.0
+
+                    if min(l_ear_dist, r_ear_dist) < 0.18:
+                        hand_found = True
+                        dist_to_hand = min(l_ear_dist, r_ear_dist)
+                        detected_hand = "AT_EAR"
+                    elif l_dist < grasp_radius and r_dist < grasp_radius:
                         hand_found = True
                         dist_to_hand = min(l_dist, r_dist)
                         detected_hand = "BOTH_HANDS"
@@ -456,15 +475,15 @@ class YOLODetector:
 
                 # Fallback: Check if object is inside person torso / carrying envelope
                 if not hand_found:
-                    is_in_torso = (
-                        (px - 0.05 <= ocx <= px + pw + 0.05)
-                        and (py + 0.10 * ph <= ocy <= py + 0.90 * ph)
-                        and (ow * oh < pw * ph * 0.65)
+                    is_in_envelope = (
+                        (px - 0.15 <= ocx <= px + pw + 0.15)
+                        and (py - 0.05 <= ocy <= py + ph + 0.10)
+                        and (ow * oh < pw * ph * 0.75)
                     )
-                    if is_in_torso:
+                    if is_in_envelope:
                         hand_found = True
                         dist_to_hand = math.hypot(ocx - (px + pw / 2), ocy - (py + ph / 2))
-                        detected_hand = "IN_HAND"
+                        detected_hand = "AT_EAR" if (is_phone and ocy < py + 0.30 * ph) else "IN_HAND"
 
                 if hand_found and dist_to_hand < best_dist:
                     best_dist = dist_to_hand
@@ -493,7 +512,7 @@ class YOLODetector:
                         held_hand_label,
                     )
                 else:
-                    # Casual object in hand (baggage, phone, bottle, etc.)
+                    # Casual object in hand (phone, baggage, bottle, etc.)
                     best_person.held_item_type = "CASUAL_OBJECT"
                     obj.threat_level = "NORMAL"  # Attended item
                     if best_person.threat_level != "CRITICAL":

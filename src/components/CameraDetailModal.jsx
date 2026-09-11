@@ -166,22 +166,27 @@ export const CameraDetailModal = ({
           const by = det.bbox.y * ch;
           const bw = det.bbox.w * cw;
           const bh = det.bbox.h * ch;
-
-          const isUnusual = det.is_unusual || det.unusual_item;
+          const cName = (det.class_name || '').toLowerCase();
+          const heldItem = (det.held_item || '').toLowerCase();
+          const isWeaponItem = det.is_weapon || 
+            ['knife', 'gun', 'pistol', 'rifle', 'shotgun', 'firearm', 'weapon', 'scissors', 'blade', 'dagger', 'machete', 'sword'].some(w => cName.includes(w) || heldItem.includes(w));
+          const isArmed = det.is_holding && (det.held_item_type === 'WEAPON' || isWeaponItem);
+          const isHoldingCasual = det.is_holding && det.held_item_type === 'CASUAL_OBJECT' && !isWeaponItem;
+          const isPhone = cName.includes('phone') || cName.includes('cell') || heldItem.includes('phone');
+          const isUnattendedBag = ['backpack', 'suitcase', 'handbag'].includes(cName) && !det.is_held;
           const isHandRaised = ['HANDS_RAISED', 'HAND_RAISED'].includes(det.pose_label);
-          let boxColor = det.class_id === 0 ? '#00F2FE' : '#FBBF24';
-          if (isUnusual) {
-            boxColor = '#FF0033';
-          } else if (isHandRaised) {
-            boxColor = '#F59E0B';
-          }
+          const isCriticalPose = ['CROUCHING', 'PRONE'].includes(det.pose_label);
+          const isWeapon = isArmed || isWeaponItem;
+
+          // Strict User Rule: Red for weapons/armed; Green for all casual objects, phones, and people
+          const boxColor = isWeapon ? '#FF0033' : '#10B981';
 
           // Box
           ctx.save();
           ctx.strokeStyle = boxColor;
-          ctx.lineWidth = isUnusual || isHandRaised ? 3 : 2;
+          ctx.lineWidth = isWeapon ? 3 : 2;
           ctx.shadowColor = boxColor;
-          ctx.shadowBlur = isUnusual ? 18 : 8;
+          ctx.shadowBlur = isWeapon ? 18 : 8;
           ctx.strokeRect(bx, by, bw, bh);
 
           // Corner Reticles
@@ -191,26 +196,56 @@ export const CameraDetailModal = ({
           ctx.moveTo(bx, by + cornerLen); ctx.lineTo(bx, by); ctx.lineTo(bx + cornerLen, by);
           ctx.moveTo(bx + bw - cornerLen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + cornerLen);
           ctx.moveTo(bx, by + bh - cornerLen); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + cornerLen, by + bh);
-          ctx.moveTo(bx + bw - cornerLen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + cornerLen);
+          ctx.moveTo(bx + bw - cornerLen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - cornerLen);
           ctx.stroke();
+
+          // Crosshair for armed subjects or weapons
+          if (isWeapon) {
+            const cx = bx + bw / 2;
+            const cy = by + bh / 2;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath();
+            ctx.moveTo(cx - 12, cy); ctx.lineTo(cx + 12, cy);
+            ctx.moveTo(cx, cy - 12); ctx.lineTo(cx, cy + 12);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
           ctx.restore();
 
           // Label
           ctx.save();
+          const confStr = `${((det.confidence || 0.85) * 100).toFixed(0)}%`;
           let labelText = '';
-          if (isUnusual) {
-            labelText = `⚠️ UNUSUAL: ${(det.unusual_item || det.class_name).toUpperCase()}`;
+          if (isArmed) {
+            labelText = `🚨 ARMED SUBJECT: HOLDING ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+          } else if (isHoldingCasual) {
+            const isHoldPhone = (det.held_item || '').toLowerCase().includes('phone') || (det.held_item || '').toLowerCase().includes('cell');
+            labelText = isHoldPhone
+              ? `📱 HOLDING PHONE (${(det.held_by_hand || 'HAND').replace('_', ' ')})`
+              : `📦 HOLDING: ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+          } else if (isWeapon) {
+            labelText = `🚨 WEAPON: ${(det.unusual_item || det.class_name).toUpperCase()} [${confStr}]`;
+          } else if (isPhone) {
+            labelText = `📱 CELL PHONE [${confStr}] ${det.is_held ? '• IN HAND' : '• DETECTED'}`;
+          } else if (isUnattendedBag) {
+            labelText = `⚠️ UNATTENDED BAGGAGE: ${det.class_name.toUpperCase()} [${confStr}]`;
+          } else if (det.is_unusual && det.class_id !== 0) {
+            labelText = `⚠️ MONITORED: ${(det.unusual_item || det.class_name).toUpperCase()} [${confStr}]`;
+          } else if (det.class_id === 0) {
+            labelText = `👤 ${det.target_id || 'PERSON'} [${det.pose_label || 'ACTIVE'}]`;
           } else if (isHandRaised) {
             labelText = `✋ ${det.target_id || 'PERSON'} [${det.pose_label.replace('_', ' ')}]`;
           } else {
-            labelText = `${det.target_id || 'PERSON'} [${det.pose_label || 'ACTIVE'}]`;
+            const icon = cName.includes('bottle') ? '🍾 ' : cName.includes('laptop') ? '💻 ' : cName.includes('cup') ? '☕ ' : cName.includes('book') ? '📖 ' : cName.includes('car') || cName.includes('truck') || cName.includes('bus') ? '🚗 ' : '🎯 ';
+            labelText = `${icon}${det.class_name.toUpperCase()} [${confStr}] ${det.is_held ? '• HELD' : ''}`;
           }
 
           ctx.font = 'bold 12px JetBrains Mono, monospace';
           const textWidth = ctx.measureText(labelText).width;
           const tagY = Math.max(by - 24, 4);
 
-          ctx.fillStyle = isUnusual ? 'rgba(255, 0, 51, 0.9)' : isHandRaised ? 'rgba(42, 28, 5, 0.92)' : 'rgba(10, 16, 28, 0.92)';
+          ctx.fillStyle = isWeapon ? 'rgba(255, 0, 51, 0.94)' : 'rgba(5, 30, 20, 0.92)';
           ctx.fillRect(bx, tagY, textWidth + 14, 20);
           ctx.strokeStyle = boxColor;
           ctx.lineWidth = 1;

@@ -259,6 +259,11 @@ body {
   box-shadow: 0 0 8px var(--cyan-primary);
 }
 
+.dot-purple {
+  background-color: var(--purple-node);
+  box-shadow: 0 0 8px var(--purple-node);
+}
+
 .pulse-ring::after {
   content: '';
   position: absolute;

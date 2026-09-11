@@ -256,3 +256,94 @@
   }
 }
 
+/* Tactical Emergency Siren Alert Controls & Active Banner */
+.siren-active-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 0, 51, 0.18);
+  border: 1px solid rgba(255, 0, 51, 0.7);
+  box-shadow: 0 0 16px rgba(255, 0, 51, 0.35);
+  padding: 4px 12px;
+  border-radius: 6px;
+  animation: sirenBannerPulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes sirenBannerPulse {
+  0% {
+    background: rgba(255, 0, 51, 0.15);
+    border-color: rgba(255, 0, 51, 0.6);
+  }
+  100% {
+    background: rgba(255, 0, 51, 0.35);
+    border-color: rgba(255, 50, 70, 1);
+    box-shadow: 0 0 22px rgba(255, 0, 51, 0.55);
+  }
+}
+
+.siren-text {
+  color: #ff3344;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 6px rgba(255, 0, 51, 0.5);
+}
+
+.siren-silence-btn {
+  background: #ff0033;
+  color: #ffffff;
+  border: none;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  transition: all 0.2s ease;
+}
+
+.siren-silence-btn:hover {
+  background: #ff3355;
+  box-shadow: 0 0 10px rgba(255, 0, 51, 0.8);
+}
+
+.siren-test-pill {
+  background: rgba(0, 242, 254, 0.08);
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  color: #00f2fe;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.siren-test-pill:hover {
+  background: rgba(0, 242, 254, 0.18);
+  border-color: #00f2fe;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.3);
+}
+
+.siren-test-pill.active {
+  background: rgba(255, 0, 51, 0.2);
+  border-color: #ff0033;
+  color: #ff3344;
+  animation: sirenBannerPulse 0.8s infinite alternate;
+}
+
+.sound-toggle-btn.muted {
+  border-color: rgba(255, 0, 51, 0.4);
+  background: rgba(255, 0, 51, 0.1);
+}
+
+.sound-toggle-btn.siren-pulsing {
+  border-color: #ff0033;
+  background: rgba(255, 0, 51, 0.25);
+  animation: sirenBannerPulse 0.6s infinite alternate;
+}
+

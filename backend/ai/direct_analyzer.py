@@ -151,13 +151,14 @@ class DirectAIAnalyzer:
                     )
                     if alert:
                         alerts.append(alert)
-                elif getattr(det, "held_item_type", "") == "CASUAL_OBJECT" and (det.is_in_fence or det.loiter_seconds > 8):
+                elif getattr(det, "held_item_type", "") == "CASUAL_OBJECT":
+                    is_prio = det.is_in_fence or det.loiter_seconds > 6 or "PHONE" in (det.held_item or "")
                     alert = self._make_alert(
                         camera_id=camera_id,
-                        category="SUSPICIOUS_CARRIER",
-                        severity="HIGH",
-                        title=f"Suspicious Item Carrier: {det.held_item} [{camera_code}]",
-                        description=f"Subject {det.target_id} carrying {det.held_item} ({det.held_by_hand or 'in hand'}) in monitored perimeter zone.",
+                        category="MONITORED_OBJECT" if "PHONE" in (det.held_item or "") else "SUSPICIOUS_CARRIER",
+                        severity="HIGH" if is_prio else "MEDIUM",
+                        title=f"Subject Holding {det.held_item} [{camera_code}]",
+                        description=f"Subject {det.target_id} carrying {det.held_item} ({det.held_by_hand or 'in hand'}).",
                         target_id=det.target_id,
                     )
                     if alert:
@@ -191,15 +192,16 @@ class DirectAIAnalyzer:
                 if alert:
                     alerts.append(alert)
 
-            # General unusual / contraband item alert
+            # General unusual / monitored item alert (phone, bottle, laptop, contraband)
             if (det.is_unusual or det.unusual_item) and not getattr(det, "is_weapon", False) and not getattr(det, "is_held", False):
                 item_name = (det.unusual_item or det.class_name).upper()
+                is_phone_item = "PHONE" in item_name or "CELL" in item_name
                 alert = self._make_alert(
                     camera_id=camera_id,
-                    category="UNUSUAL_ITEM",
-                    severity="CRITICAL" if item_name in ("KNIFE", "SCISSORS", "WEAPON") else "HIGH",
-                    title=f"Unusual Item: {item_name} [{camera_code}]",
-                    description=f"Contraband/Unusual object '{item_name}' detected in live camera field (Confidence: {det.bbox.confidence:.1%}).",
+                    category="MONITORED_OBJECT" if is_phone_item else "UNUSUAL_ITEM",
+                    severity="CRITICAL" if item_name in ("KNIFE", "SCISSORS", "WEAPON") else "HIGH" if is_phone_item else "MEDIUM",
+                    title=f"Detected: {item_name} [{camera_code}]",
+                    description=f"Monitored object '{item_name}' detected in live camera field (Confidence: {det.bbox.confidence:.1%}).",
                     target_id=det.target_id,
                 )
                 if alert:

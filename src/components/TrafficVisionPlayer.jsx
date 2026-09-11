@@ -14,6 +14,7 @@ import {
   Cpu
 } from 'lucide-react';
 import { TRAFFIC_VISION_SETTINGS, INDIA_TRAFFIC_CAMERAS } from '../services/trafficVisionCatalog';
+import { soundController } from '../utils/audioAlert';
 import './TrafficVisionPlayer.css';
 
 export const TrafficVisionPlayer = ({
@@ -152,6 +153,18 @@ export const TrafficVisionPlayer = ({
             latencyMs: dt,
             detectionsCount: dets.length,
           }));
+
+          const hasWeapon = dets.some(
+            (d) => d.is_weapon || 
+                   (d.is_holding && d.held_item_type === 'WEAPON') ||
+                   ['knife', 'gun', 'pistol', 'rifle', 'shotgun', 'firearm', 'weapon', 'scissors', 'blade', 'dagger', 'machete', 'sword'].some(w => 
+                     (d.class_name || '').toLowerCase().includes(w) || 
+                     (d.held_item || '').toLowerCase().includes(w)
+                   )
+          );
+          if (hasWeapon) {
+            soundController.triggerWeaponSiren(2000);
+          }
         }
       } catch (err) {
         // Continue on single-frame drop
@@ -218,10 +231,11 @@ export const TrafficVisionPlayer = ({
                 }
               }
 
-              const tetherColor = det.held_item_type === 'WEAPON' ? '#FF0033' : '#00F2FE';
+              const isWeaponHolding = det.held_item_type === 'WEAPON' || ['knife', 'gun', 'pistol', 'rifle', 'shotgun', 'firearm', 'weapon', 'scissors', 'blade', 'dagger', 'machete', 'sword'].some(w => (det.held_item || '').toLowerCase().includes(w));
+              const tetherColor = isWeaponHolding ? '#FF0033' : '#10B981';
               ctx.save();
               ctx.strokeStyle = tetherColor;
-              ctx.lineWidth = det.held_item_type === 'WEAPON' ? 2.5 : 1.5;
+              ctx.lineWidth = isWeaponHolding ? 2.5 : 1.5;
               ctx.setLineDash([4, 3]);
               ctx.shadowColor = tetherColor;
               ctx.shadowBlur = 8;
@@ -250,39 +264,29 @@ export const TrafficVisionPlayer = ({
           const bw = det.bbox.w * cw;
           const bh = det.bbox.h * ch;
 
-          const isArmed = det.is_holding && det.held_item_type === 'WEAPON';
-          const isWeapon = det.is_weapon;
-          const isHoldingCasual = det.is_holding && det.held_item_type === 'CASUAL_OBJECT';
-          const isUnattendedBag = ['backpack', 'suitcase', 'handbag'].includes(det.class_name?.toLowerCase()) && !det.is_held;
-          const isUnusual = det.is_unusual || det.unusual_item || isWeapon || isArmed;
-          const isHandRaised = ['HANDS_RAISED', 'HAND_RAISED'].includes(det.pose_label);
-          const isCritical = isArmed || isWeapon || isUnusual || det.threat_level === 'CRITICAL';
+          const cName = (det.class_name || '').toLowerCase();
+          const heldItem = (det.held_item || '').toLowerCase();
+          const isWeaponItem = det.is_weapon || ['knife', 'gun', 'pistol', 'rifle', 'shotgun', 'firearm', 'weapon', 'scissors', 'blade', 'dagger', 'machete', 'sword'].some(w => cName.includes(w) || heldItem.includes(w));
+          const isArmed = det.is_holding && (det.held_item_type === 'WEAPON' || isWeaponItem);
+          const isHoldingCasual = det.is_holding && det.held_item_type === 'CASUAL_OBJECT' && !isWeaponItem;
+          const isPhone = cName.includes('phone') || cName.includes('cell') || heldItem.includes('phone');
+          const isUnattendedBag = ['backpack', 'suitcase', 'handbag'].includes(cName) && !det.is_held;
+          const isUnusual = det.is_unusual || det.unusual_item;
+          const isWeapon = isArmed || isWeaponItem;
 
-          let boxColor = '#00F2FE';
-          if (isArmed || isWeapon) {
-            boxColor = '#FF0033';  // Red Alert
-          } else if (isUnattendedBag) {
-            boxColor = '#F97316';  // Amber
-          } else if (isHoldingCasual) {
-            boxColor = '#06B6D4';  // Cyan-Teal
-          } else if (isHandRaised) {
-            boxColor = '#F59E0B';  // Gold
-          } else if (det.class_id === 0) {
-            boxColor = '#00F2FE';  // Human Cyan
-          } else {
-            boxColor = '#FBBF24';  // Vehicle / other
-          }
+          // Strict User Rule: Red for weapons; Green for all casual objects, people, phones
+          const boxColor = isWeapon ? '#FF0033' : '#10B981';
 
           ctx.save();
           ctx.strokeStyle = boxColor;
-          ctx.lineWidth = isCritical ? 3 : 2;
+          ctx.lineWidth = isWeapon ? 3 : 2;
           ctx.shadowColor = boxColor;
-          ctx.shadowBlur = isCritical ? 16 : 6;
+          ctx.shadowBlur = isWeapon ? 16 : 6;
           ctx.strokeRect(bx, by, bw, bh);
 
           // Corner Reticle Brackets
           const cornerLen = Math.min(16, bw / 3);
-          ctx.lineWidth = isCritical ? 3.5 : 2.5;
+          ctx.lineWidth = isWeapon ? 3.5 : 2.5;
           ctx.beginPath();
           ctx.moveTo(bx, by + cornerLen); ctx.lineTo(bx, by); ctx.lineTo(bx + cornerLen, by);
           ctx.moveTo(bx + bw - cornerLen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + cornerLen);
@@ -290,15 +294,15 @@ export const TrafficVisionPlayer = ({
           ctx.moveTo(bx + bw - cornerLen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - cornerLen);
           ctx.stroke();
 
-          // Crosshair reticle on armed subjects
-          if (isArmed || isWeapon) {
+          // Crosshair reticle on armed subjects or weapons
+          if (isWeapon) {
             const cx = bx + bw / 2;
             const cy = by + bh / 2;
             ctx.lineWidth = 1;
             ctx.setLineDash([2, 2]);
             ctx.beginPath();
             ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 10, cy);
-            ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy + 10);
+            ctx.moveTo(cx, cy - 10); ctx.lineTo(cx + 10, cy);
             ctx.stroke();
             ctx.setLineDash([]);
           }
@@ -306,26 +310,35 @@ export const TrafficVisionPlayer = ({
 
           // Label
           ctx.save();
+          const confStr = `${((det.confidence || 0.9) * 100).toFixed(0)}%`;
           let text = '';
           if (isArmed) {
             text = `🚨 ARMED SUBJECT: HOLDING ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
           } else if (isHoldingCasual) {
-            text = `📦 HOLDING: ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+            const isHoldPhone = (det.held_item || '').toLowerCase().includes('phone') || (det.held_item || '').toLowerCase().includes('cell');
+            text = isHoldPhone
+              ? `📱 HOLDING PHONE (${(det.held_by_hand || 'HAND').replace('_', ' ')})`
+              : `📦 HOLDING: ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
           } else if (isWeapon) {
-            text = `🚨 WEAPON: ${det.class_name.toUpperCase()} [${((det.confidence || 0.9) * 100).toFixed(0)}%]`;
+            text = `🚨 WEAPON: ${(det.unusual_item || det.class_name).toUpperCase()} [${confStr}]`;
+          } else if (isPhone) {
+            text = `📱 CELL PHONE [${confStr}] ${det.is_held ? '• IN HAND' : '• DETECTED'}`;
           } else if (isUnattendedBag) {
-            text = `⚠️ UNATTENDED BAGGAGE: ${det.class_name.toUpperCase()}`;
+            text = `⚠️ UNATTENDED BAGGAGE: ${det.class_name.toUpperCase()} [${confStr}]`;
           } else if (isUnusual) {
-            text = `⚠️ UNUSUAL: ${(det.unusual_item || det.class_name).toUpperCase()}`;
+            text = `⚠️ UNUSUAL: ${(det.unusual_item || det.class_name).toUpperCase()} [${confStr}]`;
+          } else if (det.class_id === 0) {
+            text = `👤 ${(det.class_name || 'PERSON').toUpperCase()} [${confStr}] ${det.pose_label ? `• ${det.pose_label}` : ''}`;
           } else {
-            text = `${(det.class_name || 'TARGET').toUpperCase()} [${((det.confidence || 0.9) * 100).toFixed(0)}%] ${det.pose_label ? `• ${det.pose_label}` : ''}`;
+            const icon = cName.includes('bottle') ? '🍾 ' : cName.includes('laptop') ? '💻 ' : cName.includes('cup') ? '☕ ' : cName.includes('book') ? '📖 ' : cName.includes('car') || cName.includes('truck') || cName.includes('bus') ? '🚗 ' : '🎯 ';
+            text = `${icon}${det.class_name.toUpperCase()} [${confStr}] ${det.is_held ? '• HELD' : ''}`;
           }
 
           ctx.font = 'bold 11px JetBrains Mono, monospace';
           const textWidth = ctx.measureText(text).width;
           const tagY = Math.max(by - 20, 4);
 
-          ctx.fillStyle = isCritical ? 'rgba(40, 5, 12, 0.94)' : isUnattendedBag ? 'rgba(38, 20, 5, 0.94)' : 'rgba(8, 14, 24, 0.90)';
+          ctx.fillStyle = isWeapon ? 'rgba(40, 5, 12, 0.94)' : 'rgba(5, 30, 20, 0.92)';
           ctx.fillRect(bx, tagY, textWidth + 12, 18);
           ctx.strokeStyle = boxColor;
           ctx.lineWidth = 1;

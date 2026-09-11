@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { getDevicePlatform, enumerateDeviceCameras } from '../utils/deviceDetector';
+import { soundController } from '../utils/audioAlert';
 
 export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVideoRef = null) => {
   const [isWebcamActive, setIsWebcamActive] = useState(false);
@@ -24,6 +25,8 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
     armedCount: 0,
     holdingCount: 0,
     casualCount: 0,
+    phoneCount: 0,
+    objectsCount: 0,
     alertsCount: 0,
     detections: [],
     actualFps: 0,
@@ -108,15 +111,19 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
         offscreenCanvasRef.current = document.createElement('canvas');
       }
       const canvas = offscreenCanvasRef.current;
-      const targetW = 640;
-      const targetH = 360;
+      const vw = video.videoWidth || 1280;
+      const vh = video.videoHeight || 720;
+      // High-definition frame ingestion (preserving aspect ratio, max 960 width for sharpness)
+      const scale = Math.min(1.0, 960 / Math.max(vw, 1));
+      const targetW = Math.round(vw * scale);
+      const targetH = Math.round(vh * scale);
       canvas.width = targetW;
       canvas.height = targetH;
 
       const ctx = canvas.getContext('2d', { alpha: false });
       ctx.drawImage(video, 0, 0, targetW, targetH);
 
-      const b64 = canvas.toDataURL('image/jpeg', 0.70);
+      const b64 = canvas.toDataURL('image/jpeg', 0.82);
       const t0 = performance.now();
 
       axios.post(`/api/v1/cameras/${cameraId}/ingest`, { image: b64 }, {
@@ -136,11 +143,28 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
 
         if (res.data && res.data.success) {
           const dets = res.data.detections || [];
-          const unusualCount = dets.filter((d) => d.is_unusual || d.unusual_item || d.threat_level === 'CRITICAL').length;
-          const weaponsCount = dets.filter((d) => d.is_weapon).length;
+          const isWeaponItem = (d) => {
+            const name = (d.class_name || '').toLowerCase();
+            const held = (d.held_item || '').toLowerCase();
+            const unusual = (d.unusual_item || '').toLowerCase();
+            const isNamed = ['knife', 'gun', 'pistol', 'rifle', 'shotgun', 'firearm', 'weapon', 'dagger', 'blade', 'machete', 'sword'].some(
+              (w) => name.includes(w) || held.includes(w) || unusual.includes(w)
+            );
+            const isArmed = d.is_holding && d.held_item_type === 'WEAPON';
+            return Boolean(d.is_weapon || isNamed || isArmed);
+          };
+
+          const weaponsCount = dets.filter(isWeaponItem).length;
           const armedCount = dets.filter((d) => d.is_holding && d.held_item_type === 'WEAPON').length;
           const holdingCount = dets.filter((d) => d.is_holding).length;
-          const casualCount = dets.filter((d) => d.is_casual_object || (d.is_holding && d.held_item_type === 'CASUAL_OBJECT')).length;
+          const casualCount = dets.filter((d) => !isWeaponItem(d) && d.class_id !== 0).length;
+          const phoneCount = dets.filter((d) => (d.class_name || '').toLowerCase().includes('phone') || (d.held_item || '').toLowerCase().includes('phone')).length;
+          const objectsCount = dets.filter((d) => d.class_id !== 0 && !isWeaponItem(d)).length;
+
+          // PLAY SIREN ONLY WHEN WEAPON DETECTED (knife, pistol, gun, firearm, weapon, etc.)
+          if (weaponsCount > 0 || armedCount > 0) {
+            soundController.triggerWeaponSiren(2000);
+          }
 
           setLiveDetections(dets);
           if (res.data.annotated_frame) {
@@ -149,11 +173,13 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
           setTelemetry((prev) => ({
             ...prev,
             detectionsCount: dets.length,
-            unusualCount,
+            unusualCount: weaponsCount,
             weaponsCount,
             armedCount,
             holdingCount,
             casualCount,
+            phoneCount,
+            objectsCount,
             alertsCount: res.data.alerts_count || 0,
             detections: dets,
             lastLatencyMs: Math.round(dt),

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { soundController } from '../utils/audioAlert';
 
 /**
  * Custom hook to connect to FastAPI WebSocket alert broadcast stream (/ws/alerts)
@@ -62,6 +63,16 @@ export const useWebSocket = () => {
                 severity: p.severity || 'HIGH',
                 level: (p.severity || 'info').toLowerCase() === 'critical' ? 'crit' : (p.severity || 'info').toLowerCase() === 'warning' || (p.severity || '').toLowerCase() === 'high' ? 'warn' : 'info',
               };
+
+              // Trigger weapon siren for weapons or armed subjects received from server broadcast
+              const cat = String(p.category || '').toUpperCase();
+              const title = String(p.title || '').toLowerCase();
+              const desc = String(p.description || '').toLowerCase();
+              const isWeaponAlert = cat.includes('WEAPON') || cat.includes('ARMED') || title.includes('weapon') || title.includes('armed') || title.includes('pistol') || title.includes('knife') || desc.includes('weapon');
+              if (isWeaponAlert) {
+                soundController.playSirenBurst(3.5);
+              }
+
               setAlerts((prev) => [newAlert, ...prev.slice(0, 19)]);
             } else if (data.type === 'PING') {
               setLastPing((p) => (p >= 5 ? 1 : p + 1));

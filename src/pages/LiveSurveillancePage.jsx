@@ -136,7 +136,7 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
                 }
               }
 
-              const tetherColor = det.held_item_type === 'WEAPON' ? '#FF0033' : '#00F2FE';
+              const tetherColor = det.held_item_type === 'WEAPON' ? '#FF0033' : '#10B981';
               ctx.save();
               ctx.strokeStyle = tetherColor;
               ctx.lineWidth = det.held_item_type === 'WEAPON' ? 2.5 : 1.5;
@@ -167,41 +167,31 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
           const bw = det.bbox.w * cw;
           const bh = det.bbox.h * ch;
 
-          const isArmed = det.is_holding && det.held_item_type === 'WEAPON';
-          const isWeapon = det.is_weapon;
-          const isHoldingCasual = det.is_holding && det.held_item_type === 'CASUAL_OBJECT';
-          const isUnattendedBag = ['backpack', 'suitcase', 'handbag'].includes(det.class_name?.toLowerCase()) && !det.is_held;
-          const isUnusual = det.is_unusual || det.unusual_item || isWeapon || isArmed;
-          const isHandRaised = ['HANDS_RAISED', 'HAND_RAISED'].includes(det.pose_label);
-          const isCriticalPose = ['CROUCHING', 'PRONE'].includes(det.pose_label);
-          const isAlert = isUnusual || isCriticalPose || isHandRaised || isArmed || isWeapon;
+          const cName = (det.class_name || '').toLowerCase();
+          const heldName = (det.held_item || '').toLowerCase();
+          const unusualName = (det.unusual_item || '').toLowerCase();
 
-          let boxColor = det.class_id === 0 ? '#00F2FE' : '#FBBF24';
-          if (isArmed || isWeapon) {
-            boxColor = '#FF0033';
-          } else if (isUnattendedBag) {
-            boxColor = '#F97316';
-          } else if (isHoldingCasual) {
-            boxColor = '#06B6D4';
-          } else if (isUnusual) {
-            boxColor = '#FF0033';
-          } else if (isHandRaised) {
-            boxColor = '#F59E0B';
-          } else if (isCriticalPose) {
-            boxColor = '#EC4899';
-          }
+          // Strict weapon detection check (knife, pistol, gun, weapon, firearm, rifle, etc.)
+          const isWeaponClass = ['knife', 'gun', 'pistol', 'rifle', 'shotgun', 'firearm', 'weapon', 'dagger', 'blade', 'machete', 'sword'].some(
+            (w) => cName.includes(w) || heldName.includes(w) || unusualName.includes(w)
+          );
+          const isArmed = det.is_holding && det.held_item_type === 'WEAPON';
+          const isWeapon = Boolean(det.is_weapon || isWeaponClass || isArmed);
+
+          // STRICT USER MANDATE: Red for weapons, Green for all non-weapons!
+          const boxColor = isWeapon ? '#FF0033' : '#10B981';
 
           // 1. Draw Bounding Box with Cyber Glow
           ctx.save();
           ctx.strokeStyle = boxColor;
-          ctx.lineWidth = isAlert ? 3 : 2;
+          ctx.lineWidth = isWeapon ? 3.5 : 2;
           ctx.shadowColor = boxColor;
-          ctx.shadowBlur = isAlert ? 16 : 6;
+          ctx.shadowBlur = isWeapon ? 18 : 6;
           ctx.strokeRect(bx, by, bw, bh);
 
           // 2. Corner Bracket Reticles
           const cornerSize = Math.min(18, Math.max(6, bw / 4));
-          ctx.lineWidth = isAlert ? 4 : 3;
+          ctx.lineWidth = isWeapon ? 4 : 2.5;
           ctx.beginPath();
           ctx.moveTo(bx, by + cornerSize); ctx.lineTo(bx, by); ctx.lineTo(bx + cornerSize, by);
           ctx.moveTo(bx + bw - cornerSize, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + cornerSize);
@@ -209,15 +199,15 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
           ctx.moveTo(bx + bw - cornerSize, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - cornerSize);
           ctx.stroke();
 
-          // Crosshair on armed targets
-          if (isArmed || isWeapon) {
+          // Crosshair ONLY on weapons or armed targets
+          if (isWeapon) {
             const cx = bx + bw / 2;
             const cy = by + bh / 2;
             ctx.lineWidth = 1;
             ctx.setLineDash([2, 2]);
             ctx.beginPath();
             ctx.moveTo(cx - 12, cy); ctx.lineTo(cx + 12, cy);
-            ctx.moveTo(cx, cy - 12); ctx.lineTo(cx, cy + 12);
+            ctx.moveTo(cx, cy - 12); ctx.lineTo(cx + 12, cy);
             ctx.stroke();
             ctx.setLineDash([]);
           }
@@ -235,7 +225,7 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
                 const kp1 = kps[i1];
                 const kp2 = kps[i2];
                 if (kp1.conf > 0.35 && kp2.conf > 0.35) {
-                  ctx.strokeStyle = isArmed ? '#FF0033' : isHoldingCasual ? '#06B6D4' : isHandRaised ? '#F59E0B' : '#10B981';
+                  ctx.strokeStyle = isWeapon ? '#FF0033' : '#10B981';
                   ctx.beginPath();
                   ctx.moveTo(kp1.x * cw, kp1.y * ch);
                   ctx.lineTo(kp2.x * cw, kp2.y * ch);
@@ -247,7 +237,7 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
             // Draw joints
             kps.forEach((kp) => {
               if (kp.conf > 0.35) {
-                ctx.fillStyle = isArmed ? '#FF0033' : isHoldingCasual ? '#06B6D4' : isHandRaised ? '#FBBF24' : '#00F2FE';
+                ctx.fillStyle = isWeapon ? '#FF0033' : '#10B981';
                 ctx.beginPath();
                 ctx.arc(kp.x * cw, kp.y * ch, 3.5, 0, 2 * Math.PI);
                 ctx.fill();
@@ -257,28 +247,32 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
           }
 
           // 4. Tactical Floating Label Tag
+          const confStr = `${((det.confidence || 0.85) * 100).toFixed(0)}%`;
           let labelText = '';
           if (isArmed) {
             labelText = `🚨 ARMED SUBJECT: HOLDING ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
-          } else if (isHoldingCasual) {
-            labelText = `📦 HOLDING: ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
           } else if (isWeapon) {
-            labelText = `🚨 WEAPON: ${det.class_name.toUpperCase()} [${((det.confidence || 0.9) * 100).toFixed(0)}%]`;
-          } else if (isUnattendedBag) {
-            labelText = `⚠️ UNATTENDED BAGGAGE: ${det.class_name.toUpperCase()}`;
-          } else if (isUnusual) {
-            labelText = `⚠️ UNUSUAL: ${(det.unusual_item || det.class_name).toUpperCase()}`;
-          } else if (isHandRaised) {
-            labelText = `✋ ${det.target_id || 'PERSON'} [${det.pose_label.replace('_', ' ')}]`;
+            labelText = `🚨 WEAPON: ${(det.unusual_item || det.class_name).toUpperCase()} [${confStr}]`;
+          } else if (det.is_holding) {
+            const isHoldPhone = (det.held_item || '').toLowerCase().includes('phone') || (det.held_item || '').toLowerCase().includes('cell');
+            labelText = isHoldPhone
+              ? `📱 HOLDING PHONE (${(det.held_by_hand || 'HAND').replace('_', ' ')})`
+              : `📦 HOLDING: ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+          } else if (cName.includes('phone') || cName.includes('cell')) {
+            labelText = `📱 CELL PHONE [${confStr}] ${det.is_held ? '• IN HAND' : '• DETECTED'}`;
+          } else if (det.class_id === 0) {
+            labelText = `👤 ${det.target_id || 'PERSON'} [${det.pose_label || 'NORMAL'}] ${det.loiter_seconds > 2 ? `• ${Math.round(det.loiter_seconds)}s` : ''}`;
           } else {
-            labelText = `${det.target_id || 'PERSON'} [${det.pose_label || 'NORMAL'}] ${det.loiter_seconds > 2 ? `• ${Math.round(det.loiter_seconds)}s` : ''}`;
+            const icon = cName.includes('bottle') ? '🍾 ' : cName.includes('laptop') ? '💻 ' : cName.includes('cup') ? '☕ ' : cName.includes('book') ? '📖 ' : cName.includes('car') || cName.includes('truck') || cName.includes('bus') ? '🚗 ' : '🎯 ';
+            labelText = `${icon}${det.class_name.toUpperCase()} [${confStr}] ${det.is_held ? '• HELD' : ''}`;
           }
 
           ctx.font = 'bold 11px JetBrains Mono, monospace';
           const textWidth = ctx.measureText(labelText).width;
           const tagY = Math.max(by - 20, 2);
 
-          ctx.fillStyle = (isArmed || isWeapon) ? 'rgba(45, 5, 15, 0.94)' : isUnattendedBag ? 'rgba(38, 20, 5, 0.94)' : isHandRaised ? 'rgba(42, 28, 5, 0.92)' : 'rgba(10, 16, 28, 0.90)';
+          // Red background for weapon, Green background for non-weapons
+          ctx.fillStyle = isWeapon ? 'rgba(45, 5, 15, 0.94)' : 'rgba(5, 30, 20, 0.92)';
           ctx.fillRect(bx, tagY, textWidth + 12, 18);
           ctx.strokeStyle = boxColor;
           ctx.lineWidth = 1;
@@ -290,16 +284,28 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
 
         // 5. HUD Top Status Overlay
         const armedCnt = dets.filter((d) => d.is_holding && d.held_item_type === 'WEAPON').length;
-        const weaponCnt = dets.filter((d) => d.is_weapon).length;
-        const hudW = armedCnt > 0 ? 460 : 380;
-        ctx.fillStyle = 'rgba(10, 16, 28, 0.88)';
+        const weaponCnt = dets.filter((d) => {
+          const name = (d.class_name || '').toLowerCase();
+          const unusual = (d.unusual_item || '').toLowerCase();
+          const held = (d.held_item || '').toLowerCase();
+          return d.is_weapon || ['knife', 'gun', 'pistol', 'rifle', 'shotgun', 'firearm', 'weapon', 'dagger', 'blade', 'sword'].some(
+            (w) => name.includes(w) || unusual.includes(w) || held.includes(w)
+          );
+        }).length;
+        const phoneCnt = dets.filter((d) => (d.class_name || '').toLowerCase().includes('phone') || (d.held_item || '').toLowerCase().includes('phone')).length;
+        const itemCnt = dets.filter((d) => d.class_id !== 0 && !d.is_weapon).length;
+        const pplCnt = dets.filter((d) => d.class_id === 0).length;
+
+        const hasWeaponThreat = armedCnt > 0 || weaponCnt > 0;
+        const hudW = phoneCnt > 0 || armedCnt > 0 ? 530 : 430;
+        ctx.fillStyle = 'rgba(10, 16, 28, 0.90)';
         ctx.fillRect(10, 10, hudW, 24);
-        ctx.strokeStyle = armedCnt > 0 ? 'rgba(255, 0, 51, 0.8)' : 'rgba(0, 242, 254, 0.4)';
+        ctx.strokeStyle = hasWeaponThreat ? 'rgba(255, 0, 51, 0.85)' : 'rgba(16, 185, 129, 0.6)';
         ctx.strokeRect(10, 10, hudW, 24);
         ctx.font = 'bold 10px JetBrains Mono, monospace';
-        ctx.fillStyle = armedCnt > 0 || weaponCnt > 0 ? '#FF0033' : '#10B981';
+        ctx.fillStyle = hasWeaponThreat ? '#FF0033' : '#10B981';
         ctx.fillText(
-          `C-01 AI • ${webcamTelemetry.actualFps || 30} FPS • ${webcamTelemetry.lastLatencyMs || 10}ms • PPL:${dets.filter((d) => d.class_id === 0).length} • ARMED:${armedCnt} • WEAPONS:${weaponCnt}`,
+          `C-01 AI • ${webcamTelemetry.actualFps || 30} FPS • ${webcamTelemetry.lastLatencyMs || 10}ms • PPL:${pplCnt} • ARMED:${armedCnt} • WEAPONS:${weaponCnt} • PHONES:${phoneCnt} • ITEMS:${itemCnt}`,
           16,
           26
         );
@@ -551,10 +557,10 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
                 </select>
               )}
 
-              <span className={`pill-badge ${hasUnusualThreat ? 'pill-red' : isWebcamActive ? 'pill-green' : 'pill-green'} status-pill-sm`}>
-                <span className={`status-dot ${hasUnusualThreat ? 'dot-red pulse-ring' : isWebcamActive ? 'dot-green pulse-ring' : 'dot-green'}`}></span> 
-                {hasUnusualThreat
-                  ? `⚠️ UNUSUAL ITEM DETECTED (${webcamTelemetry.unusualCount})`
+              <span className={`pill-badge ${webcamTelemetry.weaponsCount > 0 ? 'pill-red' : 'pill-green'} status-pill-sm`}>
+                <span className={`status-dot ${webcamTelemetry.weaponsCount > 0 ? 'dot-red pulse-ring' : 'dot-green pulse-ring'}`}></span> 
+                {webcamTelemetry.weaponsCount > 0
+                  ? `🚨 WEAPON DETECTED (${webcamTelemetry.weaponsCount})`
                   : isWebcamActive 
                     ? `LIVE AI • ${webcamTelemetry.detectionsCount} Targets` 
                     : 'LIVE • Normal Activity'}
@@ -655,16 +661,25 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
             {isWebcamActive && webcamTelemetry.detections && webcamTelemetry.detections.length > 0 && (
               <div className="webcam-detections-strip font-mono">
                 {webcamTelemetry.detections.map((det, idx) => {
-                  const isUnusual = det.is_unusual || det.unusual_item;
+                  const cName = (det.class_name || '').toLowerCase();
+                  const heldName = (det.held_item || '').toLowerCase();
+                  const unusualName = (det.unusual_item || '').toLowerCase();
+                  const isWeaponClass = ['knife', 'gun', 'pistol', 'rifle', 'shotgun', 'firearm', 'weapon', 'dagger', 'blade', 'machete', 'sword'].some(
+                    (w) => cName.includes(w) || heldName.includes(w) || unusualName.includes(w)
+                  );
+                  const isArmed = det.is_holding && det.held_item_type === 'WEAPON';
+                  const isWeapon = Boolean(det.is_weapon || isWeaponClass || isArmed);
+                  const isPhone = cName.includes('phone') || heldName.includes('phone');
+
                   return (
                     <div 
                       key={idx} 
                       className="webcam-det-pill"
-                      style={isUnusual ? { borderColor: '#FF0033', color: '#FF0033', background: 'rgba(255, 0, 51, 0.2)' } : {}}
+                      style={isWeapon ? { borderColor: '#FF0033', color: '#FF0033', background: 'rgba(255, 0, 51, 0.2)' } : { borderColor: '#10B981', color: '#10B981', background: 'rgba(16, 185, 129, 0.15)' }}
                     >
-                      {isUnusual ? <AlertTriangle size={11} /> : <UserCheck size={11} />}
+                      {isWeapon ? <AlertTriangle size={11} /> : isPhone ? <Smartphone size={11} /> : <UserCheck size={11} />}
                       <span>
-                        {isUnusual ? `⚠️ ${det.unusual_item || det.class_name}`.toUpperCase() : det.class_name.toUpperCase()} 
+                        {isWeapon ? `🚨 ${det.unusual_item || det.class_name}`.toUpperCase() : isPhone ? `📱 ${det.class_name || 'PHONE'}`.toUpperCase() : (det.class_name || 'TARGET').toUpperCase()} 
                         {det.pose_label ? ` [${det.pose_label}]` : ''} 
                         {det.loiter_seconds > 2 ? ` (${Math.round(det.loiter_seconds)}s)` : ''}
                       </span>

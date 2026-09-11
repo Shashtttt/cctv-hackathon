@@ -594,45 +594,32 @@ class CameraWorker:
                                     wrist_pt = (int(chosen[0] * w), int(chosen[1] * h))
 
                             start_pt = wrist_pt if wrist_pt else ((px1 + px2) // 2, (py1 + py2) // 2)
-                            tether_color = (0, 0, 255) if det.held_item_type == "WEAPON" else (0, 242, 254)
+                            is_weapon_held = det.held_item_type == "WEAPON" or any(w in (det.held_item or "").lower() for w in ("knife", "pistol", "gun", "rifle", "shotgun", "firearm", "weapon", "blade", "dagger", "sword"))
+                            tether_color = (0, 0, 255) if is_weapon_held else (0, 200, 0)
                             cv2.line(frame, start_pt, obj_center, tether_color, 2, cv2.LINE_AA)
                             cv2.circle(frame, obj_center, 4, tether_color, -1, cv2.LINE_AA)
 
             # 2. Draw Detections & Skeletons
             for det in detections:
                 x1, y1, x2, y2 = det.bbox.to_pixel(w, h)
-                is_armed = getattr(det, "is_holding", False) and getattr(det, "held_item_type", "") == "WEAPON"
-                is_weapon = getattr(det, "is_weapon", False)
-                is_holding_casual = getattr(det, "is_holding", False) and getattr(det, "held_item_type", "") == "CASUAL_OBJECT"
+                is_weapon_keyword = any(w in (det.class_name or "").lower() for w in ("knife", "pistol", "gun", "rifle", "shotgun", "firearm", "weapon", "blade", "dagger", "sword", "scissors"))
+                is_weapon = getattr(det, "is_weapon", False) or is_weapon_keyword
+                held_item_str = (getattr(det, "held_item", "") or "").lower()
+                is_held_weapon = any(w in held_item_str for w in ("knife", "pistol", "gun", "rifle", "shotgun", "firearm", "weapon", "blade", "dagger", "sword"))
+                is_armed = getattr(det, "is_holding", False) and (getattr(det, "held_item_type", "") == "WEAPON" or is_held_weapon)
+                is_weapon_threat = is_armed or is_weapon
+                is_holding_casual = getattr(det, "is_holding", False) and getattr(det, "held_item_type", "") == "CASUAL_OBJECT" and not is_weapon_threat
                 is_unattended_bag = det.class_name in ("backpack", "suitcase", "handbag") and not getattr(det, "is_held", False)
-                is_unusual = (
-                    det.is_unusual
-                    or det.is_blacklisted
-                    or det.is_in_fence
-                    or is_armed
-                    or is_weapon
-                    or (det.frs_match_score and det.frs_match_score >= settings.FRS_SIMILARITY_THRESHOLD)
-                )
-                is_hand_raised = det.pose_label in ("HANDS_RAISED", "HAND_RAISED")
-                is_critical = is_armed or is_weapon or det.pose_label in ("CROUCHING", "PRONE")
+                is_critical = is_weapon_threat or det.pose_label in ("CROUCHING", "PRONE")
 
-                if is_armed or is_weapon:
-                    colour = (0, 0, 255)        # Tactical Red
-                elif is_unattended_bag:
-                    colour = (0, 140, 255)      # Amber / Orange
-                elif is_holding_casual:
-                    colour = (11, 158, 245)     # Cyan-Gold
-                elif is_unusual:
-                    colour = (0, 0, 255)
-                elif is_hand_raised:
-                    colour = (11, 158, 245)     # Amber Gold (BGR)
-                elif det.class_id == 0:
-                    colour = (0, 242, 254)      # Cyan
+                # Strict User Rule: Red for weapons/armed; Green for all casual objects, persons, and items
+                if is_weapon_threat:
+                    colour = (0, 0, 255)        # Tactical Red (BGR)
                 else:
-                    colour = (0, 215, 255)      # Yellow
+                    colour = (0, 200, 0)        # Green for all non-weapons & casual objects (BGR)
 
                 # Draw Bounding Box & Corner Reticle
-                thickness = 3 if is_critical else 2
+                thickness = 3 if is_weapon_threat else 2
                 cv2.rectangle(frame, (x1, y1), (x2, y2), colour, thickness)
 
                 corner_len = min(20, max(6, (x2 - x1) // 4))
@@ -655,11 +642,11 @@ class CameraWorker:
                             if c1 > 0.35 and c2 > 0.35:
                                 pt1 = (int(kx1 * w), int(ky1 * h))
                                 pt2 = (int(kx2 * w), int(ky2 * h))
-                                cv2.line(frame, pt1, pt2, (0, 0, 255) if is_critical else (0, 255, 128), 2, cv2.LINE_AA)
+                                cv2.line(frame, pt1, pt2, (0, 0, 255) if is_weapon_threat else (0, 200, 0), 2, cv2.LINE_AA)
 
                     for kx, ky, kc in kps:
                         if kc > 0.35:
-                            cv2.circle(frame, (int(kx * w), int(ky * h)), 4, (0, 0, 255) if is_critical else (0, 255, 255), -1, cv2.LINE_AA)
+                            cv2.circle(frame, (int(kx * w), int(ky * h)), 4, (0, 0, 255) if is_weapon_threat else (0, 200, 0), -1, cv2.LINE_AA)
 
                 # Tag Label
                 label_parts = []

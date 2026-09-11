@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Sliders, User, ShieldCheck, LogOut, Award, ChevronDown } from 'lucide-react';
+import { Bell, Sliders, User, ShieldCheck, LogOut, Award, ChevronDown, Volume2, VolumeX, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { soundController } from '../utils/audioAlert';
 import './Header.css';
 
 const Header = () => {
   const { user, logout } = useAuth();
   const [timeStr, setTimeStr] = useState('14:28:09 UTC');
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [isSirenActive, setIsSirenActive] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
 
   useEffect(() => {
     const updateZuluTime = () => {
@@ -22,17 +25,76 @@ const Header = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // Subscribe to real-time tactical siren state
+  useEffect(() => {
+    const unsubscribe = soundController.subscribe((active, muted) => {
+      setIsSirenActive(active);
+      setIsMuted(muted);
+    });
+    return unsubscribe;
+  }, []);
+
+  const handleToggleMute = () => {
+    soundController.toggleMute();
+  };
+
+  const handleTestSiren = () => {
+    if (isSirenActive) {
+      soundController.silence();
+    } else {
+      soundController.playSirenBurst(3.5);
+    }
+  };
+
   return (
     <header className="top-header">
-      {/* Left Operational Cluster Tag */}
-      <div className="cluster-status-pill font-mono">
-        <ShieldCheck size={14} className="cluster-icon text-cyan" />
-        <span className="dot-green status-dot pulse-ring"></span>
-        <span className="cluster-text">SECTOR 4 - DEFENSE MATRIX CLUSTER: ARMED & OPERATIONAL</span>
+      {/* Left Operational Cluster Tag or Active Weapon Siren Banner */}
+      <div className="flex items-center gap-3">
+        <div className="cluster-status-pill font-mono">
+          <ShieldCheck size={14} className="cluster-icon text-cyan" />
+          <span className="dot-green status-dot pulse-ring"></span>
+          <span className="cluster-text">SECTOR 4 - DEFENSE MATRIX CLUSTER: ARMED & OPERATIONAL</span>
+        </div>
+
+        {isSirenActive && (
+          <div className="siren-active-banner font-mono">
+            <AlertTriangle size={14} className="text-red-500 animate-bounce" />
+            <span className="siren-text">🚨 DEFCON 1: WEAPON DETECTED — TACTICAL SIREN SOUNDING</span>
+            <button
+              className="siren-silence-btn"
+              onClick={() => soundController.silence()}
+              title="Silence Siren"
+            >
+              SILENCE
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Right Controls, Operator Badge & Clock */}
       <div className="header-right-actions">
+        {/* Test Siren Button */}
+        <button
+          className={`siren-test-pill font-mono ${isSirenActive ? 'active' : ''}`}
+          onClick={handleTestSiren}
+          title={isSirenActive ? "Stop active siren noise" : "Test tactical weapon siren noise"}
+        >
+          <span>{isSirenActive ? 'STOP SIREN' : 'TEST SIREN'}</span>
+        </button>
+
+        {/* Audio Mute / Unmute Button */}
+        <button
+          className={`header-icon-btn sound-toggle-btn ${isMuted ? 'muted' : ''} ${isSirenActive ? 'siren-pulsing' : ''}`}
+          onClick={handleToggleMute}
+          title={isMuted ? "Unmute Weapon Siren Alarms" : "Mute Weapon Siren Alarms"}
+        >
+          {isMuted ? (
+            <VolumeX size={16} className="text-red-400" />
+          ) : (
+            <Volume2 size={16} className={isSirenActive ? "text-red-400 animate-pulse" : "text-cyan"} />
+          )}
+        </button>
+
         <div className="zulu-clock-container font-mono">
           <span className="zulu-label text-cyan">ZULU:</span>
           <span className="zulu-time">{timeStr}</span>
