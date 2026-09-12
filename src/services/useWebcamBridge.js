@@ -205,8 +205,8 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
       const canvas = offscreenCanvasRef.current;
       const vw = video.videoWidth || 1280;
       const vh = video.videoHeight || 720;
-      // High-definition frame ingestion (preserving aspect ratio, max 960 width for sharpness)
-      const scale = Math.min(1.0, 960 / Math.max(vw, 1));
+      // High-speed frame ingestion (preserving aspect ratio, max 640 width for rapid inference)
+      const scale = Math.min(1.0, 640 / Math.max(vw, 1));
       const targetW = Math.round(vw * scale);
       const targetH = Math.round(vh * scale);
       canvas.width = targetW;
@@ -215,7 +215,7 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
       const ctx = canvas.getContext('2d', { alpha: false });
       ctx.drawImage(video, 0, 0, targetW, targetH);
 
-      const b64 = canvas.toDataURL('image/jpeg', 0.82);
+      const b64 = canvas.toDataURL('image/jpeg', 0.75);
       const t0 = performance.now();
 
       axios.post(`/api/v1/cameras/${cameraId}/ingest`, {
@@ -224,7 +224,7 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
         location: resolvedLocationRef.current || telemetry.location || 'Noida Sector 28',
       }, {
         headers: { 'Content-Type': 'application/json' },
-        timeout: 3000,
+        timeout: 8000,
       }).then((res) => {
         const dt = performance.now() - t0;
         frameCountRef.current += 1;

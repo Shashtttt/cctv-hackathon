@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "IBVAP - Intelligent Border Video Analytics Platform"
     API_V1_STR: str = "/api/v1"
     ENV: str = "development"                     # development | production
-    ENABLE_CAMERA_WORKERS: bool = True           # Enable full background camera processing pipeline
+    ENABLE_CAMERA_WORKERS: bool = False          # False = Lightweight local mode (frees CPU & SQLite for instant AI inference)
     REQUIRE_API_KEY: bool = False
 
     # ── Security ─────────────────────────────────────────────────────────────

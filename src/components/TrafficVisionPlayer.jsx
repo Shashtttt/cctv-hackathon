@@ -24,6 +24,7 @@ export const TrafficVisionPlayer = ({
   showControls = true,
   enableAiOverlay = true,
   onExpand,
+  onDetectionsUpdate,
 }) => {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
@@ -142,13 +143,16 @@ export const TrafficVisionPlayer = ({
 
         const res = await axios.post(`/api/v1/cameras/cam-01/ingest`, { image: b64 }, {
           headers: { 'Content-Type': 'application/json' },
-          timeout: 2500,
+          timeout: 8000,
         });
 
         const dt = Math.round(performance.now() - t0);
         if (res.data && res.data.success) {
           const dets = res.data.detections || [];
           setRealDetections(dets);
+          if (onDetectionsUpdate) {
+            onDetectionsUpdate(dets);
+          }
           setAiTelemetry((prev) => ({
             ...prev,
             latencyMs: dt,

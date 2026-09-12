@@ -52,6 +52,7 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
   const [cameras, setCameras] = useState([]);
   const [selectedTrafficCam, setSelectedTrafficCam] = useState(INDIA_TRAFFIC_CAMERAS[0]);
   const [expandedModalCamera, setExpandedModalCamera] = useState(null); // Camera object or 'webcam'
+  const [trafficDetections, setTrafficDetections] = useState([]);
 
   const webcamVideoRef = useRef(null);
   const overlayCanvasRef = useRef(null);
@@ -491,6 +492,7 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
           activeCamera={selectedTrafficCam}
           onSelectCamera={(cam) => setSelectedTrafficCam(cam)}
           onExpand={(cam) => setExpandedModalCamera(cam)}
+          onDetectionsUpdate={(dets) => setTrafficDetections(dets)}
           showControls={true}
           enableAiOverlay={true}
         />
@@ -1239,7 +1241,7 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
           isWebcam={expandedModalCamera.isWebcam}
           webcamStream={localStream}
           webcamTelemetry={webcamTelemetry}
-          liveDetections={expandedModalCamera.isWebcam ? liveDetections : []}
+          liveDetections={expandedModalCamera.isWebcam ? liveDetections : (expandedModalCamera.liveDetections || trafficDetections)}
           onClose={() => setExpandedModalCamera(null)}
         />
       )}

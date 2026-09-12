@@ -125,6 +125,11 @@ class PipelineManager:
         if not cameras:
             log.warning("No cameras registered in DB. Workers will start when cameras are added.")
 
+        if not getattr(settings, "ENABLE_CAMERA_WORKERS", True):
+            log.info("ENABLE_CAMERA_WORKERS is False — running in lightweight mode with on-demand AI inference.")
+            self._running = True
+            return
+
         for cam in cameras:
             self._spawn_worker(cam, frs_list, anpr_plates)
 

@@ -230,7 +230,7 @@ class DirectAIAnalyzer:
             if det.class_id in HUMAN_CLASSES:
                 x1, y1, x2, y2 = det.bbox.to_pixel(w, h)
                 crop = frame_bgr[y1:y2, x1:x2]
-                if crop.size > 0 and "FRS" in analytics_modes:
+                if crop.size > 0 and "FRS" in analytics_modes and len(self.face_rec._watchlist) > 0 and (x2 - x1) > 50 and (y2 - y1) > 70:
                     faces = self.face_det.detect_in_crop(frame_bgr, (x1, y1, x2, y2))
                     for face in faces:
                         if face.face_crop is not None:
