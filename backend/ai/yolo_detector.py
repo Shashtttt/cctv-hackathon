@@ -110,22 +110,37 @@ class YOLODetector:
             from ultralytics import YOLO  # type: ignore
 
             # 1. Pose Model
-            if pose_path.exists():
-                log.info("Loading YOLOv8-pose model from %s on %s...", pose_path, self._device)
-                self._pose_model = YOLO(str(pose_path))
+            try:
+                if pose_path.exists():
+                    log.info("Loading YOLOv8-pose model from %s on %s...", pose_path, self._device)
+                    self._pose_model = YOLO(str(pose_path))
+                else:
+                    log.info("Loading YOLOv8-pose by name on %s...", self._device)
+                    self._pose_model = YOLO("yolov8n-pose.pt")
                 self._pose_model.to(self._device)
+            except Exception as e:
+                log.warning("Pose model could not be loaded: %s", e)
 
-            # 2. General Object Model (80 COCO classes)
-            if obj_path.exists():
-                log.info("Loading YOLOv8 object model from %s on %s...", obj_path, self._device)
-                self._obj_model = YOLO(str(obj_path))
+            # 2. General Object Model (80 COCO classes - Cars, Trucks, Bags, Phones)
+            try:
+                if obj_path.exists():
+                    log.info("Loading YOLOv8 object model from %s on %s...", obj_path, self._device)
+                    self._obj_model = YOLO(str(obj_path))
+                else:
+                    log.info("Loading YOLOv8n object model by name on %s...", self._device)
+                    self._obj_model = YOLO("yolov8n.pt")
                 self._obj_model.to(self._device)
+            except Exception as e:
+                log.warning("Object model could not be loaded: %s", e)
 
             # 3. Dedicated Weapon Model (Pistol, Knife)
             if weapon_path.exists():
-                log.info("Loading YOLOv8 dedicated weapon model from %s on %s...", weapon_path, self._device)
-                self._weapon_model = YOLO(str(weapon_path))
-                self._weapon_model.to(self._device)
+                try:
+                    log.info("Loading YOLOv8 dedicated weapon model from %s on %s...", weapon_path, self._device)
+                    self._weapon_model = YOLO(str(weapon_path))
+                    self._weapon_model.to(self._device)
+                except Exception as e:
+                    log.warning("Weapon model load failed: %s", e)
 
             if self._pose_model is None and self._obj_model is None and self._weapon_model is None:
                 log.warning("No YOLO models found on disk — running in SIMULATION mode.")

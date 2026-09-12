@@ -129,7 +129,7 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
 
       api.post(`/cameras/${cameraId}/ingest`, { image: b64 }, {
         headers: { 'Content-Type': 'application/json' },
-        timeout: 3000,
+        timeout: 4500,
       }).then((res) => {
         const dt = performance.now() - t0;
         frameCountRef.current += 1;

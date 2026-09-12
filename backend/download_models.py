@@ -24,6 +24,11 @@ MODELS = {
         "desc": "YuNet Face Detection & 5-Landmark Model (OpenCV Zoo)",
         "min_size_bytes": 200_000,
     },
+    "yolov8n.pt": {
+        "url": "https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8n.pt",
+        "desc": "YOLOv8 General Object & Vehicle Detector (Cars, Trucks, Buses, Bags, Phones)",
+        "min_size_bytes": 6_000_000,
+    },
     "face_recognition_sface_2021dec.onnx": {
         "url": "https://huggingface.co/opencv/face_recognition_sface/resolve/main/face_recognition_sface_2021dec.onnx",
         "desc": "SFace 128-Dim Cosine Face Recognition Model (OpenCV Zoo)",
