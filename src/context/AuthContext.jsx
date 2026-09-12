@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { api } from '../services/apiService';
 
 const AuthContext = createContext(null);
 
@@ -17,12 +18,14 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
 
-  // Set default auth header on axios
+  // Set default auth header on axios and api instances
   useEffect(() => {
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     } else {
       delete axios.defaults.headers.common['Authorization'];
+      delete api.defaults.headers.common['Authorization'];
     }
   }, [token]);
 
@@ -34,7 +37,7 @@ export const AuthProvider = ({ children }) => {
         return;
       }
       try {
-        const res = await axios.get('/api/v1/auth/me');
+        const res = await api.get('/auth/me');
         setUser(res.data);
         localStorage.setItem('ibvap_user', JSON.stringify(res.data));
       } catch (err) {
@@ -53,7 +56,7 @@ export const AuthProvider = ({ children }) => {
   const login = async (username, password) => {
     setAuthError(null);
     try {
-      const res = await axios.post('/api/v1/auth/login', { username, password });
+      const res = await api.post('/auth/login', { username, password });
       const { access_token, user: userData } = res.data;
       setToken(access_token);
       setUser(userData);
@@ -70,7 +73,7 @@ export const AuthProvider = ({ children }) => {
   const register = async (formData) => {
     setAuthError(null);
     try {
-      const res = await axios.post('/api/v1/auth/register', formData);
+      const res = await api.post('/auth/register', formData);
       const { access_token, user: userData } = res.data;
       setToken(access_token);
       setUser(userData);
@@ -98,7 +101,8 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('ibvap_token');
     localStorage.removeItem('ibvap_user');
     delete axios.defaults.headers.common['Authorization'];
-    axios.post('/api/v1/auth/logout').catch(() => {});
+    delete api.defaults.headers.common['Authorization'];
+    api.post('/auth/logout').catch(() => {});
   };
 
   const value = {

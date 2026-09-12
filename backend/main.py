@@ -21,7 +21,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSock
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .config import settings
+from .config import PROJECT_ROOT, settings
 from .database.db import init_db
 from .database.models import AlertRecord
 from .pipeline.pipeline_manager import pipeline_manager
@@ -266,3 +266,25 @@ async def frame_stream(ws: WebSocket, cam_id: str):
         log.debug("Frame stream disconnected for %s: %s", cam_id, exc)
     finally:
         log.info("Frame stream closed for camera %s", cam_id)
+
+
+# ── Frontend Static Files (Single-Service Fullstack Deployment) ───────────────
+dist_dir = PROJECT_ROOT / "dist"
+if dist_dir.exists():
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import FileResponse
+
+    if (dist_dir / "assets").exists():
+        app.mount("/assets", StaticFiles(directory=dist_dir / "assets"), name="frontend-assets")
+    if (dist_dir / "videos").exists():
+        app.mount("/videos", StaticFiles(directory=dist_dir / "videos"), name="frontend-videos")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        # Do not intercept API or WebSocket paths
+        if full_path.startswith("api/") or full_path.startswith("ws/") or full_path == "api" or full_path == "ws":
+            raise HTTPException(status_code=404, detail="Not Found")
+        target = dist_dir / full_path
+        if target.is_file():
+            return FileResponse(target)
+        return FileResponse(dist_dir / "index.html")

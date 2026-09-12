@@ -4,6 +4,7 @@ Application Settings (Pydantic v2 SettingsConfigDict)
 """
 
 from __future__ import annotations
+import os
 import sys
 from pathlib import Path
 from pydantic import field_validator
@@ -14,7 +15,7 @@ BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
 MODELS_DIR = PROJECT_ROOT / "models"
 SNAPSHOTS_DIR = PROJECT_ROOT / "snapshots"
-DB_PATH = PROJECT_ROOT / "ibvap_surveillance.db"
+DB_PATH = Path(os.environ.get("DATABASE_PATH", str(PROJECT_ROOT / "ibvap_surveillance.db")))
 
 
 class Settings(BaseSettings):

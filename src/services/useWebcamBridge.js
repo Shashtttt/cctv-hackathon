@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
+import { api } from './apiService';
 import { getDevicePlatform, enumerateDeviceCameras } from '../utils/deviceDetector';
 import { soundController } from '../utils/audioAlert';
 
@@ -126,7 +127,7 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
       const b64 = canvas.toDataURL('image/jpeg', 0.82);
       const t0 = performance.now();
 
-      axios.post(`/api/v1/cameras/${cameraId}/ingest`, { image: b64 }, {
+      api.post(`/cameras/${cameraId}/ingest`, { image: b64 }, {
         headers: { 'Content-Type': 'application/json' },
         timeout: 3000,
       }).then((res) => {

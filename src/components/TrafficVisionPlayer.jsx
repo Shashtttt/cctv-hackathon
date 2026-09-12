@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Hls from 'hls.js';
 import axios from 'axios';
+import { api } from '../services/apiService';
 import {
   Globe,
   Sparkles,
@@ -139,7 +140,7 @@ export const TrafficVisionPlayer = ({
         const b64 = canvas.toDataURL('image/jpeg', 0.70);
         const t0 = performance.now();
 
-        const res = await axios.post(`/api/v1/cameras/cam-01/ingest`, { image: b64 }, {
+        const res = await api.post(`/cameras/cam-01/ingest`, { image: b64 }, {
           headers: { 'Content-Type': 'application/json' },
           timeout: 2500,
         });
