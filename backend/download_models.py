@@ -50,7 +50,28 @@ def download_file(url: str, dest_path: Path, desc: str) -> bool:
             sys.stdout.flush()
 
     try:
-        urllib.request.urlretrieve(url, str(temp_path), reporthook=_progress)
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            },
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp, open(temp_path, "wb") as f:
+            total_size = int(resp.headers.get("content-length", 0))
+            downloaded = 0
+            block_size = 16384
+            while True:
+                chunk = resp.read(block_size)
+                if not chunk:
+                    break
+                f.write(chunk)
+                downloaded += len(chunk)
+                if total_size > 0:
+                    pct = min(100.0, (downloaded / total_size) * 100)
+                    mb = downloaded / (1024 * 1024)
+                    total_mb = total_size / (1024 * 1024)
+                    sys.stdout.write(f"\r    Progress: {pct:5.1f}% [{mb:5.1f} MB / {total_mb:5.1f} MB]")
+                    sys.stdout.flush()
         print()
         temp_path.replace(dest_path)
         print(f"    [OK] Successfully downloaded: {dest_path.name} ({dest_path.stat().st_size:,} bytes)")

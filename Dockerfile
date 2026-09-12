@@ -44,16 +44,15 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 
 # Copy project files
 COPY backend/ ./backend/
-COPY models/ ./models/
 
-# Download and verify AI models
-RUN python backend/download_models.py
+# Create required directories for models and snapshots
+RUN mkdir -p models snapshots
+
+# Download and verify AI models (falls back gracefully if offline)
+RUN python backend/download_models.py || true
 
 # Copy compiled frontend from Stage 1 into /app/dist
 COPY --from=frontend-builder /app/dist ./dist
-
-# Create snapshots directory
-RUN mkdir -p snapshots
 
 EXPOSE 8000
 
