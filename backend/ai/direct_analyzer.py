@@ -462,13 +462,33 @@ class DirectAIAnalyzer:
         hud = f"{camera_code} AI | PEOPLE: {people_cnt} | UNUSUAL ITEMS: {unusual_cnt} | ALERTS: {alert_cnt}"
         cv2.putText(frame, hud, (20, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.60, (0, 0, 240), 2, cv2.LINE_AA)
 
-        # Bottom Geo-Location & GPS Telemetry HUD
+        # Bottom Geo-Location & GPS Telemetry HUD on Captured Image
         if gps_info:
-            geo_hud = f"LOC: {gps_info.upper()} | UTC: {datetime.datetime.utcnow().strftime('%H:%M:%S')}"
-            (gw, gh), _ = cv2.getTextSize(geo_hud, cv2.FONT_HERSHEY_SIMPLEX, 0.42, 1)
-            cv2.rectangle(frame, (15, h - 35), (25 + gw, h - 10), (0, 0, 0), -1)
-            cv2.rectangle(frame, (15, h - 35), (25 + gw, h - 10), (0, 240, 255), 1)
-            cv2.putText(frame, geo_hud, (20, h - 18), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 240, 255), 1, cv2.LINE_AA)
+            parts = [p.strip() for p in gps_info.split("|") if p.strip()]
+            loc_part = parts[0] if parts else gps_info
+            gps_part = parts[1] if len(parts) > 1 else ""
+
+            # Ensure clean "LOC: " prefix
+            if not loc_part.upper().startswith("LOC:"):
+                loc_line = f"LOC: {loc_part.upper()}"
+            else:
+                loc_line = loc_part.upper()
+
+            time_str = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+            sub_line = f"{gps_part} | {time_str} | IBVAP AI" if gps_part else f"{time_str} | IBVAP AI"
+
+            banner_w = min(w - 24, max(420, int(w * 0.65)))
+            banner_h = 42
+            banner_y = h - banner_h - 10
+
+            # Solid tactical black background with cyan border
+            cv2.rectangle(frame, (12, banner_y), (12 + banner_w, banner_y + banner_h), (8, 14, 24), -1)
+            cv2.rectangle(frame, (12, banner_y), (12 + banner_w, banner_y + banner_h), (255, 240, 0), 1)
+
+            # Location Line (in cyan/yellow)
+            cv2.putText(frame, loc_line, (20, banner_y + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (255, 240, 0), 1, cv2.LINE_AA)
+            # GPS + Timestamp Line (in emerald green)
+            cv2.putText(frame, sub_line, (20, banner_y + 35), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 230, 0), 1, cv2.LINE_AA)
 
         encode_params = [cv2.IMWRITE_JPEG_QUALITY, 85]
         _, buf = cv2.imencode(".jpg", frame, encode_params)

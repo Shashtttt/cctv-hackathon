@@ -275,6 +275,15 @@ export const CameraDetailModal = ({
     }
   };
 
+  const camName = camera?.name || (isWebcam ? (camera?.deviceLabel || 'Physical Device Camera (AI Engine)') : 'Sector Camera');
+  const camCode = camera?.code || (isWebcam ? 'C-01 AI' : (camera?.id ? camera.id.toUpperCase() : 'CAM-01'));
+  const camLocation = isWebcam
+    ? (webcamTelemetry.location || 'Noida Sector 28, Uttar Pradesh')
+    : (camera?.location || 'Noida Sector 28, Uttar Pradesh');
+  const camGps = isWebcam
+    ? (webcamTelemetry.gpsCoords || '28.5708° N, 77.3271° E')
+    : (camera?.gps || camera?.gps_coords || '28.5708° N, 77.3271° E');
+
   const handleCaptureSnapshot = () => {
     setSnapshotFeedback(true);
     setTimeout(() => setSnapshotFeedback(false), 1200);
@@ -282,20 +291,57 @@ export const CameraDetailModal = ({
     const video = videoRef.current;
     if (!video) return;
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
+    const cw = video.videoWidth || 1280;
+    const ch = video.videoHeight || 720;
+    canvas.width = cw;
+    canvas.height = ch;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // 1. Draw raw video frame
+    ctx.drawImage(video, 0, 0, cw, ch);
+
+    // 2. Draw AI detections overlay layer if active
+    if (canvasRef.current) {
+      ctx.drawImage(canvasRef.current, 0, 0, cw, ch);
+    }
+
+    // 3. Draw Tactical Telemetry Banner on captured image
+    const nowUtc = new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+    const bannerH = Math.max(54, Math.round(ch * 0.08));
+    const bannerY = ch - bannerH - 12;
+
+    // Background pill/strip
+    ctx.fillStyle = 'rgba(8, 14, 24, 0.92)';
+    ctx.fillRect(12, bannerY, Math.min(cw - 24, 820), bannerH);
+    ctx.strokeStyle = '#00f2fe';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(12, bannerY, Math.min(cw - 24, 820), bannerH);
+
+    // Header / Location line (e.g. "LOC: NOIDA SECTOR 28 | GPS: 28.5708° N, 77.3271° E")
+    ctx.font = `bold ${Math.max(13, Math.round(ch * 0.022))}px JetBrains Mono, monospace`;
+    ctx.fillStyle = '#00f2fe';
+    ctx.fillText(`📍 LOC: ${camLocation.toUpperCase()} | GPS: ${camGps}`, 24, bannerY + (bannerH * 0.44));
+
+    // Telemetry & Timestamp line
+    ctx.font = `${Math.max(11, Math.round(ch * 0.017))}px JetBrains Mono, monospace`;
+    ctx.fillStyle = '#10b981';
+    ctx.fillText(`TIMESTAMP: ${nowUtc} | CAM: ${camCode} | IBVAP FORENSIC CAPTURE`, 24, bannerY + (bannerH * 0.82));
+
+    // Top-left camera watermark
+    ctx.fillStyle = 'rgba(8, 14, 24, 0.85)';
+    ctx.fillRect(12, 12, 320, 26);
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(12, 12, 320, 26);
+    ctx.font = 'bold 11px JetBrains Mono, monospace';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText(`● ${camCode} • ${camName.toUpperCase()}`, 20, 29);
 
     const a = document.createElement('a');
     a.href = canvas.toDataURL('image/jpeg', 0.95);
-    a.download = `CCTV_SNAPSHOT_${camera?.code || 'CAMERA'}_${Date.now()}.jpg`;
+    a.download = `CCTV_SNAPSHOT_${camCode.replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}.jpg`;
     a.click();
   };
-
-  const camName = camera?.name || (isWebcam ? (camera?.deviceLabel || 'Physical Device Camera (AI Engine)') : 'Sector Camera');
-  const camCode = camera?.code || (isWebcam ? 'C-01 AI' : 'CAM-01');
-  const camLocation = camera?.location || (isWebcam ? 'Local Terminal Command Post' : 'Sector-4 Perimeter');
 
   return (
     <div className="camera-modal-backdrop" onClick={onClose}>

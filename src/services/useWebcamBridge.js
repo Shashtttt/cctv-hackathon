@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { getDevicePlatform, enumerateDeviceCameras } from '../utils/deviceDetector';
 import { soundController } from '../utils/audioAlert';
+import { reverseGeocodeCoords, POPULAR_LOCATIONS } from '../utils/geoLocator';
 
 export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVideoRef = null) => {
   const [isWebcamActive, setIsWebcamActive] = useState(false);
@@ -21,6 +22,8 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
   const [geoPosition, setGeoPosition] = useState(null);
   const geoWatchIdRef = useRef(null);
   const geoPositionRef = useRef(null);
+  const [resolvedLocation, setResolvedLocation] = useState('Noida Sector 28, Uttar Pradesh');
+  const resolvedLocationRef = useRef('Noida Sector 28, Uttar Pradesh');
 
   const [telemetry, setTelemetry] = useState({
     detectionsCount: 0,
@@ -104,9 +107,23 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
             };
             geoPositionRef.current = data;
             setGeoPosition(data);
+
+            // Resolve human-readable city/sector (e.g. "Noida Sector 28" or "Gurgaon Cyber City")
+            reverseGeocodeCoords(latitude, longitude).then((addr) => {
+              if (addr) {
+                resolvedLocationRef.current = addr;
+                setResolvedLocation(addr);
+                setTelemetry((prev) => ({
+                  ...prev,
+                  location: addr,
+                  gpsCoords: formatted,
+                }));
+              }
+            });
+
             setTelemetry((prev) => ({
               ...prev,
-              location: `Device Position (${formatted})`,
+              location: resolvedLocationRef.current || `Device Location (${formatted})`,
               gpsCoords: formatted,
             }));
           },
@@ -127,6 +144,28 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
       navigator.geolocation.clearWatch(geoWatchIdRef.current);
       geoWatchIdRef.current = null;
     }
+  }, []);
+
+  const setLocationOverride = useCallback((locName, optCoords = null) => {
+    resolvedLocationRef.current = locName;
+    setResolvedLocation(locName);
+    if (optCoords) {
+      const formatted = optCoords.gps || `${Math.abs(optCoords.latitude).toFixed(4)}° N, ${Math.abs(optCoords.longitude).toFixed(4)}° E`;
+      const data = {
+        latitude: optCoords.latitude,
+        longitude: optCoords.longitude,
+        accuracy: 10,
+        formatted,
+        timestamp: Date.now(),
+      };
+      geoPositionRef.current = data;
+      setGeoPosition(data);
+    }
+    setTelemetry((prev) => ({
+      ...prev,
+      location: locName,
+      gpsCoords: optCoords?.gps || prev.gpsCoords,
+    }));
   }, []);
 
   const stopWebcam = useCallback(() => {
@@ -182,7 +221,7 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
       axios.post(`/api/v1/cameras/${cameraId}/ingest`, {
         image: b64,
         gps: geoPositionRef.current || null,
-        location: geoPositionRef.current ? geoPositionRef.current.formatted : null,
+        location: resolvedLocationRef.current || telemetry.location || 'Noida Sector 28',
       }, {
         headers: { 'Content-Type': 'application/json' },
         timeout: 3000,
@@ -419,5 +458,8 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
     activeCameraLabel,
     facingMode,
     geoPosition,
+    resolvedLocation,
+    setLocationOverride,
+    popularLocations: POPULAR_LOCATIONS,
   };
 };

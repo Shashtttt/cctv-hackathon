@@ -179,11 +179,11 @@ async def init_db() -> None:
                 except Exception:
                     pass
 
-            # Backfill initial camera coordinates if unset
-            await db.execute("UPDATE cameras SET latitude=34.1524, longitude=74.8211, altitude=1850.0, gps_coords='34.1524° N, 74.8211° E' WHERE id='cam-01' AND (latitude IS NULL OR gps_coords='')")
-            await db.execute("UPDATE cameras SET latitude=34.1102, longitude=74.8905, altitude=1220.0, gps_coords='34.1102° N, 74.8905° E' WHERE id='cam-02' AND (latitude IS NULL OR gps_coords='')")
-            await db.execute("UPDATE cameras SET latitude=34.0891, longitude=74.7920, altitude=940.0, gps_coords='34.0891° N, 74.7920° E' WHERE id='cam-03' AND (latitude IS NULL OR gps_coords='')")
-            await db.execute("UPDATE cameras SET latitude=34.0512, longitude=74.9310, altitude=1100.0, gps_coords='34.0512° N, 74.9310° E' WHERE id='cam-04' AND (latitude IS NULL OR gps_coords='')")
+            # Backfill initial camera coordinates if unset or old
+            await db.execute("UPDATE cameras SET location='Noida Sector 28', latitude=28.5708, longitude=77.3271, altitude=200.0, gps_coords='28.5708° N, 77.3271° E' WHERE id='cam-01' AND (latitude IS NULL OR latitude > 30.0)")
+            await db.execute("UPDATE cameras SET location='Gurgaon Cyber City', latitude=28.4949, longitude=77.0895, altitude=220.0, gps_coords='28.4949° N, 77.0895° E' WHERE id='cam-02' AND (latitude IS NULL OR latitude > 30.0)")
+            await db.execute("UPDATE cameras SET location='Gurgaon Sector 29', latitude=28.4682, longitude=77.0620, altitude=215.0, gps_coords='28.4682° N, 77.0620° E' WHERE id='cam-03' AND (latitude IS NULL OR latitude > 30.0)")
+            await db.execute("UPDATE cameras SET location='Noida Sector 132 Expressway', latitude=28.5085, longitude=77.3774, altitude=198.0, gps_coords='28.5085° N, 77.3774° E' WHERE id='cam-04' AND (latitude IS NULL OR latitude > 30.0)")
             await db.commit()
 
             log.info("Database schema initialised at %s", DB_PATH)
@@ -212,8 +212,8 @@ async def seed_initial_data_if_empty() -> None:
         cameras = [
             (
                 "cam-01", "BOP-01", "North Ridge Perimeter",
-                "Sector 4 - High Altitude Post",
-                34.1524, 74.8211, 1850.0, "34.1524° N, 74.8211° E",
+                "Noida Sector 28",
+                28.5708, 77.3271, 200.0, "28.5708° N, 77.3271° E",
                 "public/videos/mumbai_traffic.mp4",
                 "ONLINE", 30, "1080p FHD", "STANDARD",
                 json.dumps(["HUMAN", "VEHICLE", "FRS", "ANPR"]),
@@ -225,8 +225,8 @@ async def seed_initial_data_if_empty() -> None:
             ),
             (
                 "cam-02", "BOP-04", "Riverine Marshland IR",
-                "Sector 7 - Marshland Crossing",
-                34.1102, 74.8905, 1220.0, "34.1102° N, 74.8905° E",
+                "Gurgaon Cyber City",
+                28.4949, 77.0895, 220.0, "28.4949° N, 77.0895° E",
                 "public/videos/delhi_traffic.mp4",
                 "ONLINE", 25, "1080p FHD", "THERMAL",
                 json.dumps(["HUMAN", "VEHICLE", "FRS"]),
@@ -238,8 +238,8 @@ async def seed_initial_data_if_empty() -> None:
             ),
             (
                 "cam-03", "CHK-02", "Checkpoint Alpha Inspection",
-                "Gate 2 - Highway Entry",
-                34.0891, 74.7920, 940.0, "34.0891° N, 74.7920° E",
+                "Gurgaon Sector 29",
+                28.4682, 77.0620, 215.0, "28.4682° N, 77.0620° E",
                 "public/videos/bangalore_traffic.mp4",
                 "ONLINE", 60, "4K Ultra HD", "ANPR_FOCUS",
                 json.dumps(["VEHICLE", "ANPR"]),
@@ -248,8 +248,8 @@ async def seed_initial_data_if_empty() -> None:
             ),
             (
                 "cam-04", "BOP-12", "South Gate FRS Scanner",
-                "Sector 12 - Infantry Gate",
-                34.0512, 74.9310, 1100.0, "34.0512° N, 74.9310° E",
+                "Noida Sector 132 Expressway",
+                28.5085, 77.3774, 198.0, "28.5085° N, 77.3774° E",
                 "public/videos/goa_traffic.mp4",
                 "ONLINE", 30, "1080p FHD", "FRS_FOCUS",
                 json.dumps(["HUMAN", "FRS"]),

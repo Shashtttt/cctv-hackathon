@@ -738,15 +738,24 @@ class CameraWorker:
             hud = f"{self.camera.code} AI | PEOPLE: {people_cnt} | UNUSUAL ITEMS: {unusual_cnt} | ALERTS: {alert_cnt}"
             cv2.putText(frame, hud, (20, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.60, (0, 0, 240), 2, cv2.LINE_AA)
 
-            # Bottom Geo-Location & GPS Telemetry HUD
+            # Bottom Geo-Location & GPS Telemetry HUD on Captured Image
             gps_str = getattr(self.camera, "gps_coords", "")
             if not gps_str and getattr(self.camera, "latitude", None) and getattr(self.camera, "longitude", None):
                 gps_str = f"{abs(self.camera.latitude):.4f}° {'N' if self.camera.latitude >= 0 else 'S'}, {abs(self.camera.longitude):.4f}° {'E' if self.camera.longitude >= 0 else 'W'}"
-            loc_label = f"LOC: {self.camera.location.upper()}" + (f" | GPS: {gps_str}" if gps_str else "") + f" | UTC: {datetime.datetime.utcnow().strftime('%H:%M:%S')}"
-            (gw, gh), _ = cv2.getTextSize(loc_label, cv2.FONT_HERSHEY_SIMPLEX, 0.42, 1)
-            cv2.rectangle(frame, (15, h - 35), (25 + gw, h - 10), (0, 0, 0), -1)
-            cv2.rectangle(frame, (15, h - 35), (25 + gw, h - 10), (0, 240, 255), 1)
-            cv2.putText(frame, loc_label, (20, h - 18), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 240, 255), 1, cv2.LINE_AA)
+
+            loc_line = f"LOC: {self.camera.location.upper()}"
+            time_str = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+            sub_line = f"GPS: {gps_str} | {time_str} | IBVAP AI" if gps_str else f"{time_str} | IBVAP AI"
+
+            banner_w = min(w - 24, max(420, int(w * 0.65)))
+            banner_h = 42
+            banner_y = h - banner_h - 10
+
+            cv2.rectangle(frame, (12, banner_y), (12 + banner_w, banner_y + banner_h), (8, 14, 24), -1)
+            cv2.rectangle(frame, (12, banner_y), (12 + banner_w, banner_y + banner_h), (255, 240, 0), 1)
+
+            cv2.putText(frame, loc_line, (20, banner_y + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (255, 240, 0), 1, cv2.LINE_AA)
+            cv2.putText(frame, sub_line, (20, banner_y + 35), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 230, 0), 1, cv2.LINE_AA)
 
             encode_params = [cv2.IMWRITE_JPEG_QUALITY, settings.SNAPSHOT_JPEG_QUALITY]
             _, buf = cv2.imencode(".jpg", frame, encode_params)

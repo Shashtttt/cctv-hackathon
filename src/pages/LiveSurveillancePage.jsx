@@ -74,6 +74,9 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
     activeCameraLabel,
     facingMode,
     geoPosition,
+    resolvedLocation,
+    setLocationOverride,
+    popularLocations,
   } = useWebcamBridge('cam-01', 25, webcamVideoRef);
 
   // Attach local media stream directly to video element for 60 FPS zero-lag playback
@@ -356,11 +359,65 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
     await acknowledgeAlert(alertId || 'ALT-101');
   };
 
-  const handleStreamError = (camKey) => {
-    setStreamErrorFlags((prev) => ({ ...prev, [camKey]: true }));
-  };
-
   const hasUnusualThreat = webcamTelemetry.unusualCount > 0;
+
+  const handleQuickFeedSnapshot = () => {
+    const video = webcamVideoRef.current;
+    if (!video || !isWebcamActive) {
+      setExpandedModalCamera(cameras[0] || { id: 'cam-01', code: 'C-01', name: 'North Gate', location: 'Noida Sector 28' });
+      return;
+    }
+    const cw = video.videoWidth || 1280;
+    const ch = video.videoHeight || 720;
+    const canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext('2d');
+
+    // 1. Draw raw video frame
+    ctx.drawImage(video, 0, 0, cw, ch);
+
+    // 2. Draw AI detections overlay layer
+    if (overlayCanvasRef.current) {
+      ctx.drawImage(overlayCanvasRef.current, 0, 0, cw, ch);
+    }
+
+    // 3. Draw Tactical Telemetry Banner on captured image
+    const nowUtc = new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+    const bannerH = Math.max(54, Math.round(ch * 0.08));
+    const bannerY = ch - bannerH - 12;
+
+    const locText = (resolvedLocation || 'Noida Sector 28, Uttar Pradesh').toUpperCase();
+    const gpsText = geoPosition?.formatted || webcamTelemetry.gpsCoords || '28.5708° N, 77.3271° E';
+
+    ctx.fillStyle = 'rgba(8, 14, 24, 0.92)';
+    ctx.fillRect(12, bannerY, Math.min(cw - 24, 820), bannerH);
+    ctx.strokeStyle = '#00f2fe';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(12, bannerY, Math.min(cw - 24, 820), bannerH);
+
+    ctx.font = `bold ${Math.max(13, Math.round(ch * 0.022))}px JetBrains Mono, monospace`;
+    ctx.fillStyle = '#00f2fe';
+    ctx.fillText(`📍 LOC: ${locText} | GPS: ${gpsText}`, 24, bannerY + (bannerH * 0.44));
+
+    ctx.font = `${Math.max(11, Math.round(ch * 0.017))}px JetBrains Mono, monospace`;
+    ctx.fillStyle = '#10b981';
+    ctx.fillText(`TIMESTAMP: ${nowUtc} | CAM: C-01 AI | IBVAP FORENSIC CAPTURE`, 24, bannerY + (bannerH * 0.82));
+
+    ctx.fillStyle = 'rgba(8, 14, 24, 0.85)';
+    ctx.fillRect(12, 12, 320, 26);
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(12, 12, 320, 26);
+    ctx.font = 'bold 11px JetBrains Mono, monospace';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText(`● C-01 AI • ${activeCameraLabel.toUpperCase()}`, 20, 29);
+
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/jpeg', 0.95);
+    a.download = `CCTV_SNAPSHOT_C_01_AI_${Date.now()}.jpg`;
+    a.click();
+  };
 
   return (
     <div className="surveillance-page-container">
@@ -572,6 +629,27 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
                 </select>
               )}
 
+              {isWebcamActive && popularLocations && (
+                <select
+                  value={popularLocations.find((l) => l.name === resolvedLocation)?.id || 'custom'}
+                  onChange={(e) => {
+                    const sel = popularLocations.find((l) => l.id === e.target.value);
+                    if (sel) {
+                      setLocationOverride(sel.name, { latitude: sel.latitude, longitude: sel.longitude, gps: sel.gps });
+                    }
+                  }}
+                  className="camera-device-select font-mono"
+                  title="Surveillance Sector Location (e.g. Noida Sec 28, Gurgaon Cyber City)"
+                >
+                  <option value="custom" disabled>📍 {resolvedLocation || 'Noida Sector 28'}</option>
+                  {popularLocations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      📍 {loc.shortName || loc.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+
               <span className={`pill-badge ${webcamTelemetry.weaponsCount > 0 ? 'pill-red' : 'pill-green'} status-pill-sm`}>
                 <span className={`status-dot ${webcamTelemetry.weaponsCount > 0 ? 'dot-red pulse-ring' : 'dot-green pulse-ring'}`}></span> 
                 {webcamTelemetry.weaponsCount > 0
@@ -676,8 +754,8 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
               <MapPin size={11} className="text-cyan" />
               <span>
                 {isWebcamActive 
-                  ? (geoPosition?.formatted ? `GPS: ${geoPosition.formatted}` : (webcamTelemetry.gpsCoords ? `GPS: ${webcamTelemetry.gpsCoords}` : 'GPS: ACQUIRING...'))
-                  : `LOC: ${cameras[0]?.gps_coords || '34.1524° N, 74.8211° E'}`}
+                  ? `LOC: ${(resolvedLocation || 'NOIDA SECTOR 28').toUpperCase()} | GPS: ${geoPosition?.formatted || webcamTelemetry.gpsCoords || '28.5708° N, 77.3271° E'}`
+                  : `LOC: ${(cameras[0]?.location || 'NOIDA SECTOR 28').toUpperCase()} | GPS: ${cameras[0]?.gps_coords || '28.5708° N, 77.3271° E'}`}
               </span>
             </div>
 
@@ -719,6 +797,13 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
                   <RefreshCw size={13} />
                 </button>
               )}
+              <button 
+                title="Capture Forensic Snapshot with Location & GPS" 
+                className="mobile-touch-btn"
+                onClick={handleQuickFeedSnapshot}
+              >
+                <CameraIcon size={13} />
+              </button>
               <button title="Pan"><Hand size={13} /></button>
               <button title="Zoom"><ZoomIn size={13} /></button>
               <button 
@@ -790,7 +875,7 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
 
             <div className="feed-overlay-gps-box font-mono">
               <MapPin size={11} className="text-cyan" />
-              <span>LOC: {cameras[1]?.gps_coords || '34.1102° N, 74.8905° E'}</span>
+              <span>LOC: {(cameras[1]?.location || 'GURGAON CYBER CITY').toUpperCase()} | GPS: {cameras[1]?.gps_coords || '28.4949° N, 77.0895° E'}</span>
             </div>
 
             <div className="anpr-vehicle-bounding-zone">
@@ -817,7 +902,12 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
             <div className="feed-overlay-controls">
               <button title="Pan"><Hand size={13} /></button>
               <button title="Zoom"><ZoomIn size={13} /></button>
-              <button title="Fullscreen"><Maximize2 size={13} /></button>
+              <button 
+                title="Fullscreen Forensic Inspection"
+                onClick={() => setExpandedModalCamera(cameras[1] || { id: 'cam-02', code: 'C-02', name: 'Riverine Border Road', location: 'Gurgaon Cyber City', gps: '28.4949° N, 77.0895° E' })}
+              >
+                <Maximize2 size={13} />
+              </button>
             </div>
           </div>
 
@@ -869,7 +959,7 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
 
             <div className="feed-overlay-gps-box font-mono" style={{ borderColor: 'rgba(255, 0, 51, 0.5)', color: '#ff6b81' }}>
               <MapPin size={11} className="text-red" />
-              <span>LOC: {cameras[2]?.gps_coords || '34.0891° N, 74.7920° E'}</span>
+              <span>LOC: {(cameras[2]?.location || 'GURGAON SECTOR 29').toUpperCase()} | GPS: {cameras[2]?.gps_coords || '28.4682° N, 77.0620° E'}</span>
             </div>
 
             <div className="intruder-bounding-box">
@@ -879,7 +969,12 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
             <div className="feed-overlay-controls">
               <button title="Pan"><Hand size={13} /></button>
               <button title="Filter"><Sliders size={13} /></button>
-              <button title="Fullscreen"><Maximize2 size={13} /></button>
+              <button 
+                title="Fullscreen Forensic Inspection"
+                onClick={() => setExpandedModalCamera(cameras[2] || { id: 'cam-03', code: 'C-03', name: 'Checkpoint Alpha Inspection', location: 'Gurgaon Sector 29', gps: '28.4682° N, 77.0620° E' })}
+              >
+                <Maximize2 size={13} />
+              </button>
             </div>
           </div>
 
@@ -962,13 +1057,18 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
 
             <div className="feed-overlay-gps-box font-mono">
               <MapPin size={11} className="text-cyan" />
-              <span>LOC: {cameras[3]?.gps_coords || '34.0512° N, 74.9310° E'}</span>
+              <span>LOC: {(cameras[3]?.location || 'NOIDA SECTOR 132 EXPRESSWAY').toUpperCase()} | GPS: {cameras[3]?.gps_coords || '28.5085° N, 77.3774° E'}</span>
             </div>
 
             <div className="feed-overlay-controls">
               <button title="Pan"><Hand size={13} /></button>
               <button title="Zoom"><ZoomIn size={13} /></button>
-              <button title="Fullscreen"><Maximize2 size={13} /></button>
+              <button 
+                title="Fullscreen Forensic Inspection"
+                onClick={() => setExpandedModalCamera(cameras[3] || { id: 'cam-04', code: 'C-04', name: 'South Gate FRS Scanner', location: 'Noida Sector 132 Expressway', gps: '28.5085° N, 77.3774° E' })}
+              >
+                <Maximize2 size={13} />
+              </button>
             </div>
           </div>
 
