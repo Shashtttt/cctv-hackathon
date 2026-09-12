@@ -163,7 +163,7 @@ async def api_key_middleware(request: Request, call_next):
     path = request.url.path
     exempt_prefixes = ("/api/docs", "/api/redoc", "/api/openapi", "/api/health", "/ws")
     if path.startswith(settings.API_V1_STR) and not any(path.startswith(e) for e in exempt_prefixes):
-        if settings.ENV != "development":
+        if settings.REQUIRE_API_KEY:
             key = request.headers.get("X-API-Key", "")
             if key != settings.API_SECRET_KEY:
                 return JSONResponse(
@@ -275,16 +275,20 @@ if dist_dir.exists():
     from fastapi.responses import FileResponse
 
     if (dist_dir / "assets").exists():
-        app.mount("/assets", StaticFiles(directory=dist_dir / "assets"), name="frontend-assets")
+        app.mount("/assets", StaticFiles(directory=str(dist_dir / "assets")), name="frontend-assets")
     if (dist_dir / "videos").exists():
-        app.mount("/videos", StaticFiles(directory=dist_dir / "videos"), name="frontend-videos")
+        app.mount("/videos", StaticFiles(directory=str(dist_dir / "videos")), name="frontend-videos")
+
+    @app.get("/", include_in_schema=False)
+    async def serve_root():
+        return FileResponse(str(dist_dir / "index.html"))
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
         # Do not intercept API or WebSocket paths
-        if full_path.startswith("api/") or full_path.startswith("ws/") or full_path == "api" or full_path == "ws":
+        if full_path.startswith("api") or full_path.startswith("ws"):
             raise HTTPException(status_code=404, detail="Not Found")
         target = dist_dir / full_path
         if target.is_file():
-            return FileResponse(target)
-        return FileResponse(dist_dir / "index.html")
+            return FileResponse(str(target))
+        return FileResponse(str(dist_dir / "index.html"))

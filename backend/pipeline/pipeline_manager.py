@@ -108,6 +108,11 @@ class PipelineManager:
         settings.ensure_dirs()
         settings.warn_missing_models()
 
+        if not settings.ENABLE_CAMERA_WORKERS:
+            log.info("ENABLE_CAMERA_WORKERS=False: Camera subprocess workers disabled (low-memory cloud mode).")
+            self._running = True
+            return
+
         # Load cameras and watchlists from DB
         cameras      = await get_all_cameras()
         frs_subjects = await get_frs_watchlist()

@@ -30,10 +30,12 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "IBVAP - Intelligent Border Video Analytics Platform"
     API_V1_STR: str = "/api/v1"
     ENV: str = "development"                     # development | production
+    ENABLE_CAMERA_WORKERS: bool = False          # False for low-memory cloud / Render 512MB tier
+    REQUIRE_API_KEY: bool = False
 
     # ── Security ─────────────────────────────────────────────────────────────
     API_SECRET_KEY: str = "CHANGE_ME_IN_PRODUCTION_USE_STRONG_RANDOM_KEY"
-    ALLOWED_ORIGINS: list[str] | str = ["http://localhost:5173", "http://localhost:3000"]
+    ALLOWED_ORIGINS: list[str] | str = ["*"]
 
     # ── Database ──────────────────────────────────────────────────────────────
     DATABASE_URL: str = f"sqlite+aiosqlite:///{DB_PATH}"
