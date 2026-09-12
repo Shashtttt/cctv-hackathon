@@ -41,6 +41,15 @@ def get_optimal_device() -> str:
 OPTIMAL_DEVICE = get_optimal_device()
 log.info("IBVAP AI Engine active compute device: %s", OPTIMAL_DEVICE)
 
+# Restrict PyTorch thread allocation on CPU to prevent OOM on 512MB cloud instances
+if OPTIMAL_DEVICE == "cpu":
+    try:
+        torch.set_num_threads(1)
+        torch.set_num_interop_threads(1)
+        torch.set_grad_enabled(False)
+    except Exception:
+        pass
+
 # COCO Class constants
 _PERSON = 0
 HUMAN_CLASSES = {_PERSON}
@@ -186,13 +195,14 @@ class YOLODetector:
         # ── 1. YOLOv8 Pose Inference (Human Skeletons) ────────────────────────
         if self._pose_model is not None:
             try:
-                results_pose = self._pose_model(
-                    frame,
-                    verbose=False,
-                    conf=settings.YOLO_CONFIDENCE_THRESHOLD,
-                    imgsz=384,
-                    device=self._device,
-                )
+                with torch.inference_mode():
+                    results_pose = self._pose_model(
+                        frame,
+                        verbose=False,
+                        conf=settings.YOLO_CONFIDENCE_THRESHOLD,
+                        imgsz=320,
+                        device=self._device,
+                    )
                 if results_pose and results_pose[0].boxes is not None:
                     res = results_pose[0]
                     boxes = res.boxes.xyxyn.cpu().numpy()
@@ -251,14 +261,14 @@ class YOLODetector:
         detected_weapon_boxes: List[Tuple[float, float, float, float]] = []
         if self._weapon_model is not None:
             try:
-                # Sensitive threshold for high-recall weapon detection
-                results_w = self._weapon_model(
-                    frame,
-                    verbose=False,
-                    conf=0.22,
-                    imgsz=640,
-                    device=self._device,
-                )
+                with torch.inference_mode():
+                    results_w = self._weapon_model(
+                        frame,
+                        verbose=False,
+                        conf=0.22,
+                        imgsz=320,
+                        device=self._device,
+                    )
                 if results_w and results_w[0].boxes is not None:
                     res_w = results_w[0]
                     boxes = res_w.boxes.xyxyn.cpu().numpy()
@@ -294,14 +304,14 @@ class YOLODetector:
         # ── 3. General Object Detection (Casual items, Phones, Baggage, Tools, Vehicles)
         if self._obj_model is not None:
             try:
-                # Highly sensitive threshold (0.18) for rapid recall of cell phones, bottles, electronics
-                results_obj = self._obj_model(
-                    frame,
-                    verbose=False,
-                    conf=0.18,
-                    imgsz=640,
-                    device=self._device,
-                )
+                with torch.inference_mode():
+                    results_obj = self._obj_model(
+                        frame,
+                        verbose=False,
+                        conf=0.18,
+                        imgsz=320,
+                        device=self._device,
+                    )
                 if results_obj and results_obj[0].boxes is not None:
                     res_obj = results_obj[0]
                     boxes = res_obj.boxes.xyxyn.cpu().numpy()

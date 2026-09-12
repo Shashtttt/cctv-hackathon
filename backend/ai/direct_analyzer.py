@@ -69,6 +69,11 @@ class DirectAIAnalyzer:
         Process a single BGR frame with the full IBVAP AI pipeline.
         """
         h, w = frame_bgr.shape[:2]
+        if max(h, w) > 640:
+            scale = 640.0 / max(h, w)
+            frame_bgr = cv2.resize(frame_bgr, (int(w * scale), int(h * scale)))
+            h, w = frame_bgr.shape[:2]
+
         now = datetime.datetime.utcnow()
         now_ts = time.time()
         analytics_modes = analytics_modes or ["INTRUSION", "LOITERING", "FRS", "ANPR", "ACTIVITY"]
