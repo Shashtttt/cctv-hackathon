@@ -69,6 +69,7 @@ class DirectAIAnalyzer:
         fence_points: Optional[List[dict]] = None,
         analytics_modes: Optional[List[str]] = None,
         annotate: bool = False,
+        gps_info: Optional[str] = None,
     ) -> FrameResult:
         """
         Process a single BGR frame with the full IBVAP AI pipeline.
@@ -262,7 +263,7 @@ class DirectAIAnalyzer:
 
         # 4. Annotate frame with HUD, Skeletons, and Bounding Boxes (if requested)
         annotated_jpg = (
-            self._annotate_frame(frame_bgr.copy(), detections, alerts, camera_code, fence_points)
+            self._annotate_frame(frame_bgr.copy(), detections, alerts, camera_code, fence_points, gps_info)
             if annotate
             else None
         )
@@ -315,6 +316,7 @@ class DirectAIAnalyzer:
         alerts: List[AlertRecord],
         camera_code: str,
         fence_points: Optional[List[dict]],
+        gps_info: Optional[str] = None,
     ) -> bytes:
         h, w = frame.shape[:2]
 
@@ -459,6 +461,14 @@ class DirectAIAnalyzer:
 
         hud = f"{camera_code} AI | PEOPLE: {people_cnt} | UNUSUAL ITEMS: {unusual_cnt} | ALERTS: {alert_cnt}"
         cv2.putText(frame, hud, (20, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.60, (0, 0, 240), 2, cv2.LINE_AA)
+
+        # Bottom Geo-Location & GPS Telemetry HUD
+        if gps_info:
+            geo_hud = f"LOC: {gps_info.upper()} | UTC: {datetime.datetime.utcnow().strftime('%H:%M:%S')}"
+            (gw, gh), _ = cv2.getTextSize(geo_hud, cv2.FONT_HERSHEY_SIMPLEX, 0.42, 1)
+            cv2.rectangle(frame, (15, h - 35), (25 + gw, h - 10), (0, 0, 0), -1)
+            cv2.rectangle(frame, (15, h - 35), (25 + gw, h - 10), (0, 240, 255), 1)
+            cv2.putText(frame, geo_hud, (20, h - 18), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 240, 255), 1, cv2.LINE_AA)
 
         encode_params = [cv2.IMWRITE_JPEG_QUALITY, 85]
         _, buf = cv2.imencode(".jpg", frame, encode_params)

@@ -53,6 +53,10 @@ async def init_db() -> None:
                     code                    TEXT NOT NULL,
                     name                    TEXT NOT NULL,
                     location                TEXT NOT NULL DEFAULT '',
+                    latitude                REAL,
+                    longitude               REAL,
+                    altitude                REAL,
+                    gps_coords              TEXT NOT NULL DEFAULT '',
                     rtsp_url                TEXT NOT NULL DEFAULT '',
                     status                  TEXT NOT NULL DEFAULT 'ONLINE',
                     fps                     INTEGER NOT NULL DEFAULT 30,
@@ -78,6 +82,9 @@ async def init_db() -> None:
                     frs_match_name  TEXT,
                     frs_match_score REAL,
                     plate_text      TEXT,
+                    latitude        REAL,
+                    longitude       REAL,
+                    gps_coords      TEXT NOT NULL DEFAULT '',
                     FOREIGN KEY (camera_id) REFERENCES cameras(id) ON DELETE CASCADE
                 );
 
@@ -149,6 +156,36 @@ async def init_db() -> None:
                 CREATE INDEX IF NOT EXISTS idx_users_username  ON users(username);
             """)
             await db.commit()
+
+            # Ensure GPS columns exist on existing databases (safe migration)
+            for col, col_type in [
+                ("latitude", "REAL"),
+                ("longitude", "REAL"),
+                ("altitude", "REAL"),
+                ("gps_coords", "TEXT NOT NULL DEFAULT ''"),
+            ]:
+                try:
+                    await db.execute(f"ALTER TABLE cameras ADD COLUMN {col} {col_type}")
+                except Exception:
+                    pass
+
+            for col, col_type in [
+                ("latitude", "REAL"),
+                ("longitude", "REAL"),
+                ("gps_coords", "TEXT NOT NULL DEFAULT ''"),
+            ]:
+                try:
+                    await db.execute(f"ALTER TABLE alerts ADD COLUMN {col} {col_type}")
+                except Exception:
+                    pass
+
+            # Backfill initial camera coordinates if unset
+            await db.execute("UPDATE cameras SET latitude=34.1524, longitude=74.8211, altitude=1850.0, gps_coords='34.1524° N, 74.8211° E' WHERE id='cam-01' AND (latitude IS NULL OR gps_coords='')")
+            await db.execute("UPDATE cameras SET latitude=34.1102, longitude=74.8905, altitude=1220.0, gps_coords='34.1102° N, 74.8905° E' WHERE id='cam-02' AND (latitude IS NULL OR gps_coords='')")
+            await db.execute("UPDATE cameras SET latitude=34.0891, longitude=74.7920, altitude=940.0, gps_coords='34.0891° N, 74.7920° E' WHERE id='cam-03' AND (latitude IS NULL OR gps_coords='')")
+            await db.execute("UPDATE cameras SET latitude=34.0512, longitude=74.9310, altitude=1100.0, gps_coords='34.0512° N, 74.9310° E' WHERE id='cam-04' AND (latitude IS NULL OR gps_coords='')")
+            await db.commit()
+
             log.info("Database schema initialised at %s", DB_PATH)
 
         # Seed demo data if database is empty
@@ -175,7 +212,9 @@ async def seed_initial_data_if_empty() -> None:
         cameras = [
             (
                 "cam-01", "BOP-01", "North Ridge Perimeter",
-                "Sector 4 - High Altitude Post", "public/videos/mumbai_traffic.mp4",
+                "Sector 4 - High Altitude Post",
+                34.1524, 74.8211, 1850.0, "34.1524° N, 74.8211° E",
+                "public/videos/mumbai_traffic.mp4",
                 "ONLINE", 30, "1080p FHD", "STANDARD",
                 json.dumps(["HUMAN", "VEHICLE", "FRS", "ANPR"]),
                 json.dumps([
@@ -186,7 +225,9 @@ async def seed_initial_data_if_empty() -> None:
             ),
             (
                 "cam-02", "BOP-04", "Riverine Marshland IR",
-                "Sector 7 - Marshland Crossing", "public/videos/delhi_traffic.mp4",
+                "Sector 7 - Marshland Crossing",
+                34.1102, 74.8905, 1220.0, "34.1102° N, 74.8905° E",
+                "public/videos/delhi_traffic.mp4",
                 "ONLINE", 25, "1080p FHD", "THERMAL",
                 json.dumps(["HUMAN", "VEHICLE", "FRS"]),
                 json.dumps([
@@ -197,7 +238,9 @@ async def seed_initial_data_if_empty() -> None:
             ),
             (
                 "cam-03", "CHK-02", "Checkpoint Alpha Inspection",
-                "Gate 2 - Highway Entry", "public/videos/bangalore_traffic.mp4",
+                "Gate 2 - Highway Entry",
+                34.0891, 74.7920, 940.0, "34.0891° N, 74.7920° E",
+                "public/videos/bangalore_traffic.mp4",
                 "ONLINE", 60, "4K Ultra HD", "ANPR_FOCUS",
                 json.dumps(["VEHICLE", "ANPR"]),
                 json.dumps([]),
@@ -205,7 +248,9 @@ async def seed_initial_data_if_empty() -> None:
             ),
             (
                 "cam-04", "BOP-12", "South Gate FRS Scanner",
-                "Sector 12 - Infantry Gate", "public/videos/goa_traffic.mp4",
+                "Sector 12 - Infantry Gate",
+                34.0512, 74.9310, 1100.0, "34.0512° N, 74.9310° E",
+                "public/videos/goa_traffic.mp4",
                 "ONLINE", 30, "1080p FHD", "FRS_FOCUS",
                 json.dumps(["HUMAN", "FRS"]),
                 json.dumps([
@@ -217,9 +262,10 @@ async def seed_initial_data_if_empty() -> None:
         ]
         await db.executemany(
             """INSERT INTO cameras
-               (id, code, name, location, rtsp_url, status, fps, resolution,
+               (id, code, name, location, latitude, longitude, altitude, gps_coords,
+                rtsp_url, status, fps, resolution,
                 mode, analytics_modes, fence_points, rtsp_reconnect_attempts, last_frame_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             cameras,
         )
 
@@ -284,19 +330,29 @@ async def seed_initial_data_if_empty() -> None:
 # ── Camera CRUD ───────────────────────────────────────────────────────────────
 
 async def upsert_camera(cam: CameraConfig) -> None:
+    gps = cam.gps_coords
+    if not gps and cam.latitude is not None and cam.longitude is not None:
+        gps = f"{abs(cam.latitude):.4f}° {'N' if cam.latitude >= 0 else 'S'}, {abs(cam.longitude):.4f}° {'E' if cam.longitude >= 0 else 'W'}"
+
     async with get_db() as db:
         await db.execute(
             """INSERT INTO cameras
-               (id, code, name, location, rtsp_url, status, fps, resolution,
+               (id, code, name, location, latitude, longitude, altitude, gps_coords,
+                rtsp_url, status, fps, resolution,
                 mode, analytics_modes, fence_points, rtsp_reconnect_attempts, last_frame_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(id) DO UPDATE SET
+                 location=excluded.location, latitude=excluded.latitude,
+                 longitude=excluded.longitude, altitude=excluded.altitude,
+                 gps_coords=excluded.gps_coords,
                  status=excluded.status, fps=excluded.fps, mode=excluded.mode,
                  analytics_modes=excluded.analytics_modes,
                  fence_points=excluded.fence_points,
                  last_frame_at=excluded.last_frame_at""",
             (
-                cam.id, cam.code, cam.name, cam.location, cam.rtsp_url,
+                cam.id, cam.code, cam.name, cam.location,
+                cam.latitude, cam.longitude, cam.altitude, gps or "",
+                cam.rtsp_url,
                 cam.status, cam.fps, cam.resolution, cam.mode,
                 json.dumps(cam.analytics_modes),
                 json.dumps(cam.fence_points),
@@ -347,9 +403,20 @@ async def delete_camera(cam_id: str) -> None:
 
 def _row_to_camera(row: aiosqlite.Row) -> CameraConfig:
     d = dict(row)
+    lat = d.get("latitude")
+    lng = d.get("longitude")
+    gps = d.get("gps_coords")
+    if not gps and lat is not None and lng is not None:
+        gps = f"{abs(lat):.4f}° {'N' if lat >= 0 else 'S'}, {abs(lng):.4f}° {'E' if lng >= 0 else 'W'}"
+
     return CameraConfig(
         id=d["id"], code=d["code"], name=d["name"],
-        location=d["location"], rtsp_url=d["rtsp_url"],
+        location=d["location"],
+        latitude=lat,
+        longitude=lng,
+        altitude=d.get("altitude"),
+        gps_coords=gps or "",
+        rtsp_url=d["rtsp_url"],
         status=d["status"], fps=d["fps"], resolution=d["resolution"],
         mode=d["mode"],
         analytics_modes=json.loads(d["analytics_modes"]),
@@ -369,8 +436,9 @@ async def save_alert(alert: AlertRecord) -> None:
         await db.execute(
             """INSERT OR IGNORE INTO alerts
                (id, camera_id, timestamp, category, severity, title, description,
-                target_id, status, snapshot_path, frs_match_name, frs_match_score, plate_text)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                target_id, status, snapshot_path, frs_match_name, frs_match_score, plate_text,
+                latitude, longitude, gps_coords)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 alert.id, alert.camera_id,
                 alert.timestamp.isoformat(),
@@ -378,6 +446,7 @@ async def save_alert(alert: AlertRecord) -> None:
                 alert.description, alert.target_id, alert.status,
                 alert.snapshot_path, alert.frs_match_name,
                 alert.frs_match_score, alert.plate_text,
+                alert.latitude, alert.longitude, alert.gps_coords or "",
             ),
         )
         await db.commit()
@@ -436,6 +505,9 @@ def _row_to_alert(row: aiosqlite.Row) -> AlertRecord:
         frs_match_name=d["frs_match_name"],
         frs_match_score=d["frs_match_score"],
         plate_text=d["plate_text"],
+        latitude=d.get("latitude"),
+        longitude=d.get("longitude"),
+        gps_coords=d.get("gps_coords"),
     )
 
 

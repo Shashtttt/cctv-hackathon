@@ -26,7 +26,8 @@ import {
   Play,
   Pause,
   RefreshCw,
-  Eye
+  Eye,
+  MapPin
 } from 'lucide-react';
 import { TRAFFIC_VISION_SETTINGS } from '../services/trafficVisionCatalog';
 import './CameraDetailModal.css';
@@ -464,6 +465,14 @@ export const CameraDetailModal = ({
                   <div className="telemetry-card">
                     <span className="key-lbl">AI ACCELERATION</span>
                     <span className="val-text text-purple">{streamStats.engine}</span>
+                  </div>
+                  <div className="telemetry-card" style={{ gridColumn: 'span 2' }}>
+                    <span className="key-lbl flex items-center gap-1">
+                      <MapPin size={11} className="text-cyan" /> GEOGRAPHIC GPS COORDINATES
+                    </span>
+                    <span className="val-text text-cyan">
+                      {isWebcam ? (webcamTelemetry.gpsCoords || '34.1524° N, 74.8211° E (Device Sensor)') : (camera?.gps || camera?.gps_coords || '34.1524° N, 74.8211° E')}
+                    </span>
                   </div>
                 </div>
 

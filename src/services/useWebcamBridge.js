@@ -18,6 +18,10 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
     getDevicePlatform().isMobile ? 'Mobile Rear Camera' : 'Integrated HD Camera'
   );
 
+  const [geoPosition, setGeoPosition] = useState(null);
+  const geoWatchIdRef = useRef(null);
+  const geoPositionRef = useRef(null);
+
   const [telemetry, setTelemetry] = useState({
     detectionsCount: 0,
     unusualCount: 0,
@@ -34,6 +38,8 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
     deviceMode: 'MPS GPU Accelerated',
     deviceType: getDevicePlatform().deviceType,
     platformName: getDevicePlatform().platformName,
+    location: 'Sector 4 - High Altitude Post',
+    gpsCoords: '34.1524° N, 74.8211° E',
   });
   const [webcamError, setWebcamError] = useState(null);
 
@@ -77,10 +83,57 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
     return internalVideoRef.current;
   };
 
+  const startGeolocation = useCallback(() => {
+    if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+      try {
+        const watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            const { latitude, longitude, altitude, accuracy, speed, heading } = pos.coords;
+            const latStr = `${Math.abs(latitude).toFixed(4)}° ${latitude >= 0 ? 'N' : 'S'}`;
+            const lonStr = `${Math.abs(longitude).toFixed(4)}° ${longitude >= 0 ? 'E' : 'W'}`;
+            const formatted = `${latStr}, ${lonStr}`;
+            const data = {
+              latitude,
+              longitude,
+              altitude: altitude ? Math.round(altitude) : null,
+              accuracy: Math.round(accuracy || 0),
+              speed: speed ? Math.round(speed * 3.6) : 0,
+              heading: heading ? Math.round(heading) : null,
+              formatted,
+              timestamp: pos.timestamp,
+            };
+            geoPositionRef.current = data;
+            setGeoPosition(data);
+            setTelemetry((prev) => ({
+              ...prev,
+              location: `Device Position (${formatted})`,
+              gpsCoords: formatted,
+            }));
+          },
+          (err) => {
+            console.debug('Geolocation notice:', err?.message);
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+        );
+        geoWatchIdRef.current = watchId;
+      } catch (e) {
+        console.debug('Geolocation watch failed:', e);
+      }
+    }
+  }, []);
+
+  const stopGeolocation = useCallback(() => {
+    if (geoWatchIdRef.current !== null && typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.clearWatch(geoWatchIdRef.current);
+      geoWatchIdRef.current = null;
+    }
+  }, []);
+
   const stopWebcam = useCallback(() => {
     isRunningRef.current = false;
     isIngestingRef.current = false;
     setIsWebcamActive(false);
+    stopGeolocation();
 
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
@@ -91,7 +144,7 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
     if (video) {
       video.srcObject = null;
     }
-  }, [externalVideoRef]);
+  }, [externalVideoRef, stopGeolocation]);
 
   const sendFrame = useCallback(async () => {
     if (!isRunningRef.current) return;
@@ -126,7 +179,11 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
       const b64 = canvas.toDataURL('image/jpeg', 0.82);
       const t0 = performance.now();
 
-      axios.post(`/api/v1/cameras/${cameraId}/ingest`, { image: b64 }, {
+      axios.post(`/api/v1/cameras/${cameraId}/ingest`, {
+        image: b64,
+        gps: geoPositionRef.current || null,
+        location: geoPositionRef.current ? geoPositionRef.current.formatted : null,
+      }, {
         headers: { 'Content-Type': 'application/json' },
         timeout: 3000,
       }).then((res) => {
@@ -286,6 +343,7 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
       setIsWebcamActive(true);
       frameCountRef.current = 0;
       fpsTimerRef.current = Date.now();
+      startGeolocation();
 
       sendFrame();
     } catch (err) {
@@ -301,7 +359,7 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
       setWebcamError(msg);
       setIsWebcamActive(false);
     }
-  }, [activeDeviceId, facingMode, deviceInfo, sendFrame, externalVideoRef]);
+  }, [activeDeviceId, facingMode, deviceInfo, sendFrame, externalVideoRef, startGeolocation]);
 
   // Flip or switch between available cameras
   const switchCamera = useCallback(async () => {
@@ -360,5 +418,6 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
     activeDeviceId,
     activeCameraLabel,
     facingMode,
+    geoPosition,
   };
 };

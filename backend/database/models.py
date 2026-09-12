@@ -111,6 +111,10 @@ class CameraConfig:
     name: str
     location: str
     rtsp_url: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    altitude: Optional[float] = None
+    gps_coords: Optional[str] = None
     status: str = "ONLINE"
     fps: int = 30
     resolution: str = "1080p FHD"
@@ -136,6 +140,9 @@ class AlertRecord:
     frs_match_name: Optional[str] = None
     frs_match_score: Optional[float] = None
     plate_text: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    gps_coords: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -158,6 +165,10 @@ class AlertRecord:
             "frsMatchScore": self.frs_match_score,
             "plate_text": self.plate_text,
             "plateText": self.plate_text,
+            "latitude": self.latitude,
+            "longitude": self.longitude,
+            "gps_coords": self.gps_coords,
+            "gpsCoords": self.gps_coords,
         }
 
 

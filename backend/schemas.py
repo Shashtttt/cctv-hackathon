@@ -21,6 +21,10 @@ class CameraCreateRequest(BaseModel):
     code: str
     name: str
     location: str = ""
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    altitude: Optional[float] = None
+    gps_coords: Optional[str] = None
     rtsp_url: str
     fps: int = 30
     resolution: str = "1080p FHD"
@@ -33,6 +37,10 @@ class CameraCreateRequest(BaseModel):
 class CameraUpdateRequest(BaseModel):
     status: Optional[str] = None
     mode: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    altitude: Optional[float] = None
+    gps_coords: Optional[str] = None
     analytics_modes: Optional[List[str]] = None
     fence_points: Optional[List[FencePointSchema]] = None
 
@@ -42,6 +50,10 @@ class CameraResponse(BaseModel):
     code: str
     name: str
     location: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    altitude: Optional[float] = None
+    gps_coords: Optional[str] = None
     rtsp_url: str
     status: str
     fps: int
@@ -62,12 +74,15 @@ class AlertResponse(BaseModel):
     severity: str
     title: str
     description: str
-    target_id: Optional[str]
+    target_id: Optional[str] = None
     status: str
-    snapshot_path: Optional[str]
-    frs_match_name: Optional[str]
-    frs_match_score: Optional[float]
-    plate_text: Optional[str]
+    snapshot_path: Optional[str] = None
+    frs_match_name: Optional[str] = None
+    frs_match_score: Optional[float] = None
+    plate_text: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    gps_coords: Optional[str] = None
 
 
 class AlertListResponse(BaseModel):

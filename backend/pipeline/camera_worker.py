@@ -708,7 +708,7 @@ class CameraWorker:
                 elif is_unattended_bag:
                     label_parts.append(f"⚠️ UNATTENDED: {det.class_name.upper()}")
                 elif det.is_unusual:
-                    label_parts.append(f"?? UNUSUAL: {(det.unusual_item or det.class_name).upper()}")
+                    label_parts.append(f"⚠️ UNUSUAL: {(det.unusual_item or det.class_name).upper()}")
                 else:
                     label_parts.append(f"{det.target_id} {det.class_name.upper()}")
 
@@ -737,6 +737,16 @@ class CameraWorker:
 
             hud = f"{self.camera.code} AI | PEOPLE: {people_cnt} | UNUSUAL ITEMS: {unusual_cnt} | ALERTS: {alert_cnt}"
             cv2.putText(frame, hud, (20, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.60, (0, 0, 240), 2, cv2.LINE_AA)
+
+            # Bottom Geo-Location & GPS Telemetry HUD
+            gps_str = getattr(self.camera, "gps_coords", "")
+            if not gps_str and getattr(self.camera, "latitude", None) and getattr(self.camera, "longitude", None):
+                gps_str = f"{abs(self.camera.latitude):.4f}° {'N' if self.camera.latitude >= 0 else 'S'}, {abs(self.camera.longitude):.4f}° {'E' if self.camera.longitude >= 0 else 'W'}"
+            loc_label = f"LOC: {self.camera.location.upper()}" + (f" | GPS: {gps_str}" if gps_str else "") + f" | UTC: {datetime.datetime.utcnow().strftime('%H:%M:%S')}"
+            (gw, gh), _ = cv2.getTextSize(loc_label, cv2.FONT_HERSHEY_SIMPLEX, 0.42, 1)
+            cv2.rectangle(frame, (15, h - 35), (25 + gw, h - 10), (0, 0, 0), -1)
+            cv2.rectangle(frame, (15, h - 35), (25 + gw, h - 10), (0, 240, 255), 1)
+            cv2.putText(frame, loc_label, (20, h - 18), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 240, 255), 1, cv2.LINE_AA)
 
             encode_params = [cv2.IMWRITE_JPEG_QUALITY, settings.SNAPSHOT_JPEG_QUALITY]
             _, buf = cv2.imencode(".jpg", frame, encode_params)

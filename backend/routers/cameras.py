@@ -44,9 +44,18 @@ async def worker_status():
 
 @router.post("/", response_model=CameraResponse, status_code=status.HTTP_201_CREATED)
 async def create_camera(body: CameraCreateRequest):
+    gps = body.gps_coords
+    if not gps and body.latitude is not None and body.longitude is not None:
+        gps = f"{abs(body.latitude):.4f}° {'N' if body.latitude >= 0 else 'S'}, {abs(body.longitude):.4f}° {'E' if body.longitude >= 0 else 'W'}"
+
     cam = CameraConfig(
         id=body.id, code=body.code, name=body.name,
-        location=body.location, rtsp_url=body.rtsp_url,
+        location=body.location,
+        latitude=body.latitude,
+        longitude=body.longitude,
+        altitude=body.altitude,
+        gps_coords=gps or "",
+        rtsp_url=body.rtsp_url,
         fps=body.fps, resolution=body.resolution, mode=body.mode,
         analytics_modes=body.analytics_modes,
         fence_points=[p.model_dump() for p in body.fence_points],
@@ -73,15 +82,26 @@ async def update_camera(cam_id: str, body: CameraUpdateRequest):
     if not cam:
         raise HTTPException(status_code=404, detail=f"Camera {cam_id} not found.")
 
-    if body.name is not None:
+    if hasattr(body, "name") and body.name is not None:
         cam.name = body.name
-    if body.location is not None:
+    if hasattr(body, "location") and body.location is not None:
         cam.location = body.location
-    if body.rtsp_url is not None:
+    if hasattr(body, "latitude") and body.latitude is not None:
+        cam.latitude = body.latitude
+    if hasattr(body, "longitude") and body.longitude is not None:
+        cam.longitude = body.longitude
+    if hasattr(body, "altitude") and body.altitude is not None:
+        cam.altitude = body.altitude
+    if hasattr(body, "gps_coords") and body.gps_coords is not None:
+        cam.gps_coords = body.gps_coords
+    elif cam.latitude is not None and cam.longitude is not None:
+        cam.gps_coords = f"{abs(cam.latitude):.4f}° {'N' if cam.latitude >= 0 else 'S'}, {abs(cam.longitude):.4f}° {'E' if cam.longitude >= 0 else 'W'}"
+
+    if hasattr(body, "rtsp_url") and body.rtsp_url is not None:
         cam.rtsp_url = body.rtsp_url
-    if body.fps is not None:
+    if hasattr(body, "fps") and body.fps is not None:
         cam.fps = body.fps
-    if body.resolution is not None:
+    if hasattr(body, "resolution") and body.resolution is not None:
         cam.resolution = body.resolution
     if body.mode is not None:
         cam.mode = body.mode
@@ -215,6 +235,30 @@ async def ingest_camera_frame(cam_id: str, request: Request):
     if frame_bgr is None or frame_bgr.size == 0:
         raise HTTPException(status_code=400, detail="Invalid image data received or failed to decode.")
 
+    body_location = None
+    body_gps = None
+    if "application/json" in content_type and isinstance(body, dict):
+        body_location = body.get("location")
+        body_gps = body.get("gps")
+
+    # Format GPS coordinate string
+    gps_str = ""
+    if isinstance(body_gps, dict):
+        lat = body_gps.get("latitude")
+        lon = body_gps.get("longitude")
+        if lat is not None and lon is not None:
+            lat_dir = "N" if lat >= 0 else "S"
+            lon_dir = "E" if lon >= 0 else "W"
+            acc = f" (±{int(body_gps.get('accuracy', 0))}m)" if body_gps.get("accuracy") else ""
+            gps_str = f"{abs(lat):.4f}° {lat_dir}, {abs(lon):.4f}° {lon_dir}{acc}"
+    elif isinstance(body_gps, str):
+        gps_str = body_gps
+    elif getattr(cam, "gps_coords", None):
+        gps_str = cam.gps_coords
+
+    loc_name = body_location or cam.location
+    gps_full_label = f"{loc_name} | GPS: {gps_str}" if (loc_name and gps_str) else (gps_str or loc_name)
+
     analyzer = DirectAIAnalyzer.get_instance()
     result = analyzer.process_frame(
         frame_bgr=frame_bgr,
@@ -223,6 +267,7 @@ async def ingest_camera_frame(cam_id: str, request: Request):
         fence_points=cam.fence_points,
         analytics_modes=cam.analytics_modes,
         annotate=True,
+        gps_info=gps_full_label,
     )
 
     await pipeline_manager.ingest_frame_result(result)
@@ -235,6 +280,8 @@ async def ingest_camera_frame(cam_id: str, request: Request):
     return {
         "success": True,
         "camera_id": cam.id,
+        "location": loc_name,
+        "gps": gps_str,
         "detections_count": len(result.detections),
         "alerts_count": len(result.alerts),
         "detections": [
@@ -277,9 +324,20 @@ async def ingest_camera_frame(cam_id: str, request: Request):
 
 
 def _to_response(cam: CameraConfig) -> dict:
+    lat = getattr(cam, "latitude", None)
+    lng = getattr(cam, "longitude", None)
+    gps = getattr(cam, "gps_coords", None)
+    if not gps and lat is not None and lng is not None:
+        gps = f"{abs(lat):.4f}° {'N' if lat >= 0 else 'S'}, {abs(lng):.4f}° {'E' if lng >= 0 else 'W'}"
+
     return {
         "id": cam.id, "code": cam.code, "name": cam.name,
-        "location": cam.location, "rtsp_url": cam.rtsp_url,
+        "location": cam.location,
+        "latitude": lat,
+        "longitude": lng,
+        "altitude": getattr(cam, "altitude", None),
+        "gps_coords": gps or "",
+        "rtsp_url": cam.rtsp_url,
         "status": cam.status, "fps": cam.fps, "resolution": cam.resolution,
         "mode": cam.mode, "analytics_modes": cam.analytics_modes,
         "fence_points": cam.fence_points, "last_frame_at": cam.last_frame_at,

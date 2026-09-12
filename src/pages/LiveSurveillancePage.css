@@ -483,6 +483,26 @@
   font-size: 0.62rem;
 }
 
+/* Bottom GPS Telemetry Box */
+.feed-overlay-gps-box {
+  position: absolute;
+  bottom: 28px;
+  left: 10px;
+  background: rgba(10, 16, 28, 0.88);
+  border: 1px solid rgba(0, 242, 254, 0.4);
+  padding: 4px 10px;
+  border-radius: 4px;
+  color: #00f2fe;
+  font-size: 0.65rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 5;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
 /* Top-Right Title Overlay Box */
 .feed-overlay-top-right-box {
   position: absolute;

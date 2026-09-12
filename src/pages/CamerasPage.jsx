@@ -20,7 +20,8 @@ import {
   ShieldAlert,
   VideoOff,
   Radio,
-  RefreshCw
+  RefreshCw,
+  MapPin
 } from 'lucide-react';
 import { fetchCameras, getCameraStreamUrl } from '../services/apiService';
 import { INDIA_TRAFFIC_CAMERAS } from '../services/trafficVisionCatalog';
@@ -34,6 +35,7 @@ const trafficVisionCamEntries = INDIA_TRAFFIC_CAMERAS.map((tv, idx) => ({
   status: 'online',
   statusText: 'ONLINE ⚡',
   location: tv.location,
+  gps_coords: tv.gps,
   resolution: tv.resolution,
   lastSeen: 'Live Now',
   image: '/assets/cam1.png',
@@ -58,6 +60,7 @@ const defaultCamerasData = [
     status: 'online',
     statusText: 'Online',
     location: 'Sector 01',
+    gps_coords: '34.1524° N, 74.8211° E',
     resolution: '1080p',
     lastSeen: 'Just now',
     image: '/assets/cam1.png',
@@ -76,6 +79,7 @@ const defaultCamerasData = [
     status: 'online',
     statusText: 'Online',
     location: 'Sector 02',
+    gps_coords: '34.1102° N, 74.8905° E',
     resolution: '1080p',
     lastSeen: 'Just now',
     image: '/assets/cam2.png',
@@ -94,6 +98,7 @@ const defaultCamerasData = [
     status: 'warning',
     statusText: 'Warning',
     location: 'Sector 03',
+    gps_coords: '34.0891° N, 74.7920° E',
     resolution: '1080p',
     lastSeen: '10 sec ago',
     image: '/assets/cam3.png',
@@ -112,6 +117,7 @@ const defaultCamerasData = [
     status: 'online',
     statusText: 'Online',
     location: 'Sector 04',
+    gps_coords: '34.0512° N, 74.9310° E',
     resolution: '720p',
     lastSeen: 'Just now',
     image: '/assets/cam4.png',
@@ -130,6 +136,7 @@ const defaultCamerasData = [
     status: 'online',
     statusText: 'Online',
     location: 'Sector 05',
+    gps_coords: '34.0321° N, 74.7540° E',
     resolution: '1080p',
     lastSeen: 'Just now',
     image: '/assets/cam5.png',
@@ -514,6 +521,14 @@ const CamerasPage = () => {
                     {cam.lastSeen}
                   </span>
                 </div>
+              </div>
+
+              {/* GPS Telemetry Bar */}
+              <div className="cam-gps-telemetry-row font-mono" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#00f2fe', background: 'rgba(0, 242, 254, 0.06)', border: '1px solid rgba(0, 242, 254, 0.18)', borderRadius: '4px', padding: '4px 8px', marginTop: '8px' }}>
+                <MapPin size={12} className="text-cyan flex-shrink-0" />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  GPS: {cam.gps_coords || cam.gps || '34.1524° N, 74.8211° E'}
+                </span>
               </div>
 
               {/* Optional Detections Box */}

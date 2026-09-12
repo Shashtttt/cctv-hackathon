@@ -11,7 +11,8 @@ import {
   Radio,
   Compass,
   CheckCircle2,
-  Cpu
+  Cpu,
+  MapPin
 } from 'lucide-react';
 import { TRAFFIC_VISION_SETTINGS, INDIA_TRAFFIC_CAMERAS } from '../services/trafficVisionCatalog';
 import { soundController } from '../utils/audioAlert';
@@ -426,6 +427,10 @@ export const TrafficVisionPlayer = ({
 
         {/* HUD Chips */}
         <div className="tv-hud-osd">
+          <div className="tv-hud-chip">
+            <MapPin size={12} className="text-cyan-400" />
+            <span>GPS: {currentCam.gps || (currentCam.coordinates ? `${currentCam.coordinates[0]}° N, ${currentCam.coordinates[1]}° E` : currentCam.location)}</span>
+          </div>
           <div className="tv-hud-chip">
             <Cpu size={12} className="text-emerald-400" />
             <span>YOLOv8 Dual Engine • {aiTelemetry.latencyMs}ms</span>

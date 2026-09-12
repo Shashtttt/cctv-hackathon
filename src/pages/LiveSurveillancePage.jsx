@@ -23,7 +23,8 @@ import {
   CheckCircle2,
   Shield,
   Cpu,
-  Smartphone
+  Smartphone,
+  MapPin
 } from 'lucide-react';
 import { fetchCameras, fetchAlerts, acknowledgeAlert, getCameraStreamUrl } from '../services/apiService';
 import { useWebcamBridge } from '../services/useWebcamBridge';
@@ -72,6 +73,7 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
     activeDeviceId,
     activeCameraLabel,
     facingMode,
+    geoPosition,
   } = useWebcamBridge('cam-01', 25, webcamVideoRef);
 
   // Attach local media stream directly to video element for 60 FPS zero-lag playback
@@ -309,13 +311,26 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
           16,
           26
         );
+
+        // 6. Bottom GPS Location HUD
+        const currentGps = (isWebcamActive && geoPosition?.formatted)
+          ? `LIVE GPS: ${geoPosition.formatted} (±${geoPosition.accuracy}m)`
+          : (cameras[0]?.gps_coords ? `SECTOR GPS: ${cameras[0].gps_coords}` : 'SECTOR GPS: 34.1524° N, 74.8211° E');
+        ctx.fillStyle = 'rgba(10, 16, 28, 0.88)';
+        ctx.fillRect(10, canvas.height - 28, 380, 20);
+        ctx.strokeStyle = '#00f2fe';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(10, canvas.height - 28, 380, 20);
+        ctx.font = 'bold 9.5px JetBrains Mono, monospace';
+        ctx.fillStyle = '#00f2fe';
+        ctx.fillText(`📍 ${currentGps} • REC ACTIVE`, 16, canvas.height - 14);
       }
       animId = requestAnimationFrame(renderOverlay);
     };
 
     animId = requestAnimationFrame(renderOverlay);
     return () => cancelAnimationFrame(animId);
-  }, [isWebcamActive, liveDetections, webcamTelemetry]);
+  }, [isWebcamActive, liveDetections, webcamTelemetry, geoPosition, cameras]);
 
   const loadData = async () => {
     try {
@@ -657,6 +672,15 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
               {isWebcamActive ? `${activeCameraLabel.toUpperCase()} LIVE FEED` : 'NORTH GATE ENTRY LIVE'}
             </div>
 
+            <div className="feed-overlay-gps-box font-mono">
+              <MapPin size={11} className="text-cyan" />
+              <span>
+                {isWebcamActive 
+                  ? (geoPosition?.formatted ? `GPS: ${geoPosition.formatted}` : (webcamTelemetry.gpsCoords ? `GPS: ${webcamTelemetry.gpsCoords}` : 'GPS: ACQUIRING...'))
+                  : `LOC: ${cameras[0]?.gps_coords || '34.1524° N, 74.8211° E'}`}
+              </span>
+            </div>
+
             {/* Detections summary overlay when webcam is active */}
             {isWebcamActive && webcamTelemetry.detections && webcamTelemetry.detections.length > 0 && (
               <div className="webcam-detections-strip font-mono">
@@ -764,6 +788,11 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
               INFRARED THERMAL ENABLED
             </div>
 
+            <div className="feed-overlay-gps-box font-mono">
+              <MapPin size={11} className="text-cyan" />
+              <span>LOC: {cameras[1]?.gps_coords || '34.1102° N, 74.8905° E'}</span>
+            </div>
+
             <div className="anpr-vehicle-bounding-zone">
               <div className="ir-anchor-sq ir-sq-tl"></div>
               <div className="ir-anchor-sq ir-sq-tr"></div>
@@ -836,6 +865,11 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
               <span className="pill-badge pill-red reticle-tag font-mono">
                 TARGET RETICLE ACTIVE
               </span>
+            </div>
+
+            <div className="feed-overlay-gps-box font-mono" style={{ borderColor: 'rgba(255, 0, 51, 0.5)', color: '#ff6b81' }}>
+              <MapPin size={11} className="text-red" />
+              <span>LOC: {cameras[2]?.gps_coords || '34.0891° N, 74.7920° E'}</span>
             </div>
 
             <div className="intruder-bounding-box">
@@ -926,8 +960,9 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
               </div>
             </div>
 
-            <div className="feed-overlay-bottom-left-box font-mono">
-              <div>LAT: 32.7894° N | LONG: 67.1234° E</div>
+            <div className="feed-overlay-gps-box font-mono">
+              <MapPin size={11} className="text-cyan" />
+              <span>LOC: {cameras[3]?.gps_coords || '34.0512° N, 74.9310° E'}</span>
             </div>
 
             <div className="feed-overlay-controls">
