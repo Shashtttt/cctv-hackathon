@@ -20,8 +20,9 @@ from typing import Set
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
-from .config import PROJECT_ROOT, settings
+from .config import settings
 from .database.db import init_db
 from .database.models import AlertRecord
 from .pipeline.pipeline_manager import pipeline_manager
@@ -163,7 +164,7 @@ async def api_key_middleware(request: Request, call_next):
     path = request.url.path
     exempt_prefixes = ("/api/docs", "/api/redoc", "/api/openapi", "/api/health", "/ws")
     if path.startswith(settings.API_V1_STR) and not any(path.startswith(e) for e in exempt_prefixes):
-        if settings.REQUIRE_API_KEY:
+        if settings.ENV != "development":
             key = request.headers.get("X-API-Key", "")
             if key != settings.API_SECRET_KEY:
                 return JSONResponse(
@@ -183,6 +184,10 @@ app.include_router(frs.router,       prefix=prefix)
 app.include_router(anpr.router,      prefix=prefix)
 app.include_router(analytics.router, prefix=prefix)
 app.include_router(snapshots.router, prefix=prefix)
+
+# Mount snapshots static folder for direct image access
+if settings.SNAPSHOT_DIR.exists():
+    app.mount("/snapshots", StaticFiles(directory=str(settings.SNAPSHOT_DIR)), name="snapshots")
 
 
 # ── Health check ──────────────────────────────────────────────────────────────
@@ -266,29 +271,3 @@ async def frame_stream(ws: WebSocket, cam_id: str):
         log.debug("Frame stream disconnected for %s: %s", cam_id, exc)
     finally:
         log.info("Frame stream closed for camera %s", cam_id)
-
-
-# ── Frontend Static Files (Single-Service Fullstack Deployment) ───────────────
-dist_dir = PROJECT_ROOT / "dist"
-if dist_dir.exists():
-    from fastapi.staticfiles import StaticFiles
-    from fastapi.responses import FileResponse
-
-    if (dist_dir / "assets").exists():
-        app.mount("/assets", StaticFiles(directory=str(dist_dir / "assets")), name="frontend-assets")
-    if (dist_dir / "videos").exists():
-        app.mount("/videos", StaticFiles(directory=str(dist_dir / "videos")), name="frontend-videos")
-
-    @app.get("/", include_in_schema=False)
-    async def serve_root():
-        return FileResponse(str(dist_dir / "index.html"))
-
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_spa(full_path: str):
-        # Do not intercept API or WebSocket paths
-        if full_path.startswith("api") or full_path.startswith("ws"):
-            raise HTTPException(status_code=404, detail="Not Found")
-        target = dist_dir / full_path
-        if target.is_file():
-            return FileResponse(str(target))
-        return FileResponse(str(dist_dir / "index.html"))

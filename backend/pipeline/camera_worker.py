@@ -29,7 +29,7 @@ from ..ai.face_recognizer import FaceRecognizer
 from ..ai.loitering_tracker import LoiteringTracker
 from ..ai.night_enhancer import NightEnhancer
 from ..ai.yolo_detector import YOLODetector, HUMAN_CLASSES, VEHICLE_CLASSES
-from ..config import settings
+from ..config import PROJECT_ROOT, settings
 from ..core.virtual_fence import VirtualFenceEngine
 from ..database.models import (
     AlertRecord, CameraConfig, Detection, FrameResult, SnapshotRecord,
@@ -90,6 +90,7 @@ class CameraWorker:
         self._prev_positions: Dict[str, tuple] = {}
 
         self._frame_number = 0
+        self._synth_cap = None
 
     # ── Main run loop (entry point from multiprocessing) ──────────────────────
 
@@ -169,11 +170,17 @@ class CameraWorker:
 
                 ret, frame = cap.read()
                 if not ret or frame is None:
-                    log.warning("[%s] Frame read failure — reconnecting …", self.camera.code)
-                    cap.release()
-                    cap = None
-                    time.sleep(1)
-                    continue
+                    # If reading a video file, loop back to frame 0
+                    if cap is not None and cap.isOpened():
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        ret, frame = cap.read()
+                    if not ret or frame is None:
+                        log.warning("[%s] Frame read failure — reconnecting …", self.camera.code)
+                        if cap:
+                            cap.release()
+                        cap = None
+                        time.sleep(1)
+                        continue
 
             # Frame drop: if queue is full, discard oldest to keep real-time
             if self._frame_q.full():
@@ -192,36 +199,78 @@ class CameraWorker:
 
         if cap and cap.isOpened():
             cap.release()
+        if self._synth_cap and self._synth_cap.isOpened():
+            self._synth_cap.release()
 
     def _generate_synthetic_frame(self, tick: int) -> np.ndarray:
         """
-        Generates realistic 720p dark tactical border surveillance frames
-        with dynamic moving subjects for testing all AI features (YOLO pose,
-        virtual fence, and loitering) even without live video.
+        Generates 2D top-down highway traffic surveillance simulation (Screenshot 1)
+        with moving vehicles (blue/orange cars with red taillights & yellow headlights),
+        yellow margin borders, white dashed lane markers, and red virtual fence zone.
         """
         import cv2   # type: ignore
 
         w, h = 1280, 720
-        frame = np.full((h, w, 3), (18, 22, 28), dtype=np.uint8)
+        # Dark brown/asphalt road background (BGR matching Screenshot 1)
+        frame = np.full((h, w, 3), (32, 42, 48), dtype=np.uint8)
 
-        # Ground line / horizon & grid
-        cv2.line(frame, (0, int(h * 0.70)), (w, int(h * 0.70)), (30, 42, 54), 1)
-        for gx in range(0, w, 160):
-            cv2.line(frame, (gx, int(h * 0.70)), (gx - 100, h), (24, 32, 40), 1)
+        # Top and bottom solid yellow highway margin lines
+        cv2.line(frame, (0, 30), (w, 30), (0, 220, 255), 4, cv2.LINE_AA)
+        cv2.line(frame, (0, h - 30), (w, h - 30), (0, 220, 255), 4, cv2.LINE_AA)
 
-        # Draw virtual fence boundary
-        if self.camera.fence_points and len(self.camera.fence_points) >= 3:
-            pts = np.array([
-                [int(p["x"] * w), int(p["y"] * h)] for p in self.camera.fence_points
-            ], dtype=np.int32)
-            cv2.polylines(frame, [pts], isClosed=True, color=(0, 60, 220), thickness=2)
+        # 2 White dashed lane divider lines
+        lane1_y = 230
+        lane2_y = 460
+        dash_len = 45
+        gap_len = 35
+        for x in range(0, w, dash_len + gap_len):
+            cv2.line(frame, (x, lane1_y), (x + dash_len, lane1_y), (240, 240, 240), 3, cv2.LINE_AA)
+            cv2.line(frame, (x, lane2_y), (x + dash_len, lane2_y), (240, 240, 240), 3, cv2.LINE_AA)
 
-        # Add camera code and timestamp watermark
-        ts_str = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S.%f")[:-4] + " UTC"
-        cv2.putText(frame, f"{self.camera.code} | {self.camera.location}", (20, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (120, 180, 140), 1, cv2.LINE_AA)
-        cv2.putText(frame, ts_str, (20, 60),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 140, 120), 1, cv2.LINE_AA)
+        # Red Virtual Fence Zone Trapezoid (matching Screenshot 1)
+        fence_pts = np.array([
+            [160, 42],       # Top-left
+            [1120, 42],      # Top-right
+            [1190, 668],     # Bottom-right
+            [90, 668]        # Bottom-left
+        ], dtype=np.int32)
+        cv2.polylines(frame, [fence_pts], isClosed=True, color=(0, 0, 240), thickness=2, lineType=cv2.LINE_AA)
+        cv2.putText(frame, "VIRTUAL FENCE ZONE", (165, 36),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 0, 240), 1, cv2.LINE_AA)
+
+        # Dynamic Moving Cars (Blue & Orange rectangular bodies with yellow headlights & red taillights)
+        vehicles = [
+            {"y": 130, "w": 100, "h": 50, "speed": 4, "color": (50, 160, 240), "dir": 1, "offset": 0},      # Orange car top lane
+            {"y": 130, "w": 130, "h": 50, "speed": -3, "color": (230, 130, 40), "dir": -1, "offset": 600},   # Blue truck top lane
+            {"y": 345, "w": 135, "h": 55, "speed": 5, "color": (230, 130, 40), "dir": 1, "offset": 300},    # Blue car middle lane
+            {"y": 550, "w": 135, "h": 55, "speed": -4, "color": (230, 130, 40), "dir": -1, "offset": 100},   # Blue car bottom lane
+            {"y": 550, "w": 95, "h": 50, "speed": 3, "color": (50, 160, 240), "dir": 1, "offset": 500},     # Orange car bottom lane
+        ]
+
+        for v in vehicles:
+            vx = int((tick * v["speed"] * v["dir"] + v["offset"]) % (w + 200)) - 100
+            vy = v["y"]
+            vw, vh = v["w"], v["h"]
+            x1, y1 = vx, vy - vh // 2
+            x2, y2 = vx + vw, vy + vh // 2
+
+            # Vehicle body rectangle
+            cv2.rectangle(frame, (x1, y1), (x2, y2), v["color"], -1)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (200, 200, 200), 1)
+
+            # Taillights (red) & Headlights (yellow)
+            if v["dir"] == 1:
+                # Moving right: Red taillights on left, Yellow headlights on right
+                cv2.circle(frame, (x1 + 4, y1 + 8), 3, (0, 0, 240), -1, cv2.LINE_AA)
+                cv2.circle(frame, (x1 + 4, y2 - 8), 3, (0, 0, 240), -1, cv2.LINE_AA)
+                cv2.circle(frame, (x2 - 4, y1 + 8), 3, (0, 240, 255), -1, cv2.LINE_AA)
+                cv2.circle(frame, (x2 - 4, y2 - 8), 3, (0, 240, 255), -1, cv2.LINE_AA)
+            else:
+                # Moving left: Yellow headlights on left, Red taillights on right
+                cv2.circle(frame, (x1 + 4, y1 + 8), 3, (0, 240, 255), -1, cv2.LINE_AA)
+                cv2.circle(frame, (x1 + 4, y2 - 8), 3, (0, 240, 255), -1, cv2.LINE_AA)
+                cv2.circle(frame, (x2 - 4, y1 + 8), 3, (0, 0, 240), -1, cv2.LINE_AA)
+                cv2.circle(frame, (x2 - 4, y2 - 8), 3, (0, 0, 240), -1, cv2.LINE_AA)
 
         return frame
 
@@ -648,48 +697,46 @@ class CameraWorker:
                         if kc > 0.35:
                             cv2.circle(frame, (int(kx * w), int(ky * h)), 4, (0, 0, 255) if is_weapon_threat else (0, 200, 0), -1, cv2.LINE_AA)
 
-                # Tag Label
+                # Tag Label Box matching Screenshot 2
                 label_parts = []
                 if is_armed:
-                    label_parts.append(f"🚨 ARMED: HOLDING {det.held_item} ({det.held_by_hand or 'HAND'})")
+                    label_parts.append(f"🚨 ARMED: {det.held_item}")
                 elif is_holding_casual:
-                    label_parts.append(f"📦 HOLDING: {det.held_item} ({det.held_by_hand or 'HAND'})")
+                    label_parts.append(f"📦 HOLDING: {det.held_item}")
                 elif is_weapon:
                     label_parts.append(f"🚨 WEAPON: {det.class_name.upper()}")
                 elif is_unattended_bag:
-                    label_parts.append(f"⚠️ UNATTENDED BAGGAGE: {det.class_name.upper()}")
+                    label_parts.append(f"⚠️ UNATTENDED: {det.class_name.upper()}")
                 elif det.is_unusual:
-                    label_parts.append(f"⚠️ UNUSUAL: {(det.unusual_item or det.class_name).upper()}")
+                    label_parts.append(f"?? UNUSUAL: {(det.unusual_item or det.class_name).upper()}")
                 else:
                     label_parts.append(f"{det.target_id} {det.class_name.upper()}")
 
-                if det.pose_label and det.class_id == 0 and not is_armed and not is_holding_casual:
+                if det.pose_label and det.class_id == 0:
                     label_parts.append(f"[{det.pose_label}]")
                 if det.frs_match_name:
-                    label_parts.append(f"FRS:{det.frs_match_name} ({det.frs_match_score:.0%})")
+                    label_parts.append(f"FRS:{det.frs_match_name}")
                 if det.plate_text:
                     label_parts.append(f"PLATE:{det.plate_text}")
-                if det.loiter_seconds > 5:
+                if det.loiter_seconds > 3:
                     label_parts.append(f"DWELL:{det.loiter_seconds:.0f}s")
 
                 label = " | ".join(label_parts)
                 (lw, lh), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
                 tag_y = max(y1 - lh - 8, 0)
-                cv2.rectangle(frame, (x1, tag_y), (x1 + lw + 8, tag_y + lh + 8), (15, 20, 30), -1)
-                cv2.rectangle(frame, (x1, tag_y), (x1 + lw + 8, tag_y + lh + 8), colour, 1)
-                cv2.putText(frame, label, (x1 + 4, tag_y + lh + 4),
+                # Black filled background tag box with red/yellow outline
+                cv2.rectangle(frame, (x1, tag_y), (x1 + lw + 10, tag_y + lh + 8), (0, 0, 0), -1)
+                cv2.rectangle(frame, (x1, tag_y), (x1 + lw + 10, tag_y + lh + 8), colour, 1)
+                cv2.putText(frame, label, (x1 + 5, tag_y + lh + 3),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.42, colour, 1, cv2.LINE_AA)
 
-            # Top-left HUD info
+            # Top-left HUD info (matching Screenshot 2 format)
             people_cnt = sum(1 for d in detections if d.class_id == 0)
-            armed_cnt = sum(1 for d in detections if getattr(d, "is_holding", False) and getattr(d, "held_item_type", "") == "WEAPON")
-            weapons_cnt = sum(1 for d in detections if getattr(d, "is_weapon", False))
-            casual_cnt = sum(1 for d in detections if getattr(d, "is_casual_object", False))
-            unusual_cnt = sum(1 for d in detections if d.is_unusual)
+            unusual_cnt = sum(1 for d in detections if d.is_unusual or getattr(d, "is_weapon", False) or getattr(d, "is_holding", False))
+            alert_cnt = len(alerts)
 
-            hud = f"{self.camera.code} LIVE | PPL:{people_cnt} | ARMED:{armed_cnt} | WEAPONS:{weapons_cnt} | ITEMS:{casual_cnt} | ALERTS:{len(alerts)}"
-            hud_color = (0, 0, 255) if armed_cnt > 0 or weapons_cnt > 0 or len(alerts) > 0 else (0, 242, 254)
-            cv2.putText(frame, hud, (20, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.52, hud_color, 2 if (armed_cnt > 0 or weapons_cnt > 0) else 1, cv2.LINE_AA)
+            hud = f"{self.camera.code} AI | PEOPLE: {people_cnt} | UNUSUAL ITEMS: {unusual_cnt} | ALERTS: {alert_cnt}"
+            cv2.putText(frame, hud, (20, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.60, (0, 0, 240), 2, cv2.LINE_AA)
 
             encode_params = [cv2.IMWRITE_JPEG_QUALITY, settings.SNAPSHOT_JPEG_QUALITY]
             _, buf = cv2.imencode(".jpg", frame, encode_params)

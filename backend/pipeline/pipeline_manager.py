@@ -108,11 +108,6 @@ class PipelineManager:
         settings.ensure_dirs()
         settings.warn_missing_models()
 
-        if not settings.ENABLE_CAMERA_WORKERS:
-            log.info("ENABLE_CAMERA_WORKERS=False: Camera subprocess workers disabled (low-memory cloud mode).")
-            self._running = True
-            return
-
         # Load cameras and watchlists from DB
         cameras      = await get_all_cameras()
         frs_subjects = await get_frs_watchlist()
@@ -289,31 +284,30 @@ class PipelineManager:
     async def _persist_and_broadcast(self, result: FrameResult) -> None:
         """Save alerts + snapshots to DB and call all registered callbacks."""
         for alert in result.alerts:
-            # Persist to DB
+            # 1. Save snapshot JPEG if available before DB insert
+            snap_path = self._save_snapshot(result, alert.id)
+            if snap_path:
+                alert.snapshot_path = snap_path
+                snap = SnapshotRecord(
+                    alert_id=alert.id,
+                    camera_id=result.camera_id,
+                    frame_number=result.frame_number,
+                    file_path=snap_path,
+                    captured_at=result.timestamp,
+                    file_size_bytes=len(result.annotated_frame_jpg) if result.annotated_frame_jpg else (os.path.getsize(snap_path) if os.path.exists(snap_path) else 0),
+                )
+                try:
+                    await save_snapshot(snap)
+                except Exception as exc:
+                    log.error("Failed to save snapshot: %s", exc)
+
+            # 2. Persist to DB with snapshot_path populated
             try:
                 await save_alert(alert)
             except Exception as exc:
                 log.error("Failed to save alert %s: %s", alert.id, exc)
 
-            # Save snapshot JPEG if available
-            if result.annotated_frame_jpg and alert.id:
-                snap_path = self._save_snapshot(result, alert.id)
-                alert.snapshot_path = snap_path
-                if snap_path:
-                    snap = SnapshotRecord(
-                        alert_id=alert.id,
-                        camera_id=result.camera_id,
-                        frame_number=result.frame_number,
-                        file_path=snap_path,
-                        captured_at=result.timestamp,
-                        file_size_bytes=len(result.annotated_frame_jpg),
-                    )
-                    try:
-                        await save_snapshot(snap)
-                    except Exception as exc:
-                        log.error("Failed to save snapshot: %s", exc)
-
-            # Fire all async alert callbacks (WebSocket broadcasters)
+            # 3. Fire all async alert callbacks (WebSocket broadcasters)
             for cb in self._alert_callbacks:
                 try:
                     if asyncio.iscoroutinefunction(cb):
@@ -325,18 +319,80 @@ class PipelineManager:
 
     def _save_snapshot(self, result: FrameResult, alert_id: str) -> Optional[str]:
         """Write annotated JPEG to disk. Returns path string or None."""
-        if not result.annotated_frame_jpg:
+        frame_bytes = result.annotated_frame_jpg or self.get_latest_frame(result.camera_id)
+        if not frame_bytes:
             return None
         try:
             snap_dir: Path = settings.SNAPSHOT_DIR / result.camera_id
             snap_dir.mkdir(parents=True, exist_ok=True)
             filename = f"{alert_id}_{result.frame_number}.jpg"
             file_path = snap_dir / filename
-            file_path.write_bytes(result.annotated_frame_jpg)
+            file_path.write_bytes(frame_bytes)
+
+            # Categorized snapshot saving into vehicle_captured, weapon_captured, person_captured
+            self._save_categorized_snapshots(result, frame_bytes, alert_id)
+
             return str(file_path)
         except Exception as exc:
             log.error("Snapshot save error: %s", exc)
             return None
+
+    def _save_categorized_snapshots(self, result: FrameResult, frame_bytes: bytes, alert_id: Optional[str] = None) -> None:
+        """
+        Save copies of captured images into dedicated folders:
+        - snapshots/vehicle_captured
+        - snapshots/weapon_captured
+        - snapshots/person_captured
+        """
+        try:
+            timestamp_str = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")[:19]
+            prefix = f"{result.camera_id}_{timestamp_str}"
+            if alert_id:
+                prefix += f"_{alert_id}"
+
+            # 1. Inspect detections
+            has_weapon = any(
+                getattr(d, "is_weapon", False) or
+                (getattr(d, "is_holding", False) and getattr(d, "held_item_type", "") == "WEAPON") or
+                any(w in (d.class_name or "").lower() for w in ("knife", "pistol", "gun", "rifle", "shotgun", "firearm", "weapon", "blade", "dagger", "sword"))
+                for d in result.detections
+            )
+            has_vehicle = any(
+                d.class_id in (2, 3, 5, 7) or bool(d.plate_text) or any(v in (d.class_name or "").lower() for v in ("car", "truck", "bus", "motorcycle", "vehicle"))
+                for d in result.detections
+            )
+            has_person = any(
+                d.class_id == 0 or bool(d.frs_match_name)
+                for d in result.detections
+            )
+
+            # 2. Inspect alerts
+            for alert in result.alerts:
+                cat = (alert.category or "").upper()
+                title = (alert.title or "").upper()
+                if "WEAPON" in cat or "ARMED" in cat or "WEAPON" in title or "ARMED" in title:
+                    has_weapon = True
+                if "VEHICLE" in cat or "ANPR" in cat or "VEHICLE" in title or "PLATE" in title:
+                    has_vehicle = True
+                if "PERSON" in cat or "FRS" in cat or "POSTURE" in cat or "INTRUSION" in cat:
+                    has_person = True
+
+            if has_weapon:
+                w_dir = settings.SNAPSHOT_DIR / "weapon_captured"
+                w_dir.mkdir(parents=True, exist_ok=True)
+                (w_dir / f"{prefix}_weapon.jpg").write_bytes(frame_bytes)
+
+            if has_vehicle:
+                v_dir = settings.SNAPSHOT_DIR / "vehicle_captured"
+                v_dir.mkdir(parents=True, exist_ok=True)
+                (v_dir / f"{prefix}_vehicle.jpg").write_bytes(frame_bytes)
+
+            if has_person:
+                p_dir = settings.SNAPSHOT_DIR / "person_captured"
+                p_dir.mkdir(parents=True, exist_ok=True)
+                (p_dir / f"{prefix}_person.jpg").write_bytes(frame_bytes)
+        except Exception as exc:
+            log.error("Categorized snapshot save error: %s", exc)
 
     # ── Status API ────────────────────────────────────────────────────────────
 
@@ -348,6 +404,8 @@ class PipelineManager:
         """Handle externally processed frame result (e.g. from direct webcam ingest)."""
         if result.annotated_frame_jpg:
             self._latest_frames[result.camera_id] = result.annotated_frame_jpg
+            if result.detections or result.alerts:
+                self._save_categorized_snapshots(result, result.annotated_frame_jpg)
         if result.alerts:
             await self._persist_and_broadcast(result)
 

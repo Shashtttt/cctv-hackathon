@@ -4,7 +4,6 @@ Application Settings (Pydantic v2 SettingsConfigDict)
 """
 
 from __future__ import annotations
-import os
 import sys
 from pathlib import Path
 from pydantic import field_validator
@@ -15,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
 MODELS_DIR = PROJECT_ROOT / "models"
 SNAPSHOTS_DIR = PROJECT_ROOT / "snapshots"
-DB_PATH = Path(os.environ.get("DATABASE_PATH", str(PROJECT_ROOT / "ibvap_surveillance.db")))
+DB_PATH = PROJECT_ROOT / "ibvap_surveillance.db"
 
 
 class Settings(BaseSettings):
@@ -30,7 +29,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "IBVAP - Intelligent Border Video Analytics Platform"
     API_V1_STR: str = "/api/v1"
     ENV: str = "development"                     # development | production
-    ENABLE_CAMERA_WORKERS: bool = False          # False for low-memory cloud / Render 512MB tier
+    ENABLE_CAMERA_WORKERS: bool = True           # Enable full background camera processing pipeline
     REQUIRE_API_KEY: bool = False
 
     # ── Security ─────────────────────────────────────────────────────────────
@@ -49,7 +48,7 @@ class Settings(BaseSettings):
     SFACE_FACE_MODEL: Path = MODELS_DIR / "face_recognition_sface_2021dec.onnx"
 
     # ── AI Thresholds ─────────────────────────────────────────────────────────
-    YOLO_CONFIDENCE_THRESHOLD: float = 0.45
+    YOLO_CONFIDENCE_THRESHOLD: float = 0.25
     FRS_SIMILARITY_THRESHOLD: float = 0.40        # SFace cosine similarity
     ANPR_OCR_CONFIDENCE: float = 0.60
     ANPR_FUZZY_DISTANCE: int = 2                  # Levenshtein edit distance tolerance
@@ -93,6 +92,9 @@ class Settings(BaseSettings):
     def ensure_dirs(self) -> None:
         """Create required directories if they do not exist."""
         self.SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+        (self.SNAPSHOT_DIR / "vehicle_captured").mkdir(parents=True, exist_ok=True)
+        (self.SNAPSHOT_DIR / "weapon_captured").mkdir(parents=True, exist_ok=True)
+        (self.SNAPSHOT_DIR / "person_captured").mkdir(parents=True, exist_ok=True)
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
     def warn_missing_models(self) -> None:

@@ -27,11 +27,11 @@ log = logging.getLogger("ibvap.db")
 
 @asynccontextmanager
 async def get_db() -> AsyncIterator[aiosqlite.Connection]:
-    """Async context manager that yields an aiosqlite connection with WAL mode."""
-    db = await aiosqlite.connect(DB_PATH)
+    """Async context manager that yields an aiosqlite connection with WAL mode and 30s busy timeout."""
+    db = await aiosqlite.connect(DB_PATH, timeout=30.0)
     db.row_factory = aiosqlite.Row
     try:
-        await db.execute("PRAGMA journal_mode=WAL")   # concurrent reads + writes
+        await db.execute("PRAGMA busy_timeout=30000")
         await db.execute("PRAGMA synchronous=NORMAL")
         await db.execute("PRAGMA cache_size=-32000")  # 32 MB page cache
         await db.execute("PRAGMA foreign_keys=ON")
@@ -46,6 +46,7 @@ async def init_db() -> None:
     """Create all tables and indexes. Idempotent — safe to call on every startup."""
     try:
         async with get_db() as db:
+            await db.execute("PRAGMA journal_mode=WAL")
             await db.executescript("""
                 CREATE TABLE IF NOT EXISTS cameras (
                     id                      TEXT PRIMARY KEY,
@@ -174,7 +175,7 @@ async def seed_initial_data_if_empty() -> None:
         cameras = [
             (
                 "cam-01", "BOP-01", "North Ridge Perimeter",
-                "Sector 4 - High Altitude Post", "synthetic://bop-01",
+                "Sector 4 - High Altitude Post", "public/videos/mumbai_traffic.mp4",
                 "ONLINE", 30, "1080p FHD", "STANDARD",
                 json.dumps(["HUMAN", "VEHICLE", "FRS", "ANPR"]),
                 json.dumps([
@@ -185,7 +186,7 @@ async def seed_initial_data_if_empty() -> None:
             ),
             (
                 "cam-02", "BOP-04", "Riverine Marshland IR",
-                "Sector 7 - Marshland Crossing", "synthetic://bop-04",
+                "Sector 7 - Marshland Crossing", "public/videos/delhi_traffic.mp4",
                 "ONLINE", 25, "1080p FHD", "THERMAL",
                 json.dumps(["HUMAN", "VEHICLE", "FRS"]),
                 json.dumps([
@@ -196,7 +197,7 @@ async def seed_initial_data_if_empty() -> None:
             ),
             (
                 "cam-03", "CHK-02", "Checkpoint Alpha Inspection",
-                "Gate 2 - Highway Entry", "synthetic://chk-02",
+                "Gate 2 - Highway Entry", "public/videos/bangalore_traffic.mp4",
                 "ONLINE", 60, "4K Ultra HD", "ANPR_FOCUS",
                 json.dumps(["VEHICLE", "ANPR"]),
                 json.dumps([]),
@@ -204,7 +205,7 @@ async def seed_initial_data_if_empty() -> None:
             ),
             (
                 "cam-04", "BOP-12", "South Gate FRS Scanner",
-                "Sector 12 - Infantry Gate", "synthetic://bop-12",
+                "Sector 12 - Infantry Gate", "public/videos/goa_traffic.mp4",
                 "ONLINE", 30, "1080p FHD", "FRS_FOCUS",
                 json.dumps(["HUMAN", "FRS"]),
                 json.dumps([
@@ -412,6 +413,15 @@ async def update_alert_status(alert_id: str, status: str) -> None:
     async with get_db() as db:
         await db.execute("UPDATE alerts SET status=? WHERE id=?", (status, alert_id))
         await db.commit()
+
+
+async def get_alert(alert_id: str) -> Optional[AlertRecord]:
+    async with get_db() as db:
+        async with db.execute("SELECT * FROM alerts WHERE id=?", (alert_id,)) as cur:
+            row = await cur.fetchone()
+            if row:
+                return _row_to_alert(row)
+    return None
 
 
 def _row_to_alert(row: aiosqlite.Row) -> AlertRecord:

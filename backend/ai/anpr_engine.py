@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,6 +43,10 @@ class PlateResult:
     plate_crop: Optional[np.ndarray] = None
 
 
+_shared_ocr = None
+_ocr_lock = threading.Lock()
+
+
 class ANPREngine:
     """
     Full ANPR pipeline.
@@ -54,41 +59,31 @@ class ANPREngine:
         self._simulation = False
         self._load()
 
+    # ── Loading ───────────────────────────────────────────────────────────────
+
     def _load(self) -> None:
-        # EasyOCR is loaded lazily on demand in _ensure_ocr() to prevent blocking startup
-        self._ocr = None
-
-        # Load licence-plate specific YOLO (optional; falls back to contour detection)
-        lp_path: Path = settings.YOLO_LP_MODEL
-        if lp_path.exists():
-            try:
-                from ultralytics import YOLO               # type: ignore
-                self._lp_detector = YOLO(str(lp_path))
-                log.info("LP YOLO model loaded from %s", lp_path)
-            except Exception as exc:
-                log.warning("LP YOLO load failed: %s — using contour fallback.", exc)
-
-    def _ensure_ocr(self) -> bool:
-        """Lazily initialize EasyOCR reader when an actual plate crop requires reading."""
-        if self._ocr is not None:
-            return True
-        if self._simulation:
-            return False
-        try:
-            import easyocr                                   # type: ignore
-            log.info("Loading EasyOCR on demand …")
-            t0 = time.monotonic()
-            self._ocr = easyocr.Reader(["en"], gpu=settings.USE_GPU, verbose=False)
-            log.info("EasyOCR loaded in %.2f s", time.monotonic() - t0)
-            return True
-        except ImportError:
-            log.warning("easyocr not installed — ANPR in SIMULATION mode.")
-            self._simulation = True
-            return False
-        except Exception as exc:
-            log.error("EasyOCR load error: %s — SIMULATION mode.", exc)
-            self._simulation = True
-            return False
+        # Load EasyOCR (shared singleton across workers to conserve RAM and avoid duplicate loading)
+        global _shared_ocr
+        if _shared_ocr is not None:
+            self._ocr = _shared_ocr
+        else:
+            with _ocr_lock:
+                if _shared_ocr is not None:
+                    self._ocr = _shared_ocr
+                else:
+                    try:
+                        import easyocr                                   # type: ignore
+                        log.info("Loading EasyOCR (first run may download models) …")
+                        t0 = time.monotonic()
+                        _shared_ocr = easyocr.Reader(["en"], gpu=settings.USE_GPU, verbose=False)
+                        self._ocr = _shared_ocr
+                        log.info("EasyOCR loaded in %.2f s", time.monotonic() - t0)
+                    except ImportError:
+                        log.warning("easyocr not installed — ANPR in SIMULATION mode.")
+                        self._simulation = True
+                    except Exception as exc:
+                        log.error("EasyOCR load error: %s — SIMULATION mode.", exc)
+                        self._simulation = True
 
         # Load licence-plate specific YOLO (optional; falls back to contour detection)
         lp_path: Path = settings.YOLO_LP_MODEL
@@ -233,7 +228,7 @@ class ANPREngine:
 
     def _read_plate(self, crop: np.ndarray) -> Optional[dict]:
         """Run EasyOCR on a plate crop and return normalised text + confidence."""
-        if not self._ensure_ocr():
+        if self._ocr is None:
             return None
         try:
             import cv2                                       # type: ignore

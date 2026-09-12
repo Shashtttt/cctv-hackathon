@@ -1,10 +1,8 @@
 import axios from 'axios';
 
-export const API_BASE = (import.meta.env?.VITE_API_URL || '').replace(/\/+$/, '');
-
-// Base Axios instance using relative API path routed through Vite dev proxy or Render production URL
-export const api = axios.create({
-  baseURL: `${API_BASE}/api/v1`,
+// Base Axios instance using relative API path routed through Vite dev proxy
+const api = axios.create({
+  baseURL: '/api/v1',
   timeout: 8000,
   headers: {
     'Content-Type': 'application/json',
@@ -14,7 +12,7 @@ export const api = axios.create({
 // System Health
 export const fetchSystemHealth = async () => {
   try {
-    const response = await axios.get(`${API_BASE}/api/health`, { timeout: 4000 });
+    const response = await axios.get('/api/health', { timeout: 4000 });
     return response.data;
   } catch (error) {
     return {
@@ -156,9 +154,9 @@ export const updateCameraFence = async (camId, points) => {
 };
 
 // Stream & Snapshot URLs helper
-export const getCameraStreamUrl = (camId) => `${API_BASE}/api/v1/cameras/${camId}/stream`;
-export const getCameraFrameUrl = (camId) => `${API_BASE}/api/v1/cameras/${camId}/frame`;
-export const getSnapshotUrl = (alertId) => `${API_BASE}/api/v1/snapshots/${alertId}`;
+export const getCameraStreamUrl = (camId) => `/api/v1/cameras/${camId}/stream`;
+export const getCameraFrameUrl = (camId) => `/api/v1/cameras/${camId}/frame`;
+export const getSnapshotUrl = (alertId) => `/api/v1/snapshots/${alertId}`;
 
 // Alerts API
 export const fetchAlerts = async (filters = {}) => {

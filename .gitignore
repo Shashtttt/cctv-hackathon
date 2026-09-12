@@ -30,6 +30,8 @@ backend/.env
 
 # Databases & Local Storage
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
 ibvap_surveillance.db

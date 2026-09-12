@@ -41,15 +41,6 @@ def get_optimal_device() -> str:
 OPTIMAL_DEVICE = get_optimal_device()
 log.info("IBVAP AI Engine active compute device: %s", OPTIMAL_DEVICE)
 
-# Restrict PyTorch thread allocation on CPU to prevent OOM on 512MB cloud instances
-if OPTIMAL_DEVICE == "cpu":
-    try:
-        torch.set_num_threads(1)
-        torch.set_num_interop_threads(1)
-        torch.set_grad_enabled(False)
-    except Exception:
-        pass
-
 # COCO Class constants
 _PERSON = 0
 HUMAN_CLASSES = {_PERSON}
@@ -119,37 +110,22 @@ class YOLODetector:
             from ultralytics import YOLO  # type: ignore
 
             # 1. Pose Model
-            try:
-                if pose_path.exists():
-                    log.info("Loading YOLOv8-pose model from %s on %s...", pose_path, self._device)
-                    self._pose_model = YOLO(str(pose_path))
-                else:
-                    log.info("Loading YOLOv8-pose by name on %s...", self._device)
-                    self._pose_model = YOLO("yolov8n-pose.pt")
+            if pose_path.exists():
+                log.info("Loading YOLOv8-pose model from %s on %s...", pose_path, self._device)
+                self._pose_model = YOLO(str(pose_path))
                 self._pose_model.to(self._device)
-            except Exception as e:
-                log.warning("Pose model could not be loaded: %s", e)
 
-            # 2. General Object Model (80 COCO classes - Cars, Trucks, Bags, Phones)
-            try:
-                if obj_path.exists():
-                    log.info("Loading YOLOv8 object model from %s on %s...", obj_path, self._device)
-                    self._obj_model = YOLO(str(obj_path))
-                else:
-                    log.info("Loading YOLOv8n object model by name on %s...", self._device)
-                    self._obj_model = YOLO("yolov8n.pt")
+            # 2. General Object Model (80 COCO classes)
+            if obj_path.exists():
+                log.info("Loading YOLOv8 object model from %s on %s...", obj_path, self._device)
+                self._obj_model = YOLO(str(obj_path))
                 self._obj_model.to(self._device)
-            except Exception as e:
-                log.warning("Object model could not be loaded: %s", e)
 
             # 3. Dedicated Weapon Model (Pistol, Knife)
             if weapon_path.exists():
-                try:
-                    log.info("Loading YOLOv8 dedicated weapon model from %s on %s...", weapon_path, self._device)
-                    self._weapon_model = YOLO(str(weapon_path))
-                    self._weapon_model.to(self._device)
-                except Exception as e:
-                    log.warning("Weapon model load failed: %s", e)
+                log.info("Loading YOLOv8 dedicated weapon model from %s on %s...", weapon_path, self._device)
+                self._weapon_model = YOLO(str(weapon_path))
+                self._weapon_model.to(self._device)
 
             if self._pose_model is None and self._obj_model is None and self._weapon_model is None:
                 log.warning("No YOLO models found on disk — running in SIMULATION mode.")
@@ -195,14 +171,13 @@ class YOLODetector:
         # ── 1. YOLOv8 Pose Inference (Human Skeletons) ────────────────────────
         if self._pose_model is not None:
             try:
-                with torch.inference_mode():
-                    results_pose = self._pose_model(
-                        frame,
-                        verbose=False,
-                        conf=settings.YOLO_CONFIDENCE_THRESHOLD,
-                        imgsz=320,
-                        device=self._device,
-                    )
+                results_pose = self._pose_model(
+                    frame,
+                    verbose=False,
+                    conf=settings.YOLO_CONFIDENCE_THRESHOLD,
+                    imgsz=640,
+                    device=self._device,
+                )
                 if results_pose and results_pose[0].boxes is not None:
                     res = results_pose[0]
                     boxes = res.boxes.xyxyn.cpu().numpy()
@@ -261,14 +236,14 @@ class YOLODetector:
         detected_weapon_boxes: List[Tuple[float, float, float, float]] = []
         if self._weapon_model is not None:
             try:
-                with torch.inference_mode():
-                    results_w = self._weapon_model(
-                        frame,
-                        verbose=False,
-                        conf=0.22,
-                        imgsz=320,
-                        device=self._device,
-                    )
+                # Sensitive threshold for high-recall weapon detection
+                results_w = self._weapon_model(
+                    frame,
+                    verbose=False,
+                    conf=0.22,
+                    imgsz=640,
+                    device=self._device,
+                )
                 if results_w and results_w[0].boxes is not None:
                     res_w = results_w[0]
                     boxes = res_w.boxes.xyxyn.cpu().numpy()
@@ -304,14 +279,14 @@ class YOLODetector:
         # ── 3. General Object Detection (Casual items, Phones, Baggage, Tools, Vehicles)
         if self._obj_model is not None:
             try:
-                with torch.inference_mode():
-                    results_obj = self._obj_model(
-                        frame,
-                        verbose=False,
-                        conf=0.18,
-                        imgsz=320,
-                        device=self._device,
-                    )
+                # Highly sensitive threshold (0.18) for rapid recall of cell phones, bottles, electronics
+                results_obj = self._obj_model(
+                    frame,
+                    verbose=False,
+                    conf=0.18,
+                    imgsz=640,
+                    device=self._device,
+                )
                 if results_obj and results_obj[0].boxes is not None:
                     res_obj = results_obj[0]
                     boxes = res_obj.boxes.xyxyn.cpu().numpy()

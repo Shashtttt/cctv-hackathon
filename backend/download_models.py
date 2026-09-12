@@ -19,15 +19,15 @@ MODELS = {
         "desc": "YOLOv8 Pose & Human/Vehicle Detector (Ultralytics)",
         "min_size_bytes": 6_000_000,
     },
-    "face_detection_yunet_2023mar.onnx": {
-        "url": "https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx",
-        "desc": "YuNet Face Detection & 5-Landmark Model (OpenCV Zoo)",
-        "min_size_bytes": 200_000,
-    },
     "yolov8n.pt": {
         "url": "https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8n.pt",
         "desc": "YOLOv8 General Object & Vehicle Detector (Cars, Trucks, Buses, Bags, Phones)",
         "min_size_bytes": 6_000_000,
+    },
+    "face_detection_yunet_2023mar.onnx": {
+        "url": "https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx",
+        "desc": "YuNet Face Detection & 5-Landmark Model (OpenCV Zoo)",
+        "min_size_bytes": 200_000,
     },
     "face_recognition_sface_2021dec.onnx": {
         "url": "https://huggingface.co/opencv/face_recognition_sface/resolve/main/face_recognition_sface_2021dec.onnx",
@@ -55,28 +55,7 @@ def download_file(url: str, dest_path: Path, desc: str) -> bool:
             sys.stdout.flush()
 
     try:
-        req = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-            },
-        )
-        with urllib.request.urlopen(req, timeout=60) as resp, open(temp_path, "wb") as f:
-            total_size = int(resp.headers.get("content-length", 0))
-            downloaded = 0
-            block_size = 16384
-            while True:
-                chunk = resp.read(block_size)
-                if not chunk:
-                    break
-                f.write(chunk)
-                downloaded += len(chunk)
-                if total_size > 0:
-                    pct = min(100.0, (downloaded / total_size) * 100)
-                    mb = downloaded / (1024 * 1024)
-                    total_mb = total_size / (1024 * 1024)
-                    sys.stdout.write(f"\r    Progress: {pct:5.1f}% [{mb:5.1f} MB / {total_mb:5.1f} MB]")
-                    sys.stdout.flush()
+        urllib.request.urlretrieve(url, str(temp_path), reporthook=_progress)
         print()
         temp_path.replace(dest_path)
         print(f"    [OK] Successfully downloaded: {dest_path.name} ({dest_path.stat().st_size:,} bytes)")

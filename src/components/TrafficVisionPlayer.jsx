@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Hls from 'hls.js';
 import axios from 'axios';
-import { api } from '../services/apiService';
 import {
   Globe,
   Sparkles,
@@ -84,7 +83,6 @@ export const TrafficVisionPlayer = ({
       });
     } else {
       // Direct Local / MP4 stream
-      video.crossOrigin = 'anonymous';
       video.src = currentCam.streamUrl;
       video.autoplay = true;
       video.playsInline = true;
@@ -141,9 +139,9 @@ export const TrafficVisionPlayer = ({
         const b64 = canvas.toDataURL('image/jpeg', 0.70);
         const t0 = performance.now();
 
-        const res = await api.post(`/cameras/cam-01/ingest`, { image: b64 }, {
+        const res = await axios.post(`/api/v1/cameras/cam-01/ingest`, { image: b64 }, {
           headers: { 'Content-Type': 'application/json' },
-          timeout: 4500,
+          timeout: 2500,
         });
 
         const dt = Math.round(performance.now() - t0);
@@ -169,7 +167,7 @@ export const TrafficVisionPlayer = ({
           }
         }
       } catch (err) {
-        console.debug('[TrafficVision AI Frame Drop]:', err?.message);
+        // Continue on single-frame drop
       } finally {
         isIngestingRef.current = false;
         timerId = setTimeout(analyzeFrame, 250); // 4 FPS real backend AI inference
@@ -416,7 +414,6 @@ export const TrafficVisionPlayer = ({
         <video
           ref={videoRef}
           className="tv-native-video"
-          crossOrigin="anonymous"
           playsInline
           muted
           autoPlay

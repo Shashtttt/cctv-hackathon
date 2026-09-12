@@ -222,7 +222,7 @@ async def ingest_camera_frame(cam_id: str, request: Request):
         camera_code=cam.code,
         fence_points=cam.fence_points,
         analytics_modes=cam.analytics_modes,
-        annotate=False,
+        annotate=True,
     )
 
     await pipeline_manager.ingest_frame_result(result)

@@ -46,6 +46,11 @@ class DirectAIAnalyzer:
         self.face_rec = FaceRecognizer()
         self.activity = ActivityClassifier()
         self.anpr = ANPREngine()
+        self._anpr_watchlist: List[str] = [
+            "JK-02-AX-8912", "PB-10-CZ-4401", "HR-26-BQ-7719",
+            "DL-01-ET-3022", "MH-12-AB-1234", "UP-32-CD-5678",
+        ]
+        self._vehicle_plate_cache: Dict[str, str] = {}
         self._prev_positions: Dict[str, Tuple[float, float]] = {}
         self._dwell_tracker: Dict[str, float] = {}   # target_id -> first_seen_ts
         self._last_alert_ts: Dict[str, float] = {}
@@ -69,11 +74,6 @@ class DirectAIAnalyzer:
         Process a single BGR frame with the full IBVAP AI pipeline.
         """
         h, w = frame_bgr.shape[:2]
-        if max(h, w) > 640:
-            scale = 640.0 / max(h, w)
-            frame_bgr = cv2.resize(frame_bgr, (int(w * scale), int(h * scale)))
-            h, w = frame_bgr.shape[:2]
-
         now = datetime.datetime.utcnow()
         now_ts = time.time()
         analytics_modes = analytics_modes or ["INTRUSION", "LOITERING", "FRS", "ANPR", "ACTIVITY"]
@@ -421,46 +421,44 @@ class DirectAIAnalyzer:
                         joint_colour = (0, 0, 255) if is_critical else (0, 255, 255)
                         cv2.circle(frame, (int(kx * w), int(ky * h)), 4, joint_colour, -1, cv2.LINE_AA)
 
-            # Label Construction
+            # Label Construction matching Screenshot 2
             label_parts = []
             if is_armed:
-                label_parts.append(f"🚨 ARMED: HOLDING {det.held_item} ({det.held_by_hand or 'HAND'})")
+                label_parts.append(f"🚨 ARMED: {det.held_item}")
             elif is_holding_casual:
-                label_parts.append(f"📦 HOLDING: {det.held_item} ({det.held_by_hand or 'HAND'})")
+                label_parts.append(f"📦 HOLDING: {det.held_item}")
             elif is_weapon:
                 label_parts.append(f"🚨 WEAPON: {det.class_name.upper()}")
             elif is_unattended_bag:
-                label_parts.append(f"⚠️ UNATTENDED BAGGAGE: {det.class_name.upper()}")
+                label_parts.append(f"⚠️ UNATTENDED: {det.class_name.upper()}")
             elif det.is_unusual:
                 label_parts.append(f"⚠️ UNUSUAL: {(det.unusual_item or det.class_name).upper()}")
             else:
                 label_parts.append(f"{det.target_id} {det.class_name.upper()}")
 
-            if det.pose_label and det.class_id == 0 and not is_armed and not is_holding_casual:
+            if det.pose_label and det.class_id == 0:
                 label_parts.append(f"[{det.pose_label}]")
             if det.frs_match_name:
-                label_parts.append(f"FRS:{det.frs_match_name} ({det.frs_match_score:.0%})")
+                label_parts.append(f"FRS:{det.frs_match_name}")
             if det.loiter_seconds > 3:
                 label_parts.append(f"DWELL:{det.loiter_seconds:.0f}s")
 
             label = " | ".join(label_parts)
             (lw, lh), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
             tag_y = max(y1 - lh - 8, 0)
-            cv2.rectangle(frame, (x1, tag_y), (x1 + lw + 8, tag_y + lh + 8), (15, 20, 30), -1)
-            cv2.rectangle(frame, (x1, tag_y), (x1 + lw + 8, tag_y + lh + 8), colour, 1)
-            cv2.putText(frame, label, (x1 + 4, tag_y + lh + 4),
+            # Black filled background tag box with red/yellow outline
+            cv2.rectangle(frame, (x1, tag_y), (x1 + lw + 10, tag_y + lh + 8), (0, 0, 0), -1)
+            cv2.rectangle(frame, (x1, tag_y), (x1 + lw + 10, tag_y + lh + 8), colour, 1)
+            cv2.putText(frame, label, (x1 + 5, tag_y + lh + 3),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.42, colour, 1, cv2.LINE_AA)
 
-        # Tactical HUD
-        alert_cnt = len(alerts)
+        # Tactical HUD matching Screenshot 2
         people_cnt = sum(1 for d in detections if d.class_id == 0)
-        armed_cnt = sum(1 for d in detections if getattr(d, "is_holding", False) and getattr(d, "held_item_type", "") == "WEAPON")
-        weapons_cnt = sum(1 for d in detections if getattr(d, "is_weapon", False))
-        casual_cnt = sum(1 for d in detections if getattr(d, "is_casual_object", False))
+        unusual_cnt = sum(1 for d in detections if d.is_unusual or getattr(d, "is_weapon", False) or getattr(d, "is_holding", False))
+        alert_cnt = len(alerts)
 
-        hud = f"{camera_code} AI | PPL:{people_cnt} | ARMED:{armed_cnt} | WEAPONS:{weapons_cnt} | ITEMS:{casual_cnt} | ALERTS:{alert_cnt}"
-        hud_color = (0, 0, 255) if (armed_cnt > 0 or weapons_cnt > 0 or alert_cnt > 0) else (0, 242, 254)
-        cv2.putText(frame, hud, (20, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.52, hud_color, 2 if (armed_cnt > 0 or weapons_cnt > 0) else 1, cv2.LINE_AA)
+        hud = f"{camera_code} AI | PEOPLE: {people_cnt} | UNUSUAL ITEMS: {unusual_cnt} | ALERTS: {alert_cnt}"
+        cv2.putText(frame, hud, (20, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.60, (0, 0, 240), 2, cv2.LINE_AA)
 
         encode_params = [cv2.IMWRITE_JPEG_QUALITY, 85]
         _, buf = cv2.imencode(".jpg", frame, encode_params)
