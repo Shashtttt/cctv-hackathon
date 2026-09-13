@@ -179,13 +179,6 @@ async def init_db() -> None:
                 except Exception:
                     pass
 
-            # Backfill initial camera coordinates if unset or old
-            await db.execute("UPDATE cameras SET location='Noida Sector 28', latitude=28.5708, longitude=77.3271, altitude=200.0, gps_coords='28.5708° N, 77.3271° E' WHERE id='cam-01' AND (latitude IS NULL OR latitude > 30.0)")
-            await db.execute("UPDATE cameras SET location='Gurgaon Cyber City', latitude=28.4949, longitude=77.0895, altitude=220.0, gps_coords='28.4949° N, 77.0895° E' WHERE id='cam-02' AND (latitude IS NULL OR latitude > 30.0)")
-            await db.execute("UPDATE cameras SET location='Gurgaon Sector 29', latitude=28.4682, longitude=77.0620, altitude=215.0, gps_coords='28.4682° N, 77.0620° E' WHERE id='cam-03' AND (latitude IS NULL OR latitude > 30.0)")
-            await db.execute("UPDATE cameras SET location='Noida Sector 132 Expressway', latitude=28.5085, longitude=77.3774, altitude=198.0, gps_coords='28.5085° N, 77.3774° E' WHERE id='cam-04' AND (latitude IS NULL OR latitude > 30.0)")
-            await db.commit()
-
             log.info("Database schema initialised at %s", DB_PATH)
 
         # Seed demo data if database is empty
@@ -399,6 +392,50 @@ async def delete_camera(cam_id: str) -> None:
     async with get_db() as db:
         await db.execute("DELETE FROM cameras WHERE id=?", (cam_id,))
         await db.commit()
+
+
+async def sync_cameras_to_geolocation(
+    lat: float, lon: float, location_name: str = "Live Device Location", delta: float = 0.0008
+) -> List[CameraConfig]:
+    """
+    Repositions existing cameras along a linear perimeter chain centered around (lat, lon).
+    cam-01: North Post (lat + 2*delta, lon - 2*delta)
+    cam-02: Approach Corridor (lat + delta, lon - delta)
+    cam-03: Central Optical Hub (lat, lon)
+    cam-04: South Sector (lat - delta, lon + delta)
+    Additional cameras offset further along the perimeter line.
+    """
+    cameras = await get_all_cameras()
+    if not cameras:
+        return []
+
+    n = len(cameras)
+    center_idx = min(2, n - 1)
+    
+    updated = []
+    async with get_db() as db:
+        for i, cam in enumerate(cameras):
+            step = center_idx - i
+            c_lat = round(lat + (step * delta), 6)
+            c_lon = round(lon - (step * delta), 6)
+            c_gps = f"{abs(c_lat):.4f}° {'N' if c_lat >= 0 else 'S'}, {abs(c_lon):.4f}° {'E' if c_lon >= 0 else 'W'}"
+            c_loc = f"{location_name} (Post {i+1})"
+            
+            await db.execute(
+                """UPDATE cameras 
+                   SET latitude=?, longitude=?, gps_coords=?, location=? 
+                   WHERE id=?""",
+                (c_lat, c_lon, c_gps, c_loc, cam.id),
+            )
+            cam.latitude = c_lat
+            cam.longitude = c_lon
+            cam.gps_coords = c_gps
+            cam.location = c_loc
+            updated.append(cam)
+        await db.commit()
+
+    return updated
+
 
 
 def _row_to_camera(row: aiosqlite.Row) -> CameraConfig:

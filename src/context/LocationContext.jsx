@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { reverseGeocodeCoords } from '../utils/geoLocator';
+import { syncCamerasGeolocation } from '../services/apiService';
 
 const LocationContext = createContext({
   coords: { latitude: 28.4949, longitude: 77.0895, formatted: '28.4949° N, 77.0895° E' },
@@ -150,9 +151,11 @@ export const LocationProvider = ({ children }) => {
     } catch {}
 
     // Reverse-geocode to get real address
+    let finalLocationLabel = sourceLabel || 'Live Device Location';
     try {
       const resolvedName = sourceLabel || await reverseGeocodeCoords(latitude, longitude);
       if (resolvedName) {
+        finalLocationLabel = resolvedName;
         setLocationName(resolvedName);
         try {
           localStorage.setItem('ibvap_dynamic_location_name', resolvedName);
@@ -161,6 +164,11 @@ export const LocationProvider = ({ children }) => {
     } catch (e) {
       if (sourceLabel) setLocationName(sourceLabel);
     }
+
+    // Keep backend cameras in sync with live coordinates
+    try {
+      syncCamerasGeolocation(latitude, longitude, finalLocationLabel).catch(() => {});
+    } catch {}
   }, []);
 
   // Primary Detection Function: Browser GPS -> IP Geolocation Fallback

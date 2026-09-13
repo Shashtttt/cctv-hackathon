@@ -9,6 +9,7 @@ from ..database.models import CameraConfig
 from ..pipeline.pipeline_manager import pipeline_manager
 from ..schemas import (
     CameraCreateRequest, CameraResponse, CameraUpdateRequest, SuccessResponse,
+    CameraSyncGeoRequest,
 )
 
 router = APIRouter(prefix="/cameras", tags=["Cameras"])
@@ -20,6 +21,22 @@ router = APIRouter(prefix="/cameras", tags=["Cameras"])
 async def list_cameras():
     cameras = await db.get_all_cameras()
     return [_to_response(c) for c in cameras]
+
+
+@router.post("/sync-geo")
+async def sync_camera_locations(req: CameraSyncGeoRequest):
+    """Dynamically reposition registered cameras along perimeter chain matching user geolocation."""
+    updated = await db.sync_cameras_to_geolocation(
+        lat=req.latitude,
+        lon=req.longitude,
+        location_name=req.location_name or "Live Device Location",
+        delta=req.delta or 0.0008,
+    )
+    return {
+        "status": "success",
+        "message": f"Updated {len(updated)} cameras to {req.location_name}",
+        "cameras": [_to_response(c) for c in updated],
+    }
 
 
 @router.get("/trafficvision/feeds")
@@ -40,6 +57,7 @@ async def worker_status():
     """Return status of all camera worker processes."""
     statuses = pipeline_manager.get_worker_statuses()
     return {"workers": statuses, "queue_depth": pipeline_manager.result_queue_depth()}
+
 
 
 @router.post("/", response_model=CameraResponse, status_code=status.HTTP_201_CREATED)

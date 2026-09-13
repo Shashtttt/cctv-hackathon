@@ -45,6 +45,13 @@ class CameraUpdateRequest(BaseModel):
     fence_points: Optional[List[FencePointSchema]] = None
 
 
+class CameraSyncGeoRequest(BaseModel):
+    latitude: float
+    longitude: float
+    location_name: Optional[str] = "Live Device Location"
+    delta: Optional[float] = 0.0008
+
+
 class CameraResponse(BaseModel):
     id: str
     code: str

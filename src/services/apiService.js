@@ -153,6 +153,22 @@ export const updateCameraFence = async (camId, points) => {
   return response.data;
 };
 
+export const syncCamerasGeolocation = async (latitude, longitude, locationName = 'Live Device Location', delta = 0.0008) => {
+  try {
+    const response = await api.post('/cameras/sync-geo', {
+      latitude,
+      longitude,
+      location_name: locationName,
+      delta,
+    });
+    return response.data;
+  } catch (error) {
+    console.warn('Backend cameras geolocation sync notice:', error.message);
+    return null;
+  }
+};
+
+
 // Stream & Snapshot URLs helper
 export const getCameraStreamUrl = (camId) => `/api/v1/cameras/${camId}/stream`;
 export const getCameraFrameUrl = (camId) => `/api/v1/cameras/${camId}/frame`;
