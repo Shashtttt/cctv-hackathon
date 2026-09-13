@@ -305,7 +305,7 @@
 
 .demo-buttons-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 
@@ -323,11 +323,17 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .demo-btn:hover {
   background: rgba(0, 242, 254, 0.15);
   border-color: var(--cyan-primary, #00f2fe);
+}
+
+.demo-btn-admin:hover {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: #f59e0b;
 }
 
 /* Footer */

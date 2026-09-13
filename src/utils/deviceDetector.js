@@ -76,17 +76,41 @@ export const enumerateDeviceCameras = async () => {
         facingMode = 'user';
       }
 
+      const isVirtual = 
+        lower.includes('omen') ||
+        lower.includes('voice') ||
+        lower.includes('virtual') ||
+        lower.includes('audio') ||
+        lower.includes('obs') ||
+        lower.includes('screen') ||
+        lower.includes('stereo');
+
       return {
         deviceId: d.deviceId,
         label: cleanLabel,
         facingMode,
         isBack: facingMode === 'environment',
         isFront: facingMode === 'user',
+        isVirtualVoice: isVirtual,
+        isOptical: !isVirtual,
         groupId: d.groupId,
       };
+    }).sort((a, b) => {
+      // Prioritize genuine optical cameras over virtual voice/audio devices
+      if (a.isVirtualVoice && !b.isVirtualVoice) return 1;
+      if (!a.isVirtualVoice && b.isVirtualVoice) return -1;
+      return 0;
     });
   } catch (err) {
     console.debug('Camera enumeration fallback:', err);
     return [];
   }
+};
+
+/**
+ * Helper to retrieve only genuine physical optical video cameras.
+ */
+export const getOpticalCameras = async () => {
+  const devices = await enumerateDeviceCameras();
+  return devices.filter((d) => !d.isVirtualVoice);
 };

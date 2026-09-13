@@ -42,12 +42,26 @@ class FaceRecognizer:
         self._watchlist: Dict[str, Tuple[str, str, np.ndarray]] = {}
         self._embedding_matrix: Optional[np.ndarray] = None   # (N, 128) stacked
         self._subject_ids: List[str] = []
+        self._ort_session = None
         self._load()
 
     # ── Loading ───────────────────────────────────────────────────────────────
 
     def _load(self) -> None:
         model_path: Path = settings.SFACE_FACE_MODEL
+        int8_path = model_path.parent / f"{model_path.stem}_int8.onnx"
+
+        # 1. Try loading INT8 Quantized ONNX session with hardware acceleration
+        if int8_path.exists():
+            try:
+                from .onnx_edge_engine import create_optimized_session
+                self._ort_session = create_optimized_session(int8_path)
+                log.info("SFace INT8 quantized engine loaded from %s via ONNX Edge Engine", int8_path.name)
+                return
+            except Exception as exc:
+                log.warning("Could not initialize INT8 SFace session: %s — falling back to standard SFace.", exc)
+
+        # 2. Standard OpenCV SFace
         if not model_path.exists():
             log.warning("SFace model not found at %s — SIMULATION mode.", model_path)
             self._simulation = True
@@ -73,15 +87,34 @@ class FaceRecognizer:
         if self._simulation:
             return self._sim_embedding()
 
-        try:
-            import cv2                                       # type: ignore
-            feature = self._recognizer.feature(aligned_face)     # (1, 128)
-            vec = np.array(feature).flatten().astype(np.float32)
-            norm = np.linalg.norm(vec)
-            return vec / (norm + 1e-8)
-        except Exception as exc:
-            log.error("SFace embed error: %s", exc)
-            return None
+        # Path A: Fast INT8 ONNX Runtime Edge Session
+        if self._ort_session is not None:
+            try:
+                import cv2
+                face_crop = cv2.resize(aligned_face, (112, 112))
+                # HWC BGR -> CHW BGR float32 normalized
+                blob = np.transpose(face_crop, (2, 0, 1)).astype(np.float32)
+                blob = np.expand_dims(blob, axis=0)  # (1, 3, 112, 112)
+                input_name = self._ort_session.get_inputs()[0].name
+                feats = self._ort_session.run(None, {input_name: blob})[0]
+                vec = np.array(feats).flatten().astype(np.float32)
+                norm = np.linalg.norm(vec)
+                return vec / (norm + 1e-8)
+            except Exception as exc:
+                log.error("SFace INT8 ORT embed error: %s", exc)
+
+        # Path B: Standard OpenCV FaceRecognizerSF
+        if self._recognizer is not None:
+            try:
+                import cv2                                       # type: ignore
+                feature = self._recognizer.feature(aligned_face)     # (1, 128)
+                vec = np.array(feature).flatten().astype(np.float32)
+                norm = np.linalg.norm(vec)
+                return vec / (norm + 1e-8)
+            except Exception as exc:
+                log.error("SFace embed error: %s", exc)
+                return None
+        return None
 
     # ── Watchlist management ──────────────────────────────────────────────────
 

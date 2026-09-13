@@ -30,6 +30,7 @@ import {
   MapPin
 } from 'lucide-react';
 import { TRAFFIC_VISION_SETTINGS } from '../services/trafficVisionCatalog';
+import { VirtualFenceConfigModal } from './VirtualFenceConfigModal';
 import './CameraDetailModal.css';
 
 export const CameraDetailModal = ({
@@ -44,6 +45,7 @@ export const CameraDetailModal = ({
   const [zoomLevel, setZoomLevel] = useState(1);
   const [showAiOverlay, setShowAiOverlay] = useState(true);
   const [showVirtualFence, setShowVirtualFence] = useState(true);
+  const [showFenceModal, setShowFenceModal] = useState(false);
   const [activeTab, setActiveTab] = useState('telemetry'); // telemetry | detections | events | ptz
   const [snapshotFeedback, setSnapshotFeedback] = useState(false);
   const [streamStats, setStreamStats] = useState({
@@ -380,6 +382,16 @@ export const CameraDetailModal = ({
 
             <button
               className="modal-tool-btn"
+              onClick={() => setShowFenceModal(true)}
+              style={{ borderColor: 'rgba(239, 68, 68, 0.5)', color: '#f87171' }}
+              title="Edit Virtual Fence Polygon & RTSP Stream"
+            >
+              <ShieldAlert size={15} />
+              <span>CONFIGURE FENCE</span>
+            </button>
+
+            <button
+              className="modal-tool-btn"
               onClick={toggleFullscreen}
               title="Toggle Fullscreen (F)"
             >
@@ -517,7 +529,7 @@ export const CameraDetailModal = ({
                       <MapPin size={11} className="text-cyan" /> GEOGRAPHIC GPS COORDINATES
                     </span>
                     <span className="val-text text-cyan">
-                      {isWebcam ? (webcamTelemetry.gpsCoords || '34.1524° N, 74.8211° E (Device Sensor)') : (camera?.gps || camera?.gps_coords || '34.1524° N, 74.8211° E')}
+                      {isWebcam ? (webcamTelemetry.gpsCoords || '28.4949° N, 77.0895° E (Device Sensor)') : (camera?.gps || camera?.gps_coords || '28.4949° N, 77.0895° E')}
                     </span>
                   </div>
                 </div>
@@ -599,6 +611,22 @@ export const CameraDetailModal = ({
           </div>
         </div>
       </div>
+
+      {/* Virtual Fence & RTSP Stream Configuration Modal */}
+      {showFenceModal && (
+        <VirtualFenceConfigModal
+          camera={camera}
+          onClose={() => setShowFenceModal(false)}
+          onSaveSuccess={(updated) => {
+            if (camera) {
+              camera.fence_points = updated.fence_points;
+              camera.fencePoints = updated.fence_points;
+              camera.rtsp_url = updated.rtsp_url;
+              camera.mode = updated.mode;
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -41,8 +41,8 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
     deviceMode: 'MPS GPU Accelerated',
     deviceType: getDevicePlatform().deviceType,
     platformName: getDevicePlatform().platformName,
-    location: 'Sector 4 - High Altitude Post',
-    gpsCoords: '34.1524° N, 74.8211° E',
+    location: 'Gurgaon DLF Cyber City, Haryana',
+    gpsCoords: '28.4949° N, 77.0895° E',
   });
   const [webcamError, setWebcamError] = useState(null);
 

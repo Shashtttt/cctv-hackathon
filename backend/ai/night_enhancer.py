@@ -17,7 +17,9 @@ log = logging.getLogger("ibvap.ai.night_enhancer")
 
 class NightMode(str, Enum):
     STANDARD       = "STANDARD"        # No enhancement
+    AUTO           = "AUTO"            # Auto-detect low-light or fog and enhance
     CLAHE          = "CLAHE"           # Contrast-limited adaptive histogram equalisation
+    DEHAZE         = "DEHAZE"          # Fast fog/haze/smoke clearing via dark channel prior
     GAMMA          = "GAMMA"           # Gamma correction (brighten dark scenes)
     BILATERAL      = "BILATERAL"       # Bilateral denoising (smooth + edge-preserve)
     THERMAL        = "THERMAL"         # Pseudo-thermal IR (JET colormap)
@@ -27,7 +29,7 @@ class NightMode(str, Enum):
 
 class NightEnhancer:
     """
-    Stateless image enhancement filter bank.
+    Stateless image enhancement filter bank with integrated Dehazing and CLAHE.
     All methods accept and return BGR numpy arrays.
     Thread-safe (no mutable state).
     """
@@ -55,23 +57,8 @@ class NightEnhancer:
         if not self._cv2_available or frame is None or frame.size == 0:
             return frame
 
-        m = NightMode(mode) if mode in NightMode._value2member_map_ else NightMode.STANDARD
-
-        if m == NightMode.STANDARD:
-            return frame
-        elif m == NightMode.CLAHE:
-            return self._apply_clahe(frame)
-        elif m == NightMode.GAMMA:
-            return self._apply_gamma(frame, gamma=0.45)
-        elif m == NightMode.BILATERAL:
-            return self._apply_bilateral(frame)
-        elif m == NightMode.THERMAL:
-            return self._apply_thermal(frame)
-        elif m == NightMode.NIGHT_GREEN:
-            return self._apply_night_green(frame)
-        elif m == NightMode.LOW_LIGHT:
-            return self._apply_low_light(frame)
-        return frame
+        from .image_preprocessor import preprocessor
+        return preprocessor.process(frame, mode=mode)
 
     # ── Enhancement implementations ───────────────────────────────────────────
 

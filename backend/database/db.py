@@ -451,6 +451,30 @@ async def save_alert(alert: AlertRecord) -> None:
         )
         await db.commit()
 
+    # Mirror alert to Firebase Realtime Database cloud sync
+    try:
+        from ..core.firebase_service import push_realtime_alert
+        push_realtime_alert({
+            "id": alert.id,
+            "camera_id": alert.camera_id,
+            "timestamp": alert.timestamp.isoformat(),
+            "category": alert.category,
+            "severity": alert.severity,
+            "title": alert.title,
+            "description": alert.description,
+            "target_id": alert.target_id,
+            "status": alert.status,
+            "snapshot_path": alert.snapshot_path,
+            "frs_match_name": alert.frs_match_name,
+            "frs_match_score": alert.frs_match_score,
+            "plate_text": alert.plate_text,
+            "latitude": alert.latitude,
+            "longitude": alert.longitude,
+            "gps_coords": alert.gps_coords or "",
+        })
+    except Exception as e:
+        log.debug("Firebase alert cloud sync skipped/failed: %s", e)
+
 
 async def get_alerts(
     camera_id: Optional[str] = None,
@@ -662,7 +686,19 @@ async def get_snapshot(alert_id: str) -> Optional[SnapshotRecord]:
     )
 
 
-# ── Analytics helpers ─────────────────────────────────────────────────────────
+async def delete_snapshot_record(identifier: str) -> bool:
+    """Delete a snapshot record from SQLite database and unlink from alert."""
+    async with get_db() as db:
+        await db.execute(
+            "DELETE FROM snapshots WHERE alert_id = ? OR file_path LIKE ?",
+            (identifier, f"%{identifier}%"),
+        )
+        await db.execute(
+            "UPDATE alerts SET snapshot_path = NULL WHERE id = ? OR snapshot_path LIKE ?",
+            (identifier, f"%{identifier}%"),
+        )
+        await db.commit()
+    return True
 
 async def get_alert_summary(hours: int = 24) -> dict:
     """Return threat counts by severity and category for the last N hours."""

@@ -106,26 +106,48 @@ class YOLODetector:
         obj_path: Path = settings.YOLO_OBJECT_MODEL
         weapon_path: Path = getattr(settings, "YOLO_WEAPON_MODEL", MODELS_DIR / "weapon_yolov8n.pt")
 
+        def _resolve_model(base_path: Path) -> Path:
+            stem = base_path.stem
+            folder = base_path.parent
+            for cand in [
+                folder / f"{stem}_int8.onnx",
+                folder / f"{stem}_fp16.onnx",
+                folder / f"{stem}.onnx",
+                base_path,
+            ]:
+                if cand.exists():
+                    return cand
+            return base_path
+
         try:
             from ultralytics import YOLO  # type: ignore
 
+            def _safe_load(path: Path, task: Optional[str] = None):
+                target = _resolve_model(path)
+                if not target.exists():
+                    return None
+                log.info("Loading YOLO neural engine: %s (accelerator: %s)", target.name, self._device)
+                try:
+                    m = YOLO(str(target), task=task)
+                    if not str(target).endswith(".onnx"):
+                        m.to(self._device)
+                    return m
+                except Exception as exc:
+                    log.warning("Could not load %s: %s — falling back to base %s", target.name, exc, path.name)
+                    if path.exists():
+                        m = YOLO(str(path), task=task)
+                        m.to(self._device)
+                        return m
+                    return None
+
             # 1. Pose Model
-            if pose_path.exists():
-                log.info("Loading YOLOv8-pose model from %s on %s...", pose_path, self._device)
-                self._pose_model = YOLO(str(pose_path))
-                self._pose_model.to(self._device)
+            self._pose_model = _safe_load(pose_path, task="pose")
 
             # 2. General Object Model (80 COCO classes)
-            if obj_path.exists():
-                log.info("Loading YOLOv8 object model from %s on %s...", obj_path, self._device)
-                self._obj_model = YOLO(str(obj_path))
-                self._obj_model.to(self._device)
+            self._obj_model = _safe_load(obj_path, task="detect")
 
             # 3. Dedicated Weapon Model (Pistol, Knife)
-            if weapon_path.exists():
-                log.info("Loading YOLOv8 dedicated weapon model from %s on %s...", weapon_path, self._device)
-                self._weapon_model = YOLO(str(weapon_path))
-                self._weapon_model.to(self._device)
+            self._weapon_model = _safe_load(weapon_path, task="detect")
 
             if self._pose_model is None and self._obj_model is None and self._weapon_model is None:
                 log.warning("No YOLO models found on disk — running in SIMULATION mode.")

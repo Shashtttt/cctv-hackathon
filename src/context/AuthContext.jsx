@@ -132,8 +132,17 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const isAdmin = !!user && (
+    user.role === 'ADMIN' ||
+    user.role === 'COMMANDER' ||
+    user.clearance_level === 'TOP_SECRET' ||
+    (typeof user.username === 'string' && (user.username.toLowerCase().includes('admin') || user.username.toLowerCase().includes('commander')))
+  );
+
   const demoLogin = async (role = 'COMMANDER') => {
-    if (role === 'COMMANDER') {
+    if (role === 'ADMIN') {
+      return await login('admin', 'admin123');
+    } else if (role === 'COMMANDER') {
       return await login('commander', 'password123');
     } else {
       return await login('operator', 'password123');
@@ -153,6 +162,7 @@ export const AuthProvider = ({ children }) => {
     user,
     token,
     isAuthenticated: !!user,
+    isAdmin,
     loading,
     authError,
     setAuthError,

@@ -330,9 +330,10 @@ class CameraWorker:
         h, w = frame.shape[:2]
         now = datetime.datetime.utcnow()
 
-        # 1. Night enhancement
-        if self.camera.mode != "STANDARD":
-            frame = self._enhancer.enhance(frame, self.camera.mode)
+        # 1. Night & Fog Image Preprocessing (CLAHE / Fast Dehaze / Auto-detect)
+        prep_mode = getattr(self.camera, "mode", "AUTO") or "AUTO"
+        if prep_mode != "STANDARD":
+            frame = self._enhancer.enhance(frame, prep_mode)
 
         # 2. YOLOv8 detection
         detections: List[Detection] = self._yolo.detect(frame)

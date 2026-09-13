@@ -265,8 +265,19 @@ const LoginPage = () => {
           <div className="demo-buttons-row">
             <button 
               type="button"
+              onClick={() => handleDemo('ADMIN')}
+              className="demo-btn demo-btn-admin font-mono"
+              title="Access as Administrator (Full Snapshot Vault & Deletion Privileges)"
+            >
+              <Lock size={13} className="text-yellow" />
+              <span>Admin Console</span>
+            </button>
+
+            <button 
+              type="button"
               onClick={() => handleDemo('COMMANDER')}
               className="demo-btn demo-btn-commander font-mono"
+              title="Access as Duty Commander (Level 5 Clearance)"
             >
               <Award size={13} className="text-cyan" />
               <span>Duty Commander</span>
@@ -276,6 +287,7 @@ const LoginPage = () => {
               type="button"
               onClick={() => handleDemo('OPERATOR')}
               className="demo-btn demo-btn-operator font-mono"
+              title="Access as Surveillance Officer (Level 3 Clearance)"
             >
               <ShieldCheck size={13} className="text-green" />
               <span>Surveillance Officer</span>

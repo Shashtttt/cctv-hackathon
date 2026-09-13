@@ -1,4 +1,5 @@
-:root {
+:root,
+[data-theme="dark"] {
   --bg-dark: #070a12;
   --bg-card: #0d121f;
   --bg-card-hover: #121829;
@@ -33,6 +34,40 @@
 
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+}
+
+[data-theme="light"] {
+  --bg-dark: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f1f5f9;
+  --bg-sidebar: #ffffff;
+  --bg-pill: #f1f5f9;
+  --border-color: #e2e8f0;
+  --border-glow: #cbd5e1;
+  
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --text-sub: #475569;
+  
+  --cyan-primary: #0284c7;
+  --cyan-glow: rgba(2, 132, 199, 0.25);
+  --cyan-bg: rgba(2, 132, 199, 0.08);
+  
+  --red-alert: #dc2626;
+  --red-glow: rgba(220, 38, 38, 0.25);
+  --red-bg: rgba(220, 38, 38, 0.08);
+  
+  --green-online: #16a34a;
+  --green-glow: rgba(22, 163, 74, 0.25);
+  --green-bg: rgba(22, 163, 74, 0.08);
+  
+  --purple-node: #7c3aed;
+  --purple-glow: rgba(124, 58, 237, 0.25);
+  --purple-bg: rgba(124, 58, 237, 0.08);
+  
+  --yellow-warn: #d97706;
+  --yellow-glow: rgba(217, 119, 6, 0.25);
+  --yellow-bg: rgba(217, 119, 6, 0.08);
 }
 
 * {

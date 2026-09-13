@@ -36,3 +36,6 @@ python-Levenshtein>=0.25.0
 # Security (future: JWT auth for operator login)
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
+
+# Firebase Cloud & Realtime Database Sync
+firebase-admin>=6.5.0

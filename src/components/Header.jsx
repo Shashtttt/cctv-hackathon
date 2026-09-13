@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Sliders, User, ShieldCheck, LogOut, Award, ChevronDown, Volume2, VolumeX, AlertTriangle } from 'lucide-react';
+import { Bell, Sliders, User, ShieldCheck, LogOut, Award, ChevronDown, Volume2, VolumeX, AlertTriangle, Images, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { soundController } from '../utils/audioAlert';
+import FirebaseStatusBadge from './FirebaseStatusBadge';
 import './Header.css';
 
-const Header = () => {
-  const { user, logout } = useAuth();
+const Header = ({ onSelectTab }) => {
+  const { user, logout, isAdmin } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [timeStr, setTimeStr] = useState('14:28:09 UTC');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [isSirenActive, setIsSirenActive] = useState(false);
@@ -56,6 +59,8 @@ const Header = () => {
           <span className="cluster-text">SECTOR 4 - DEFENSE MATRIX CLUSTER: ARMED & OPERATIONAL</span>
         </div>
 
+        <FirebaseStatusBadge />
+
         {isSirenActive && (
           <div className="siren-active-banner font-mono">
             <AlertTriangle size={14} className="text-red-500 animate-bounce" />
@@ -95,6 +100,25 @@ const Header = () => {
           )}
         </button>
 
+        {/* Theme Mode Toggle Button */}
+        <button
+          className="theme-mode-toggle font-mono"
+          onClick={toggleTheme}
+          title={theme === 'dark' ? "Switch to Daylight Mode" : "Switch to Tactical Night Mode"}
+        >
+          {theme === 'dark' ? (
+            <>
+              <Sun size={14} className="text-amber-400 theme-sun-icon" />
+              <span className="theme-toggle-text">LIGHT</span>
+            </>
+          ) : (
+            <>
+              <Moon size={14} className="text-indigo-400 theme-moon-icon" />
+              <span className="theme-toggle-text">DARK</span>
+            </>
+          )}
+        </button>
+
         <div className="zulu-clock-container font-mono">
           <span className="zulu-label text-cyan">ZULU:</span>
           <span className="zulu-time">{timeStr}</span>
@@ -130,6 +154,21 @@ const Header = () => {
                 </div>
 
                 <div className="dropdown-divider"></div>
+
+                {isAdmin && (
+                  <button 
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      if (onSelectTab) onSelectTab('snapshots');
+                    }}
+                    className="dropdown-logout-btn font-mono"
+                    style={{ color: '#f59e0b', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}
+                    title="Open Evidence Snapshots Vault"
+                  >
+                    <Images size={13} className="text-yellow" />
+                    <span>SNAPSHOTS VAULT (ADMIN)</span>
+                  </button>
+                )}
 
                 <button 
                   onClick={logout}

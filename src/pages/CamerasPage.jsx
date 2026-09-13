@@ -26,6 +26,7 @@ import {
 import { fetchCameras, getCameraStreamUrl } from '../services/apiService';
 import { INDIA_TRAFFIC_CAMERAS } from '../services/trafficVisionCatalog';
 import { CameraDetailModal } from '../components/CameraDetailModal';
+import { VirtualFenceConfigModal } from '../components/VirtualFenceConfigModal';
 import './CamerasPage.css';
 
 const trafficVisionCamEntries = INDIA_TRAFFIC_CAMERAS.map((tv, idx) => ({
@@ -56,17 +57,17 @@ const defaultCamerasData = [
   {
     id: 'cam-01',
     code: 'C 01',
-    name: 'North Gate',
+    name: 'DLF Cyber City North Gate',
     status: 'online',
     statusText: 'Online',
-    location: 'Sector 01',
-    gps_coords: '34.1524° N, 74.8211° E',
+    location: 'Gurgaon Cyber City, Haryana',
+    gps_coords: '28.4949° N, 77.0895° E',
     resolution: '1080p',
     lastSeen: 'Just now',
     image: '/assets/cam1.png',
     recText: 'REC',
-    badgeTopRight: 'CH-04 LIVE',
-    overlayBottomLeft: 'ZULU 18:47:32',
+    badgeTopRight: 'CH-01 LIVE',
+    overlayBottomLeft: 'GURGAON CYBER CITY',
     overlayBottomRight: '1080p @ 30fps',
     type: 'online',
     hasDetections: true,
@@ -75,17 +76,17 @@ const defaultCamerasData = [
   {
     id: 'cam-02',
     code: 'C 02',
-    name: 'Border Road',
+    name: 'Sector 29 Leisure Valley Post',
     status: 'online',
     statusText: 'Online',
-    location: 'Sector 02',
-    gps_coords: '34.1102° N, 74.8905° E',
+    location: 'Gurgaon Sector 29, Haryana',
+    gps_coords: '28.4682° N, 77.0620° E',
     resolution: '1080p',
     lastSeen: 'Just now',
     image: '/assets/cam2.png',
     recText: 'REC',
     badgeTopRight: 'IR NIGHT-VISION',
-    overlayBottomLeft: 'SECTOR G-1',
+    overlayBottomLeft: 'SECTOR 29 VALLEY',
     overlayBottomRight: '1080p @ 30fps',
     type: 'online',
     hasDetections: true,
@@ -94,17 +95,17 @@ const defaultCamerasData = [
   {
     id: 'cam-03',
     code: 'C 03',
-    name: 'Fence Zone',
+    name: 'Sohna Road Surveillance Post',
     status: 'warning',
     statusText: 'Warning',
-    location: 'Sector 03',
-    gps_coords: '34.0891° N, 74.7920° E',
+    location: 'Gurgaon Sohna Road, Haryana',
+    gps_coords: '28.4198° N, 77.0401° E',
     resolution: '1080p',
     lastSeen: '10 sec ago',
     image: '/assets/cam3.png',
     recText: 'ANOMALY',
     badgeTopRight: 'MOTION TRIG',
-    overlayBottomLeft: 'PERIMETER SOUTH',
+    overlayBottomLeft: 'SOHNA CORRIDOR',
     overlayBottomRight: '1080p @ 18fps',
     type: 'warning',
     hasDetections: true,
@@ -176,6 +177,7 @@ const CamerasPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [streamErrors, setStreamErrors] = useState({});
   const [selectedCameraModal, setSelectedCameraModal] = useState(null);
+  const [selectedFenceCamera, setSelectedFenceCamera] = useState(null);
 
   const loadCameras = async () => {
     try {
@@ -265,6 +267,27 @@ const CamerasPage = () => {
         </div>
 
         <div className="header-status-pills font-mono">
+          <button
+            onClick={() => setSelectedFenceCamera(cameras[0] || defaultCamerasData[0])}
+            className="pill-badge font-mono"
+            style={{
+              background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(185, 28, 28, 0.4) 100%)',
+              border: '1px solid #ef4444',
+              color: '#fecaca',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: 700,
+              padding: '6px 14px',
+              borderRadius: '6px',
+              boxShadow: '0 2px 10px rgba(239, 68, 68, 0.35)'
+            }}
+          >
+            <Shield size={14} className="text-red" />
+            <span>+ CONFIGURE FENCE & RTSP</span>
+          </button>
+
           <span className="pill-badge pill-green">
             <span className="status-dot dot-green pulse-ring"></span> SYSTEM ONLINE
           </span>
@@ -430,6 +453,45 @@ const CamerasPage = () => {
                     className="cam-viewport-img" 
                   />
 
+                  {/* Real-time Tactical Detection Overlay */}
+                  <div className="camera-detection-overlay" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+                    <div 
+                      style={{
+                        position: 'absolute',
+                        top: cam.type === 'GATE' ? '32%' : cam.type === 'ROAD' ? '40%' : '30%',
+                        left: cam.type === 'GATE' ? '42%' : cam.type === 'ROAD' ? '35%' : '45%',
+                        width: '24%',
+                        height: '42%',
+                        border: cam.status === 'warning' ? '2px solid #ff0033' : '1.8px solid #00f2fe',
+                        boxShadow: cam.status === 'warning' ? '0 0 12px rgba(255,0,51,0.5)' : '0 0 10px rgba(0,242,254,0.3)',
+                        borderRadius: '2px',
+                      }}
+                    >
+                      <span style={{ position: 'absolute', top: -1, left: -1, width: 7, height: 7, borderTop: '2px solid #fff', borderLeft: '2px solid #fff' }}></span>
+                      <span style={{ position: 'absolute', top: -1, right: -1, width: 7, height: 7, borderTop: '2px solid #fff', borderRight: '2px solid #fff' }}></span>
+                      <span style={{ position: 'absolute', bottom: -1, left: -1, width: 7, height: 7, borderBottom: '2px solid #fff', borderLeft: '2px solid #fff' }}></span>
+                      <span style={{ position: 'absolute', bottom: -1, right: -1, width: 7, height: 7, borderBottom: '2px solid #fff', borderRight: '2px solid #fff' }}></span>
+
+                      <span
+                        className="font-mono"
+                        style={{
+                          position: 'absolute',
+                          top: -16,
+                          left: 0,
+                          fontSize: '9px',
+                          fontWeight: 700,
+                          padding: '1px 5px',
+                          background: cam.status === 'warning' ? '#ff0033' : '#00f2fe',
+                          color: '#000',
+                          borderRadius: '2px',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {cam.status === 'warning' ? '🚨 INTRUSION [98%]' : cam.type === 'ROAD' ? '🚗 VEHICLE [ANPR 94%]' : '👤 SENTRY [97%]'}
+                      </span>
+                    </div>
+                  </div>
+
                   {/* Top Overlays */}
                   <div className="viewport-top-bar">
                     {cam.status === 'warning' ? (
@@ -527,7 +589,7 @@ const CamerasPage = () => {
               <div className="cam-gps-telemetry-row font-mono" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#00f2fe', background: 'rgba(0, 242, 254, 0.06)', border: '1px solid rgba(0, 242, 254, 0.18)', borderRadius: '4px', padding: '4px 8px', marginTop: '8px' }}>
                 <MapPin size={12} className="text-cyan flex-shrink-0" />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  GPS: {cam.gps_coords || cam.gps || '34.1524° N, 74.8211° E'}
+                  GPS: {cam.gps_coords || cam.gps || '28.4949° N, 77.0895° E'}
                 </span>
               </div>
 
@@ -666,23 +728,49 @@ const CamerasPage = () => {
               )}
 
               {/* Action Button Footer */}
-              {!cam.isOffline ? (
-                <button 
-                  className={`btn-cam-action ${cam.status === 'warning' ? 'btn-warning-glow' : ''}`}
-                  onClick={() => setSelectedCameraModal(cam)}
+              <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                {!cam.isOffline ? (
+                  <button 
+                    style={{ flex: 1.2 }}
+                    className={`btn-cam-action ${cam.status === 'warning' ? 'btn-warning-glow' : ''}`}
+                    onClick={() => setSelectedCameraModal(cam)}
+                  >
+                    <Play size={13} fill="currentColor" />
+                    <span>View Live</span>
+                  </button>
+                ) : (
+                  <button 
+                    style={{ flex: 1.2 }}
+                    className="btn-cam-action btn-offline"
+                    onClick={() => setSelectedCameraModal(cam)}
+                  >
+                    <Wrench size={13} />
+                    <span>Diagnostics</span>
+                  </button>
+                )}
+                <button
+                  style={{
+                    flex: 1,
+                    background: 'rgba(239, 68, 68, 0.12)',
+                    border: '1px solid rgba(239, 68, 68, 0.5)',
+                    color: '#fca5a5',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onClick={() => setSelectedFenceCamera(cam)}
+                  title="Configure RTSP Stream & Virtual Fence Polygon"
                 >
-                  <Play size={13} fill="currentColor" />
-                  <span>View Live</span>
+                  <Shield size={12} className="text-red" />
+                  <span>Fence & RTSP</span>
                 </button>
-              ) : (
-                <button 
-                  className="btn-cam-action btn-offline"
-                  onClick={() => setSelectedCameraModal(cam)}
-                >
-                  <Wrench size={13} />
-                  <span>View Diagnostics</span>
-                </button>
-              )}
+              </div>
             </div>
 
           </div>
@@ -738,6 +826,19 @@ const CamerasPage = () => {
         <CameraDetailModal
           camera={selectedCameraModal}
           onClose={() => setSelectedCameraModal(null)}
+        />
+      )}
+
+      {/* Dynamic Virtual Fence & RTSP Configuration Modal */}
+      {selectedFenceCamera && (
+        <VirtualFenceConfigModal
+          camera={selectedFenceCamera}
+          onClose={() => setSelectedFenceCamera(null)}
+          onSaveSuccess={(updatedCam) => {
+            setCameras((prev) =>
+              prev.map((c) => (c.id === updatedCam.id ? { ...c, ...updatedCam } : c))
+            );
+          }}
         />
       )}
     </div>

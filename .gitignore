@@ -27,6 +27,8 @@ env/
 .env
 *.env
 backend/.env
+*serviceAccountKey*.json
+*firebase-adminsdk*.json
 
 # Databases & Local Storage
 *.db

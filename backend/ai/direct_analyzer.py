@@ -79,8 +79,61 @@ class DirectAIAnalyzer:
         now_ts = time.time()
         analytics_modes = analytics_modes or ["INTRUSION", "LOITERING", "FRS", "ANPR", "ACTIVITY"]
 
+        # 0. Preprocessing Pipeline (CLAHE / Fast Dehaze for night & fog feeds)
+        from .image_preprocessor import preprocessor
+        frame_enhanced = preprocessor.process(frame_bgr, mode="AUTO")
+
         # 1. YOLOv8 Pose & Human/Vehicle Detection
-        detections: List[Detection] = self.yolo.detect(frame_bgr)
+        detections: List[Detection] = self.yolo.detect(frame_enhanced)
+
+        # 1b. Close-up Face Detection Fallback (e.g. webcam selfie / operator desk)
+        # When YOLOv8 pose doesn't find a full-body person, detect faces with YuNet
+        has_human = any(d.class_id in HUMAN_CLASSES for d in detections)
+        if not has_human and hasattr(self, "face_det") and self.face_det:
+            try:
+                faces = self.face_det.detect(frame_bgr)
+                for f_idx, face in enumerate(faces):
+                    fx, fy, fw, fh = face.bbox
+                    pad_x = int(fw * 0.35)
+                    pad_y_top = int(fh * 0.25)
+                    pad_y_bot = int(fh * 1.2)
+                    bx = max(0, fx - pad_x)
+                    by = max(0, fy - pad_y_top)
+                    bw = min(w - bx, fw + 2 * pad_x)
+                    bh = min(h - by, fh + pad_y_top + pad_y_bot)
+
+                    norm_bbox = BoundingBox(
+                        x=float(bx / w),
+                        y=float(by / h),
+                        w=float(bw / w),
+                        h=float(bh / h),
+                        confidence=float(face.confidence),
+                    )
+
+                    frs_name = None
+                    frs_score = None
+                    if face.face_crop is not None and hasattr(self, "face_rec") and self.face_rec:
+                        emb = self.face_rec.embed(face.face_crop)
+                        if emb is not None:
+                            match = self.face_rec.match_against_watchlist(emb)
+                            if match:
+                                frs_name = match.name
+                                frs_score = match.score
+
+                    face_det = Detection(
+                        target_id=f"OPERATOR-{f_idx + 1:02d}",
+                        class_id=0,
+                        class_name="person",
+                        bbox=norm_bbox,
+                        pose_label="ACTIVE",
+                        frs_match_name=frs_name,
+                        frs_match_score=frs_score,
+                        threat_level="CLEAR",
+                    )
+                    detections.append(face_det)
+            except Exception as f_err:
+                log.debug("Face detection fallback skipped: %s", f_err)
+
         alerts: List[AlertRecord] = []
 
         # 2. Virtual Fence setup

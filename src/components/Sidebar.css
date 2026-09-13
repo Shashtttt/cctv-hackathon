@@ -152,6 +152,37 @@
   box-shadow: 0 0 8px var(--red-glow);
 }
 
+.nav-admin-badge {
+  margin-left: auto;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #f59e0b;
+  font-size: 0.58rem;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.06em;
+}
+
+.nav-item-admin {
+  border-left: 2px solid rgba(245, 158, 11, 0.3) !important;
+}
+
+.nav-item-admin:hover {
+  background: rgba(245, 158, 11, 0.08) !important;
+}
+
+.nav-item-admin.active {
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.18), rgba(245, 158, 11, 0.03)) !important;
+  color: #f59e0b !important;
+}
+
+.nav-item-admin.active::before {
+  background-color: #f59e0b !important;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.8) !important;
+}
+
 /* Sidebar Footer */
 .sidebar-footer {
   display: flex;

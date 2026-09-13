@@ -118,12 +118,23 @@ async def update_camera(cam_id: str, body: CameraUpdateRequest):
 
 
 @router.put("/{cam_id}/fence", response_model=SuccessResponse)
-async def update_fence(cam_id: str, fence_points: List[dict]):
+async def update_fence(cam_id: str, request: Request):
     cam = await db.get_camera(cam_id)
     if not cam:
         raise HTTPException(status_code=404, detail=f"Camera {cam_id} not found.")
-    await db.update_camera_fence(cam_id, fence_points)
-    await pipeline_manager.update_fence(cam_id, fence_points)
+    try:
+        body = await request.json()
+    except Exception:
+        body = []
+    if isinstance(body, dict):
+        points = body.get("points") or body.get("fence_points") or []
+    elif isinstance(body, list):
+        points = body
+    else:
+        points = []
+
+    await db.update_camera_fence(cam_id, points)
+    await pipeline_manager.update_fence(cam_id, points)
     return SuccessResponse(message=f"Fence updated for {cam_id}.")
 
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, Bell, ChevronRight, Camera, User, Eye, Truck, AlertTriangle } from 'lucide-react';
+import { ShieldAlert, Bell, ChevronRight, Camera, User, Eye, Truck, AlertTriangle, Clock } from 'lucide-react';
 import { fetchAlerts } from '../services/apiService';
 import './RightAlertsPanel.css';
 
@@ -78,10 +78,14 @@ export const RightAlertsPanel = ({ alerts: liveWsAlerts = [], onNavigateToAlerts
                 </div>
 
                 <div className="alert-card-bottom-row">
-                  <span className="alert-camera-label">
-                    <Camera size={12} /> {alertCam}
+                  <span className="alert-camera-chip">
+                    <Camera size={12} className="chip-icon" />
+                    <span>{alertCam}</span>
                   </span>
-                  <span className="alert-time-label">{alertTime}</span>
+                  <span className="alert-time-chip">
+                    <Clock size={11} className="chip-icon" />
+                    <span>{alertTime}</span>
+                  </span>
                 </div>
               </div>
             );

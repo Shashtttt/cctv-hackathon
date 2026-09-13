@@ -37,6 +37,39 @@
   gap: 14px;
 }
 
+.theme-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-pill);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.theme-mode-toggle:hover {
+  border-color: var(--cyan-primary);
+  box-shadow: 0 0 10px var(--cyan-glow);
+  transform: translateY(-1px);
+}
+
+.theme-sun-icon {
+  filter: drop-shadow(0 0 4px #f59e0b);
+}
+
+.theme-moon-icon {
+  filter: drop-shadow(0 0 4px #818cf8);
+}
+
+.theme-toggle-text {
+  letter-spacing: 0.05em;
+}
+
 .zulu-clock-container {
   display: flex;
   align-items: center;

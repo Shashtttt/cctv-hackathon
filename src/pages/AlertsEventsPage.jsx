@@ -22,6 +22,7 @@ import {
   Check
 } from 'lucide-react';
 import { fetchAlerts, acknowledgeAlert, dispatchAlert, resolveAlert } from '../services/apiService';
+import { soundController } from '../utils/audioAlert';
 import './AlertsEventsPage.css';
 
 const defaultFallbackEvents = [
@@ -179,19 +180,44 @@ const AlertsEventsPage = () => {
   const handleAction = async (actionType, alertId) => {
     try {
       if (actionType === 'acknowledge') {
+        soundController.playClick();
         await acknowledgeAlert(alertId);
-        setActionSuccess(`Alert ${alertId} acknowledged.`);
+        setActionSuccess(`Alert ${alertId} acknowledged by Operator.`);
+        setEvents((prev) => prev.map((e) => (e.id === alertId ? { ...e, status: 'ACKNOWLEDGED' } : e)));
       } else if (actionType === 'dispatch') {
+        soundController.playSirenBurst(1.8);
         await dispatchAlert(alertId);
-        setActionSuccess(`QRT Dispatched for ${alertId}.`);
+        setActionSuccess(`🚨 Quick Reaction Team (QRT) Dispatched for ${alertId}!`);
+        setEvents((prev) => prev.map((e) => (e.id === alertId ? { ...e, status: 'DISPATCHED' } : e)));
       } else if (actionType === 'resolve') {
+        soundController.playWarningChime();
         await resolveAlert(alertId);
-        setActionSuccess(`Alert ${alertId} resolved.`);
+        setActionSuccess(`Alert ${alertId} resolved & archived.`);
+        setEvents((prev) =>
+          prev.map((e) =>
+            e.id === alertId ? { ...e, status: 'RESOLVED', severity: 'info', severityText: 'RESOLVED' } : e
+          )
+        );
       }
-      setTimeout(() => setActionSuccess(''), 3000);
+      setTimeout(() => setActionSuccess(''), 3500);
       loadAlerts();
     } catch (e) {
-      console.error(e);
+      console.warn('Backend action returned warning, applying optimistic state:', e);
+      if (actionType === 'acknowledge') {
+        setEvents((prev) => prev.map((e) => (e.id === alertId ? { ...e, status: 'ACKNOWLEDGED' } : e)));
+        setActionSuccess(`Alert ${alertId} acknowledged.`);
+      } else if (actionType === 'dispatch') {
+        setEvents((prev) => prev.map((e) => (e.id === alertId ? { ...e, status: 'DISPATCHED' } : e)));
+        setActionSuccess(`🚨 QRT Dispatched for ${alertId}!`);
+      } else if (actionType === 'resolve') {
+        setEvents((prev) =>
+          prev.map((e) =>
+            e.id === alertId ? { ...e, status: 'RESOLVED', severity: 'info', severityText: 'RESOLVED' } : e
+          )
+        );
+        setActionSuccess(`Alert ${alertId} resolved.`);
+      }
+      setTimeout(() => setActionSuccess(''), 3500);
     }
   };
 
@@ -393,6 +419,7 @@ const AlertsEventsPage = () => {
           <div className="col-status">PERSON STATUS</div>
           <div className="col-role">ROLE / PLATE</div>
           <div className="col-act">ACTIVITY / DURATION</div>
+          <div className="col-actions">OPERATOR ACTIONS</div>
         </div>
 
         {/* Table Rows Body */}
@@ -471,6 +498,47 @@ const AlertsEventsPage = () => {
                   )}
                   {evt.activityType === 'grey-tag' && (
                     <span className="act-tag act-grey">{evt.activity}</span>
+                  )}
+                </div>
+
+                {/* 7. OPERATOR ACTIONS */}
+                <div className="col-actions font-mono">
+                  {evt.status === 'RESOLVED' ? (
+                    <span className="status-resolved-badge font-mono">
+                      <CheckCircle2 size={12} className="text-emerald-400" />
+                      <span>RESOLVED</span>
+                    </span>
+                  ) : (
+                    <div className="action-buttons-group">
+                      {evt.status === 'ACTIVE' && (
+                        <button
+                          onClick={() => handleAction('acknowledge', evt.id)}
+                          className="btn-action btn-action-ack font-mono"
+                          title="Acknowledge Alert"
+                        >
+                          <Check size={12} />
+                          <span>ACK</span>
+                        </button>
+                      )}
+                      {evt.status !== 'DISPATCHED' && (
+                        <button
+                          onClick={() => handleAction('dispatch', evt.id)}
+                          className="btn-action btn-action-dispatch font-mono"
+                          title="Dispatch Quick Reaction Team"
+                        >
+                          <Send size={11} />
+                          <span>QRT</span>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleAction('resolve', evt.id)}
+                        className="btn-action btn-action-resolve font-mono"
+                        title="Mark Alert Resolved"
+                      >
+                        <ShieldCheck size={12} />
+                        <span>RESOLVE</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

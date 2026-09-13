@@ -261,9 +261,9 @@
 /* Table Header Row Bar */
 .table-header-row {
   display: grid;
-  grid-template-columns: 120px 1.4fr 110px 160px 140px 1.4fr;
+  grid-template-columns: 110px 1.2fr 90px 140px 120px 1.2fr minmax(180px, 220px);
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   background: #080d19;
   border-bottom: 1px solid var(--border-color);
   padding: 14px 20px;
@@ -291,13 +291,13 @@
 
 .table-data-row {
   display: grid;
-  grid-template-columns: 120px 1.4fr 110px 160px 140px 1.4fr;
+  grid-template-columns: 110px 1.2fr 90px 140px 120px 1.2fr minmax(180px, 220px);
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   background: #090e1a;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  padding: 14px 20px;
+  padding: 12px 18px;
   transition: all 0.2s ease;
 }
 
@@ -582,4 +582,87 @@
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
+}
+
+/* Operator Action Column & Interactive Buttons */
+.col-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.action-buttons-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.18s ease;
+  line-height: 1;
+}
+
+.btn-action:hover {
+  transform: translateY(-1px);
+}
+
+.btn-action-ack {
+  background: rgba(0, 242, 254, 0.12);
+  border-color: rgba(0, 242, 254, 0.4);
+  color: #00f2fe;
+}
+
+.btn-action-ack:hover {
+  background: rgba(0, 242, 254, 0.25);
+  border-color: #00f2fe;
+  box-shadow: 0 0 8px rgba(0, 242, 254, 0.3);
+}
+
+.btn-action-dispatch {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+}
+
+.btn-action-dispatch:hover {
+  background: rgba(239, 68, 68, 0.32);
+  border-color: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+}
+
+.btn-action-resolve {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.38);
+  color: #6ee7b7;
+}
+
+.btn-action-resolve:hover {
+  background: rgba(16, 185, 129, 0.28);
+  border-color: #10b981;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+}
+
+.status-resolved-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #10b981;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }

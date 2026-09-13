@@ -7,12 +7,16 @@ import {
   BarChart3, 
   Settings, 
   UserCheck, 
-  LogOut,
-  Radio
+  LogOut, 
+  Radio, 
+  Images 
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import './Sidebar.css';
 
 const Sidebar = ({ activeTab = 'dashboard', onSelectTab }) => {
+  const { user, logout, isAdmin } = useAuth();
+
   return (
     <>
       {/* Desktop Sticky Sidebar */}
@@ -79,6 +83,19 @@ const Sidebar = ({ activeTab = 'dashboard', onSelectTab }) => {
             <span>Analytics</span>
           </button>
 
+          {/* Classified Admin Snapshots Link */}
+          {isAdmin && (
+            <button 
+              className={`nav-item nav-item-admin ${activeTab === 'snapshots' ? 'active' : ''}`}
+              onClick={() => onSelectTab && onSelectTab('snapshots')}
+              title="Classified Surveillance Snapshots (Admin Only)"
+            >
+              <Images size={18} className="nav-icon" />
+              <span>Snapshots</span>
+              <span className="nav-admin-badge">ADMIN</span>
+            </button>
+          )}
+
           <button 
             className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
             onClick={() => onSelectTab && onSelectTab('settings')}
@@ -95,13 +112,15 @@ const Sidebar = ({ activeTab = 'dashboard', onSelectTab }) => {
               <UserCheck size={18} />
             </div>
             <div className="agent-info">
-              <div className="agent-name">Agent J. Vance</div>
-              <div className="agent-role">SYS-OP L3</div>
+              <div className="agent-name" title={user?.full_name || user?.username}>
+                {user?.full_name || user?.username || 'Agent J. Vance'}
+              </div>
+              <div className="agent-role">{user?.role || 'SYS-OP L3'} • {user?.clearance_level || 'SECRET'}</div>
             </div>
             <span className="agent-status-badge">ACTIVE</span>
           </div>
 
-          <button className="signout-btn">
+          <button className="signout-btn" onClick={logout} title="Terminate operator session">
             <LogOut size={16} />
             <span>Secure Signout</span>
           </button>
@@ -144,6 +163,17 @@ const Sidebar = ({ activeTab = 'dashboard', onSelectTab }) => {
           <Camera size={19} />
           <span>Cameras</span>
         </button>
+
+        {isAdmin && (
+          <button
+            className={`mobile-nav-btn ${activeTab === 'snapshots' ? 'active' : ''}`}
+            onClick={() => onSelectTab && onSelectTab('snapshots')}
+            title="Snapshots Vault"
+          >
+            <Images size={19} />
+            <span>Snaps</span>
+          </button>
+        )}
 
         <button
           className={`mobile-nav-btn ${activeTab === 'analytics' ? 'active' : ''}`}

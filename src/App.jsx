@@ -13,8 +13,10 @@ import AlertsEventsPage from './pages/AlertsEventsPage';
 import CamerasPage from './pages/CamerasPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import SettingsPage from './pages/SettingsPage';
+import SnapshotsPage from './pages/SnapshotsPage';
 import LoginPage from './pages/LoginPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { useWebSocket } from './services/useWebSocket';
 import './App.css';
 
@@ -44,7 +46,7 @@ function MainAppLayout() {
       {/* Main Content Area */}
       <main className="main-layout">
         {/* Top Header */}
-        <Header />
+        <Header onSelectTab={setActiveTab} />
 
         {/* Inner Content Wrapper */}
         <div className="content-wrapper">
@@ -57,6 +59,8 @@ function MainAppLayout() {
           {activeTab === 'cameras' && <CamerasPage />}
 
           {activeTab === 'analytics' && <AnalyticsPage />}
+
+          {activeTab === 'snapshots' && <SnapshotsPage />}
 
           {activeTab === 'settings' && <SettingsPage />}
 
@@ -90,7 +94,7 @@ function MainAppLayout() {
             </>
           )}
 
-          {activeTab !== 'dashboard' && activeTab !== 'surveillance' && activeTab !== 'alerts' && activeTab !== 'cameras' && activeTab !== 'analytics' && activeTab !== 'settings' && (
+          {activeTab !== 'dashboard' && activeTab !== 'surveillance' && activeTab !== 'alerts' && activeTab !== 'cameras' && activeTab !== 'analytics' && activeTab !== 'snapshots' && activeTab !== 'settings' && (
             <div className="tactical-card font-mono" style={{ padding: '40px', textAlign: 'center' }}>
               Module '{activeTab}' is currently active in L3 Ops Mode.
             </div>
@@ -103,9 +107,11 @@ function MainAppLayout() {
 
 function App() {
   return (
-    <AuthProvider>
-      <MainAppLayout />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <MainAppLayout />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
