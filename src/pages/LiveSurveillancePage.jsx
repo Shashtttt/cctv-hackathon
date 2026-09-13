@@ -24,6 +24,7 @@ import { fetchAlerts, getCameraStreamUrl } from '../services/apiService';
 import { CameraDetailModal } from '../components/CameraDetailModal';
 import { getDevicePlatform, getOpticalCameras } from '../utils/deviceDetector';
 import { soundController } from '../utils/audioAlert';
+import { useLocation } from '../context/LocationContext';
 import axios from 'axios';
 import './LiveSurveillancePage.css';
 
@@ -125,6 +126,8 @@ const DEFENSE_CHANNELS_10 = [
 ];
 
 const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
+  const { coords: liveCoords, locationName: liveLocName, isLiveGps: hasLiveSensor } = useLocation();
+
   // Device & Hardware Camera Discovery States
   const [deviceInfo, setDeviceInfo] = useState(() => getDevicePlatform());
   const [detectedDeviceList, setDetectedDeviceList] = useState([]);
@@ -829,13 +832,13 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
         ctx.fillStyle = hasStream ? '#10b981' : '#00f2fe';
         ctx.fillText(hasStream ? `● LIVE • YOLOv8 REALTIME TRACKING` : `● ${nowStr} • 60 FPS`, 14, 22);
 
-        // Bottom Left GPS Coordinates (uses live hardware sensor if available)
-        const displayedGps = (hasStream && liveDeviceGps?.formatted) ? liveDeviceGps.formatted : camMeta.gps;
-        const gpsSource = (hasStream && liveDeviceGps?.formatted) ? '• LIVE HARDWARE' : '• PRESET';
+        // Bottom Left GPS Coordinates (uses real-time dynamic location)
+        const displayedGps = (hasStream && liveCoords?.formatted) ? liveCoords.formatted : (liveCoords?.formatted || camMeta.gps);
+        const gpsSource = hasLiveSensor ? '• LIVE SENSOR' : '• GEO-LOCATED';
         ctx.fillStyle = 'rgba(7, 12, 22, 0.85)';
-        ctx.fillRect(8, ch - 22, 255, 16);
+        ctx.fillRect(8, ch - 22, 260, 16);
         ctx.font = '8.5px JetBrains Mono, monospace';
-        ctx.fillStyle = hasStream && liveDeviceGps?.formatted ? '#10b981' : '#00f2fe';
+        ctx.fillStyle = hasLiveSensor ? '#10b981' : '#00f2fe';
         ctx.fillText(`📍 GPS: ${displayedGps} ${gpsSource}`, 12, ch - 10);
       }
 
@@ -1260,7 +1263,7 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
                     </>
                   )}
                 </div>
-                <span className="footer-right font-mono">{camMeta.location.toUpperCase()}</span>
+                <span className="footer-right font-mono">{(isStreaming && liveLocName) ? liveLocName.toUpperCase() : camMeta.location.toUpperCase()}</span>
               </div>
             </div>
           );

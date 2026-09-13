@@ -17,6 +17,7 @@ import SnapshotsPage from './pages/SnapshotsPage';
 import LoginPage from './pages/LoginPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { LocationProvider } from './context/LocationContext';
 import { useWebSocket } from './services/useWebSocket';
 import './App.css';
 
@@ -108,9 +109,11 @@ function MainAppLayout() {
 function App() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <MainAppLayout />
-      </AuthProvider>
+      <LocationProvider>
+        <AuthProvider>
+          <MainAppLayout />
+        </AuthProvider>
+      </LocationProvider>
     </ThemeProvider>
   );
 }

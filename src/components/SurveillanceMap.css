@@ -219,6 +219,15 @@
 .amber-dot { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
 .green-dot { background: #10b981; box-shadow: 0 0 6px #10b981; }
 
+.map-hint-text {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  padding: 0 6px;
+  border-left: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+}
+
 /* Selected Node HUD Inspector */
 .map-selected-hud-card {
   position: absolute;

@@ -17,367 +17,13 @@ import {
   AlertTriangle,
   RefreshCw,
   Sliders,
-  ExternalLink
+  ExternalLink,
+  LocateFixed,
+  Navigation
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { useLocation, formatGpsCoords } from '../context/LocationContext';
 import './SurveillanceMap.css';
-
-// Master Border Defense Perimeter & Device Topology
-const PERIMETER_SECTORS = {
-  gurgaonCyberCity: {
-    id: 'gurgaonCyberCity',
-    name: 'Gurgaon DLF Cyber City Line',
-    region: 'Gurgaon DLF Phase 2, Haryana (Delhi NCR)',
-    center: [28.4949, 77.0895],
-    zoom: 16,
-    device: {
-      id: 'DEV-GGN-EDGE-01',
-      name: 'Gurgaon Cyber City Edge Hub',
-      model: 'NVIDIA Jetson AGX Orin 64GB Industrial',
-      ip: '192.168.26.1',
-      coords: [28.4949, 77.0895],
-      status: 'online',
-      uplink: '10G Fiber SFP+ / 5G NSA Dual Relay',
-      power: '100% Grid + Solar Backup',
-      connectedCams: ['CAM-GGN-01', 'CAM-GGN-02', 'CAM-GGN-03', 'CAM-GGN-04', 'CAM-GGN-05'],
-      gpsFormatted: '28.4949° N, 77.0895° E',
-      elevation: '+220m MSL'
-    },
-    cameras: [
-      {
-        id: 'CAM-GGN-01',
-        name: 'Cyber City North Gateway Tower',
-        coords: [28.4975, 77.0870],
-        status: 'online',
-        type: '4K Optical PTZ',
-        bearing: 45,
-        fovAngle: 70,
-        fovDistance: 320,
-        targetLock: null,
-        resolution: '4K @ 30fps',
-        connectedDevice: 'DEV-GGN-EDGE-01',
-        chainIndex: 1,
-        gpsFormatted: '28.4975° N, 77.0870° E',
-        elevation: '+222m MSL'
-      },
-      {
-        id: 'CAM-GGN-02',
-        name: 'Cyber Hub Walkway Corridor',
-        coords: [28.4960, 77.0885],
-        status: 'alert',
-        type: 'AI Thermal + 4K Optical',
-        bearing: 60,
-        fovAngle: 75,
-        fovDistance: 350,
-        targetLock: 'TARGET #TRK-8832 LOCKED',
-        targetType: 'PERSON-01 [CROUCHING]',
-        targetConfidence: '95%',
-        resolution: '4K @ 30fps',
-        connectedDevice: 'DEV-GGN-EDGE-01',
-        chainIndex: 2,
-        gpsFormatted: '28.4960° N, 77.0885° E',
-        elevation: '+220m MSL'
-      },
-      {
-        id: 'CAM-GGN-03',
-        name: 'Rapid Metro Central Station Post',
-        coords: [28.4949, 77.0895],
-        status: 'online',
-        type: 'Wide-Angle Fixed 4K',
-        bearing: 90,
-        fovAngle: 80,
-        fovDistance: 300,
-        targetLock: null,
-        resolution: '4K @ 30fps',
-        connectedDevice: 'DEV-GGN-EDGE-01',
-        chainIndex: 3,
-        gpsFormatted: '28.4949° N, 77.0895° E',
-        elevation: '+220m MSL'
-      },
-      {
-        id: 'CAM-GGN-04',
-        name: 'DLF Phase 2 East Entry Post',
-        coords: [28.4935, 77.0910],
-        status: 'patrol',
-        type: '1080p 60fps Night Vision',
-        bearing: 120,
-        fovAngle: 65,
-        fovDistance: 330,
-        targetLock: null,
-        resolution: '1080p @ 60fps',
-        connectedDevice: 'DEV-GGN-EDGE-01',
-        chainIndex: 4,
-        gpsFormatted: '28.4935° N, 77.0910° E',
-        elevation: '+218m MSL'
-      },
-      {
-        id: 'CAM-GGN-05',
-        name: 'NH-48 Express Checkpoint Post',
-        coords: [28.4920, 77.0925],
-        status: 'online',
-        type: 'ANPR + Optical PTZ',
-        bearing: 135,
-        fovAngle: 70,
-        fovDistance: 340,
-        targetLock: null,
-        resolution: '4K @ 30fps',
-        connectedDevice: 'DEV-GGN-EDGE-01',
-        chainIndex: 5,
-        gpsFormatted: '28.4920° N, 77.0925° E',
-        elevation: '+217m MSL'
-      }
-    ]
-  },
-  gurgaonSec29: {
-    id: 'gurgaonSec29',
-    name: 'Gurgaon Sector 29 Leisure Valley Line',
-    region: 'Sector 29, Gurgaon, Haryana',
-    center: [28.4682, 77.0620],
-    zoom: 16,
-    device: {
-      id: 'DEV-GGN-SEC29',
-      name: 'Sector 29 Master Node',
-      model: 'Industrial AI Gateway 32GB',
-      ip: '192.168.29.1',
-      coords: [28.4682, 77.0620],
-      status: 'online',
-      uplink: 'Fiber High-Speed Relay',
-      power: '99% Active',
-      connectedCams: ['CAM-S29-01', 'CAM-S29-02', 'CAM-S29-03'],
-      gpsFormatted: '28.4682° N, 77.0620° E',
-      elevation: '+215m MSL'
-    },
-    cameras: [
-      {
-        id: 'CAM-S29-01',
-        name: 'Leisure Valley North Post',
-        coords: [28.4700, 77.0600],
-        status: 'online',
-        type: '1080p Optical',
-        bearing: 45,
-        fovAngle: 75,
-        fovDistance: 260,
-        targetLock: null,
-        resolution: '1080p @ 30fps',
-        connectedDevice: 'DEV-GGN-SEC29',
-        chainIndex: 1,
-        gpsFormatted: '28.4700° N, 77.0600° E',
-        elevation: '+216m MSL'
-      },
-      {
-        id: 'CAM-S29-02',
-        name: 'Sector 29 Central Plaza',
-        coords: [28.4682, 77.0620],
-        status: 'alert',
-        type: '4K AI Optical',
-        bearing: 90,
-        fovAngle: 80,
-        fovDistance: 310,
-        targetLock: 'ACTIVITY FLAGGED',
-        targetType: 'STATIONARY CROWD',
-        targetConfidence: '93%',
-        resolution: '4K @ 30fps',
-        connectedDevice: 'DEV-GGN-SEC29',
-        chainIndex: 2,
-        gpsFormatted: '28.4682° N, 77.0620° E',
-        elevation: '+215m MSL'
-      },
-      {
-        id: 'CAM-S29-03',
-        name: 'IFFCO Chowk Approach Post',
-        coords: [28.4664, 77.0640],
-        status: 'online',
-        type: '1080p PTZ',
-        bearing: 135,
-        fovAngle: 70,
-        fovDistance: 280,
-        targetLock: null,
-        resolution: '1080p @ 30fps',
-        connectedDevice: 'DEV-GGN-SEC29',
-        chainIndex: 3,
-        gpsFormatted: '28.4664° N, 77.0640° E',
-        elevation: '+214m MSL'
-      }
-    ]
-  },
-  sector4: {
-    id: 'sector4',
-    name: 'Sector 4 Border Demarcation Line',
-    region: 'Northern Border Demarcation // Zone Alpha',
-    center: [34.0837, 74.7973],
-    zoom: 15,
-    device: {
-      id: 'DEV-GW-01',
-      name: 'Edge Gateway Hub Alpha',
-      model: 'NVIDIA Jetson AGX Orin 64GB',
-      ip: '192.168.10.1',
-      coords: [34.0837, 74.7973],
-      status: 'online',
-      uplink: '10G Fiber SFP+ / Microwave Relay',
-      power: '98% Dual Solar + UPS',
-      connectedCams: ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'CAM-05'],
-      gpsFormatted: '34.0837° N, 74.7973° E',
-      elevation: '+340m MSL'
-    },
-    // Cameras deployed in a continuous linear perimeter array
-    cameras: [
-      {
-        id: 'CAM-01',
-        name: 'CAM-01 North Gate Tower',
-        coords: [34.0865, 74.7925],
-        status: 'online',
-        type: 'PTZ Optical 4K',
-        bearing: 45, // Direction camera is pointing
-        fovAngle: 65,
-        fovDistance: 380, // meters
-        targetLock: null,
-        resolution: '4K @ 30fps',
-        connectedDevice: 'DEV-GW-01',
-        chainIndex: 1,
-        gpsFormatted: '34.0865° N, 74.7925° E',
-        elevation: '+362m MSL'
-      },
-      {
-        id: 'CAM-02',
-        name: 'CAM-02 Fence Line West',
-        coords: [34.0851, 74.7949],
-        status: 'alert',
-        type: 'Thermal FLIR + 4K Visible',
-        bearing: 55,
-        fovAngle: 70,
-        fovDistance: 420,
-        targetLock: 'TARGET #TRK-8832 LOCKED',
-        targetType: 'PERSON-01 [CROUCHING]',
-        targetConfidence: '95%',
-        resolution: '4K @ 30fps',
-        connectedDevice: 'DEV-GW-01',
-        chainIndex: 2,
-        gpsFormatted: '34.0851° N, 74.7949° E',
-        elevation: '+351m MSL'
-      },
-      {
-        id: 'CAM-03',
-        name: 'CAM-03 Central Demarcation',
-        coords: [34.0837, 74.7973],
-        status: 'online',
-        type: 'Fixed 4K Wide-Angle',
-        bearing: 60,
-        fovAngle: 80,
-        fovDistance: 340,
-        targetLock: null,
-        resolution: '4K @ 30fps',
-        connectedDevice: 'DEV-GW-01',
-        chainIndex: 3,
-        gpsFormatted: '34.0837° N, 74.7973° E',
-        elevation: '+340m MSL'
-      },
-      {
-        id: 'CAM-04',
-        name: 'CAM-04 Ridge Lookout East',
-        coords: [34.0823, 74.7997],
-        status: 'patrol',
-        type: 'PTZ Night-Vision',
-        bearing: 65,
-        fovAngle: 60,
-        fovDistance: 450,
-        targetLock: null,
-        resolution: '1080p @ 60fps',
-        connectedDevice: 'DEV-GW-01',
-        chainIndex: 4,
-        gpsFormatted: '34.0823° N, 74.7997° E',
-        elevation: '+375m MSL'
-      },
-      {
-        id: 'CAM-05',
-        name: 'CAM-05 Checkpoint Alpha South',
-        coords: [34.0809, 74.8021],
-        status: 'online',
-        type: 'ANPR + Optical PTZ',
-        bearing: 70,
-        fovAngle: 65,
-        fovDistance: 360,
-        targetLock: null,
-        resolution: '4K @ 30fps',
-        connectedDevice: 'DEV-GW-01',
-        chainIndex: 5,
-        gpsFormatted: '34.0809° N, 74.8021° E',
-        elevation: '+338m MSL'
-      }
-    ]
-  },
-  noidaSec28: {
-    id: 'noidaSec28',
-    name: 'Noida Sector 28 Corridor',
-    region: 'NCR Perimeter & Traffic Corridor',
-    center: [28.5708, 77.3271],
-    zoom: 16,
-    device: {
-      id: 'DEV-NCR-HUB-02',
-      name: 'Noida Sec 28 Edge Node Hub',
-      model: 'Industrial AI Gateway 32GB',
-      ip: '10.28.1.1',
-      coords: [28.5708, 77.3271],
-      status: 'online',
-      uplink: '5G NSA / Fiber Dual-Link',
-      power: 'Grid + Generator Active',
-      connectedCams: ['TV-IN-01', 'TV-IN-02', 'TV-IN-03'],
-      gpsFormatted: '28.5708° N, 77.3271° E',
-      elevation: '+205m MSL'
-    },
-    cameras: [
-      {
-        id: 'TV-IN-01',
-        name: 'Sector 28 North Approach',
-        coords: [28.5730, 77.3250],
-        status: 'online',
-        type: '1080p Traffic FHD',
-        bearing: 135,
-        fovAngle: 75,
-        fovDistance: 280,
-        targetLock: null,
-        resolution: '1080p @ 30fps',
-        connectedDevice: 'DEV-NCR-HUB-02',
-        chainIndex: 1,
-        gpsFormatted: '28.5730° N, 77.3250° E',
-        elevation: '+204m MSL'
-      },
-      {
-        id: 'TV-IN-02',
-        name: 'Atta Market Central Junction',
-        coords: [28.5708, 77.3271],
-        status: 'alert',
-        type: '4K AI Optical Stream',
-        bearing: 90,
-        fovAngle: 85,
-        fovDistance: 320,
-        targetLock: 'HIGH DENSITY ANOMALY',
-        targetType: 'LOITERING CROWD',
-        targetConfidence: '91%',
-        resolution: '1080p @ 30fps',
-        connectedDevice: 'DEV-NCR-HUB-02',
-        chainIndex: 2,
-        gpsFormatted: '28.5708° N, 77.3271° E',
-        elevation: '+205m MSL'
-      },
-      {
-        id: 'TV-IN-03',
-        name: 'Sector 28 South Corridor',
-        coords: [28.5686, 77.3292],
-        status: 'online',
-        type: '1080p ANPR PTZ',
-        bearing: 45,
-        fovAngle: 70,
-        fovDistance: 300,
-        targetLock: null,
-        resolution: '1080p @ 30fps',
-        connectedDevice: 'DEV-NCR-HUB-02',
-        chainIndex: 3,
-        gpsFormatted: '28.5686° N, 77.3292° E',
-        elevation: '+206m MSL'
-      }
-    ]
-  }
-};
 
 // Calculate destination point given distance (m) and bearing (deg)
 function calculateDestination(lat, lon, distanceMeters, bearingDegrees) {
@@ -404,7 +50,7 @@ function calculateDestination(lat, lon, distanceMeters, bearingDegrees) {
 function generateFovPolygon(centerLat, centerLon, bearing, fovAngle, distanceMeters) {
   const points = [[centerLat, centerLon]];
   const halfFov = fovAngle / 2;
-  const step = 5; // steps in degrees
+  const step = 6;
   for (let b = bearing - halfFov; b <= bearing + halfFov; b += step) {
     points.push(calculateDestination(centerLat, centerLon, distanceMeters, b));
   }
@@ -414,141 +60,50 @@ function generateFovPolygon(centerLat, centerLon, bearing, fovAngle, distanceMet
 
 export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
   const { theme } = useTheme();
+  const { 
+    coords, 
+    locationName, 
+    isLiveGps, 
+    isLoading: isLocLoading, 
+    detectLocation, 
+    setManualLocation, 
+    connectedCameras 
+  } = useLocation();
+
   const mapContainerRef = useRef(null);
   const leafletMapRef = useRef(null);
   const layersGroupRef = useRef(null);
 
-  const [currentSectorId, setCurrentSectorId] = useState('gurgaonCyberCity');
-  const [userLiveLocation, setUserLiveLocation] = useState(() => {
-    try {
-      const saved = localStorage.getItem('ibvap_live_device_gps');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  // Automatically attempt browser geolocation on mount
-  useEffect(() => {
-    if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const { latitude, longitude, altitude } = pos.coords;
-          const latStr = `${Math.abs(latitude).toFixed(4)}° ${latitude >= 0 ? 'N' : 'S'}`;
-          const lonStr = `${Math.abs(longitude).toFixed(4)}° ${longitude >= 0 ? 'E' : 'W'}`;
-          const formatted = `${latStr}, ${lonStr}`;
-          const userLoc = { latitude, longitude, altitude: altitude ? Math.round(altitude) : null, formatted };
-          setUserLiveLocation(userLoc);
-          try {
-            localStorage.setItem('ibvap_live_device_gps', JSON.stringify(userLoc));
-          } catch (e) {}
-          // Automatically switch to user's real live device GPS position!
-          setCurrentSectorId('myLiveDevice');
-        },
-        (err) => {
-          console.debug('Browser Geolocation fallback to Gurgaon Cyber City:', err?.message);
-        },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
-      );
-    }
-  }, []);
-  const [mapLayerType, setMapLayerType] = useState('google_hybrid'); // google_hybrid | google_roads | dark_matter | positron | radar_grid
+  const [mapLayerType, setMapLayerType] = useState('google_hybrid'); // google_hybrid | google_roads | dark_matter | positron
   const [selectedItem, setSelectedItem] = useState(null);
   const [showFovCones, setShowFovCones] = useState(true);
   const [showDeviceLinks, setShowDeviceLinks] = useState(true);
   const [showPerimeterLine, setShowPerimeterLine] = useState(true);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isLeafletReady, setIsLeafletReady] = useState(false);
+  const [clickToPlaceMode, setClickToPlaceMode] = useState(false);
 
-  // Dynamic sector: if myLiveDevice is chosen, generate real perimeter coordinates around user's GPS
-  const getSectorData = () => {
-    if (currentSectorId === 'myLiveDevice' && userLiveLocation) {
-      const lat = userLiveLocation.latitude;
-      const lon = userLiveLocation.longitude;
-      return {
-        id: 'myLiveDevice',
-        name: 'My Hardware Device (Live GPS)',
-        region: 'Hardware Optical Sensor Matrix',
-        center: [lat, lon],
-        zoom: 17,
-        device: {
-          id: 'DEV-USER-HARDWARE',
-          name: 'HP Wide Vision HD Camera (Host)',
-          model: 'Active Local Edge Hardware Node',
-          ip: '127.0.0.1 (Local Host)',
-          coords: [lat, lon],
-          status: 'online',
-          uplink: 'Direct PCI/USB High-Speed Bus',
-          power: '100% AC Powered',
-          connectedCams: ['CAM-MY-01', 'CAM-MY-02', 'CAM-MY-03'],
-          gpsFormatted: userLiveLocation.formatted,
-          elevation: userLiveLocation.altitude ? `+${userLiveLocation.altitude}m MSL` : '+210m MSL'
-        },
-        cameras: [
-          {
-            id: 'CAM-MY-01',
-            name: 'Local Webcam 01 (North)',
-            coords: [lat + 0.0008, lon - 0.0008],
-            status: 'online',
-            type: 'HP Wide Vision 720p',
-            bearing: 45,
-            fovAngle: 75,
-            fovDistance: 120,
-            targetLock: null,
-            resolution: '720p @ 60fps',
-            connectedDevice: 'DEV-USER-HARDWARE',
-            chainIndex: 1,
-            gpsFormatted: `${(lat + 0.0008).toFixed(4)}° N, ${(lon - 0.0008).toFixed(4)}° E`,
-            elevation: '+212m MSL'
-          },
-          {
-            id: 'CAM-MY-02',
-            name: 'Local Webcam 02 (Center Hub)',
-            coords: [lat, lon],
-            status: 'alert',
-            type: 'Active USB Optical Sensor',
-            bearing: 90,
-            fovAngle: 80,
-            fovDistance: 140,
-            targetLock: 'REALTIME TARGET LOCKED',
-            targetType: 'ACTIVE USER WEBCAM',
-            targetConfidence: '99%',
-            resolution: '1080p @ 60fps',
-            connectedDevice: 'DEV-USER-HARDWARE',
-            chainIndex: 2,
-            gpsFormatted: userLiveLocation.formatted,
-            elevation: '+210m MSL'
-          },
-          {
-            id: 'CAM-MY-03',
-            name: 'Local Webcam 03 (South)',
-            coords: [lat - 0.0008, lon + 0.0008],
-            status: 'online',
-            type: 'ANPR Perimeter Node',
-            bearing: 135,
-            fovAngle: 70,
-            fovDistance: 130,
-            targetLock: null,
-            resolution: '720p @ 30fps',
-            connectedDevice: 'DEV-USER-HARDWARE',
-            chainIndex: 3,
-            gpsFormatted: `${(lat - 0.0008).toFixed(4)}° N, ${(lon + 0.0008).toFixed(4)}° E`,
-            elevation: '+208m MSL'
-          }
-        ]
-      };
-    }
-    return PERIMETER_SECTORS[currentSectorId] || PERIMETER_SECTORS.sector4;
+  // Active Device details dynamically centered at current coordinates
+  const activeDevice = {
+    id: 'DEV-EDGE-MASTER',
+    name: `${locationName || 'Live Location'} Edge Hub`,
+    model: 'NVIDIA Jetson AGX Orin 64GB Industrial',
+    ip: '192.168.1.1 (Dynamic Edge Node)',
+    coords: [coords.latitude, coords.longitude],
+    status: 'online',
+    uplink: isLiveGps ? 'Direct Hardware Sensor GPS / Fiber' : 'Network Geolocation / Dual-Link',
+    power: '100% Active',
+    connectedCams: connectedCameras.map(c => c.id),
+    gpsFormatted: coords.formatted,
+    elevation: '+215m MSL'
   };
-
-  const currentSector = getSectorData();
 
   // Set default selected item
   useEffect(() => {
-    if (!selectedItem) {
-      setSelectedItem(currentSector.cameras.find(c => c.status === 'alert') || currentSector.cameras[0]);
+    if (!selectedItem || selectedItem.id === 'DEV-EDGE-MASTER') {
+      setSelectedItem(connectedCameras.find(c => c.status === 'alert') || connectedCameras[0] || activeDevice);
     }
-  }, [currentSectorId, userLiveLocation]);
+  }, [coords.latitude, coords.longitude]);
 
   // Ensure Leaflet is loaded
   useEffect(() => {
@@ -561,13 +116,9 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
     };
 
     if (checkLeaflet()) return;
-
     const timer = setInterval(() => {
-      if (checkLeaflet()) {
-        clearInterval(timer);
-      }
+      if (checkLeaflet()) clearInterval(timer);
     }, 200);
-
     return () => clearInterval(timer);
   }, []);
 
@@ -582,10 +133,10 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
       leafletMapRef.current = null;
     }
 
-    // Initialize Map
+    // Initialize Map at dynamic coords
     const map = L.map(mapContainerRef.current, {
-      center: currentSector.center,
-      zoom: currentSector.zoom,
+      center: [coords.latitude, coords.longitude],
+      zoom: 16,
       zoomControl: false,
       attributionControl: false,
     });
@@ -594,6 +145,12 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
 
     // Add zoom controls on top right
     L.control.zoom({ position: 'topright' }).addTo(map);
+
+    // Map Click Listener to move device anywhere dynamically
+    map.on('click', (e) => {
+      const { lat, lng } = e.latlng;
+      setManualLocation(lat, lng);
+    });
 
     // Apply base tile layer
     let tileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'; // Google Satellite Hybrid default
@@ -609,17 +166,16 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
       tileOptions = { subdomains: 'abcd', maxZoom: 19 };
     }
 
-    const tileLayer = L.tileLayer(tileUrl, tileOptions).addTo(map);
+    L.tileLayer(tileUrl, tileOptions).addTo(map);
 
     // Create a layer group for vector elements (lines, markers, cones)
     const layerGroup = L.layerGroup().addTo(map);
     layersGroupRef.current = layerGroup;
 
-    // 1. Draw continuous Border Perimeter Line connecting all cameras in the line
-    const cameraLinePoints = currentSector.cameras.map(cam => cam.coords);
+    // 1. Draw continuous Perimeter Demarcation Line connecting all cameras
+    const cameraLinePoints = connectedCameras.map(cam => cam.coords);
 
     if (showPerimeterLine && cameraLinePoints.length > 1) {
-      // Background glow line
       L.polyline(cameraLinePoints, {
         color: '#00f2fe',
         weight: 6,
@@ -628,7 +184,6 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
         lineJoin: 'round',
       }).addTo(layerGroup);
 
-      // Foreground dashed demarcation line
       L.polyline(cameraLinePoints, {
         color: '#00f2fe',
         weight: 2.5,
@@ -638,10 +193,10 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
       }).addTo(layerGroup);
     }
 
-    // 2. Draw Device -> Camera Link Cables (shows device working with multiple cameras in the same line)
-    if (showDeviceLinks && currentSector.device) {
-      const devCoord = currentSector.device.coords;
-      currentSector.cameras.forEach(cam => {
+    // 2. Draw Device -> Camera Link Cables (same line topology)
+    if (showDeviceLinks) {
+      const devCoord = [coords.latitude, coords.longitude];
+      connectedCameras.forEach(cam => {
         L.polyline([devCoord, cam.coords], {
           color: cam.status === 'alert' ? '#ff3b3b' : '#f59e0b',
           weight: 1.5,
@@ -653,7 +208,7 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
 
     // 3. Draw Camera FOV (Field of View) visual cones
     if (showFovCones) {
-      currentSector.cameras.forEach(cam => {
+      connectedCameras.forEach(cam => {
         const fovCoords = generateFovPolygon(
           cam.coords[0],
           cam.coords[1],
@@ -676,36 +231,42 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
       });
     }
 
-    // 4. Place Edge Processing Device Hub Marker (Master Hub in center)
-    if (currentSector.device) {
-      const dev = currentSector.device;
-      const isSelected = selectedItem?.id === dev.id;
-
-      const deviceIcon = L.divIcon({
-        className: 'custom-leaflet-marker',
-        html: `
-          <div class="device-marker-wrapper ${isSelected ? 'marker-selected' : ''}">
-            <div class="device-diamond-icon">
-              <span class="device-icon-symbol">📡</span>
-            </div>
-            <div class="device-label-pill font-mono">
-              <span class="device-name-badge">HUB</span>
-              <span class="device-name-text">${dev.name}</span>
-            </div>
+    // 4. Place Master Edge Processing Device Marker (Draggable)
+    const isDevSelected = selectedItem?.id === activeDevice.id;
+    const deviceIcon = L.divIcon({
+      className: 'custom-leaflet-marker',
+      html: `
+        <div class="device-marker-wrapper ${isDevSelected ? 'marker-selected' : ''}">
+          <div class="device-diamond-icon">
+            <span class="device-icon-symbol">📡</span>
           </div>
-        `,
-        iconSize: [140, 50],
-        iconAnchor: [70, 25],
-      });
+          <div class="device-label-pill font-mono">
+            <span class="device-name-badge">${isLiveGps ? 'LIVE GPS' : 'EDGE HUB'}</span>
+            <span class="device-name-text">${locationName ? locationName.split(',')[0] : 'Device Node'}</span>
+          </div>
+        </div>
+      `,
+      iconSize: [150, 50],
+      iconAnchor: [75, 25],
+    });
 
-      const devMarker = L.marker(dev.coords, { icon: deviceIcon, zIndexOffset: 900 }).addTo(layerGroup);
-      devMarker.on('click', () => {
-        setSelectedItem(dev);
-      });
-    }
+    const devMarker = L.marker([coords.latitude, coords.longitude], { 
+      icon: deviceIcon, 
+      zIndexOffset: 900,
+      draggable: true,
+    }).addTo(layerGroup);
+
+    devMarker.on('dragend', (e) => {
+      const pos = e.target.getLatLng();
+      setManualLocation(pos.lat, pos.lng);
+    });
+
+    devMarker.on('click', () => {
+      setSelectedItem(activeDevice);
+    });
 
     // 5. Place Camera Markers along the perimeter line
-    currentSector.cameras.forEach((cam, idx) => {
+    connectedCameras.forEach((cam, idx) => {
       const isSelected = selectedItem?.id === cam.id;
       const isAlert = cam.status === 'alert';
       const isPatrol = cam.status === 'patrol';
@@ -749,7 +310,9 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
     };
   }, [
     isLeafletReady,
-    currentSectorId,
+    coords.latitude,
+    coords.longitude,
+    locationName,
     mapLayerType,
     showFovCones,
     showDeviceLinks,
@@ -760,32 +323,8 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
 
   // Recenter Map Helper
   const handleRecenter = () => {
-    if (leafletMapRef.current && currentSector) {
-      leafletMapRef.current.setView(currentSector.center, currentSector.zoom, { animate: true });
-    }
-  };
-
-  // Locate User's Real Active Hardware Device GPS
-  const handleLocateDevice = () => {
-    if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const { latitude, longitude, altitude } = pos.coords;
-          const latStr = `${Math.abs(latitude).toFixed(4)}° ${latitude >= 0 ? 'N' : 'S'}`;
-          const lonStr = `${Math.abs(longitude).toFixed(4)}° ${longitude >= 0 ? 'E' : 'W'}`;
-          const formatted = `${latStr}, ${lonStr}`;
-          const userLoc = { latitude, longitude, altitude: altitude ? Math.round(altitude) : null, formatted };
-          setUserLiveLocation(userLoc);
-          try {
-            localStorage.setItem('ibvap_live_device_gps', JSON.stringify(userLoc));
-          } catch (e) {}
-          setCurrentSectorId('myLiveDevice');
-        },
-        (err) => alert(`Browser Location: ${err.message || 'Please enable browser GPS permission'}`),
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
-    } else {
-      alert('Geolocation is not supported by your browser environment.');
+    if (leafletMapRef.current) {
+      leafletMapRef.current.setView([coords.latitude, coords.longitude], 16, { animate: true });
     }
   };
 
@@ -796,39 +335,54 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
         <div className="card-title-group">
           <div className="card-title-row">
             <Radio size={16} className="card-title-icon text-cyan" />
-            <h3 className="card-title">Perimeter Surveillance Map</h3>
+            <h3 className="card-title">Dynamic Perimeter Surveillance Map</h3>
             <span className="perimeter-count-badge font-mono">
-              {currentSector.cameras?.length || 5} CAMERAS ON LINE • 1 EDGE HUB
+              {connectedCameras.length} CAMERAS IN LINE • 1 EDGE HUB
             </span>
           </div>
           <span className="card-subtitle">
-            Exact GPS Positioning & Multi-Camera Edge Line Topology • {currentSector.name}
+            📍 Real-Time Location: <strong className="text-cyan">{locationName}</strong> ({coords.formatted})
           </span>
         </div>
 
         {/* Header Right Controls */}
         <div className="map-header-controls font-mono">
-          {/* Sector Selector */}
+          {/* Live GPS / Detect Button */}
+          <button
+            onClick={detectLocation}
+            className={`map-tool-btn ${isLiveGps ? 'active' : ''}`}
+            title="Detect real device hardware GPS / IP location"
+          >
+            <LocateFixed size={12} className={isLiveGps ? "text-green-400 animate-spin" : "text-cyan"} />
+            <span>{isLiveGps ? 'LIVE GPS ACTIVE' : 'DETECT MY LOCATION'}</span>
+          </button>
+
+          {/* Quick Location Teleport Dropdown */}
           <select 
-            value={currentSectorId}
             onChange={(e) => {
-              if (e.target.value === 'locate_gps') {
-                handleLocateDevice();
-              } else {
-                setCurrentSectorId(e.target.value);
+              const val = e.target.value;
+              if (val === 'current_gps') {
+                detectLocation();
+              } else if (val === 'gurgaon_cybercity') {
+                setManualLocation(28.4949, 77.0895, 'DLF Cyber City, Gurgaon, Haryana');
+              } else if (val === 'gurgaon_sec29') {
+                setManualLocation(28.4682, 77.0620, 'Sector 29, Gurgaon, Haryana');
+              } else if (val === 'noida_sec28') {
+                setManualLocation(28.5708, 77.3271, 'Noida Sector 28, Uttar Pradesh');
+              } else if (val === 'delhi_cp') {
+                setManualLocation(28.6315, 77.2167, 'Connaught Place, New Delhi');
               }
             }}
             className="map-sector-select font-mono"
-            title="Switch Perimeter Sector"
+            title="Switch Location Corridor"
+            defaultValue=""
           >
-            <option value="gurgaonCyberCity">Gurgaon DLF Cyber City Line (Default)</option>
-            <option value="gurgaonSec29">Gurgaon Sector 29 Leisure Valley Line</option>
-            <option value="noidaSec28">Noida Sector 28 Corridor Line</option>
-            <option value="sector4">Sector 4 Border Demarcation Line (Kashmir)</option>
-            {userLiveLocation && (
-              <option value="myLiveDevice">📍 My Device (Live GPS: {userLiveLocation.formatted})</option>
-            )}
-            <option value="locate_gps">🛰️ Detect My Live Location (Browser GPS)...</option>
+            <option value="" disabled>Jump Location...</option>
+            <option value="current_gps">🛰️ Auto-Detect My Live Location</option>
+            <option value="gurgaon_cybercity">📍 Gurgaon DLF Cyber City</option>
+            <option value="gurgaon_sec29">📍 Gurgaon Sector 29 Leisure Valley</option>
+            <option value="noida_sec28">📍 Noida Sector 28 Corridor</option>
+            <option value="delhi_cp">📍 New Delhi Connaught Place</option>
           </select>
 
           {/* Map Layer Switcher */}
@@ -882,17 +436,17 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
         {/* Floating Top Telemetry Overlays */}
         <div className="map-overlay-top-left font-mono">
           <span className="overlay-pill">
-            <Compass size={11} className="text-cyan" /> {currentSector.region}
+            <Compass size={11} className="text-cyan" /> {locationName}
           </span>
         </div>
 
         <div className="map-overlay-top-right font-mono">
           <span className="overlay-pill">
-            <Crosshair size={11} className="text-coral" /> LAT {currentSector.center[0]}° N • LONG {currentSector.center[1]}° E
+            <Crosshair size={11} className="text-coral" /> LAT {coords.latitude.toFixed(4)}° N • LONG {coords.longitude.toFixed(4)}° E
           </span>
         </div>
 
-        {/* Floating In-Map Quick Layer Toggles */}
+        {/* Floating In-Map Quick Layer Toggles & Instructions */}
         <div className="map-floating-toolbar font-mono">
           <button 
             className={`map-tool-btn ${showPerimeterLine ? 'active' : ''}`}
@@ -924,11 +478,15 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
           <button 
             className="map-tool-btn"
             onClick={handleRecenter}
-            title="Recenter Map View"
+            title="Recenter Map View on Device"
           >
             <RefreshCw size={11} />
             <span>Recenter</span>
           </button>
+
+          <div className="map-hint-text">
+            <span>💡 Click map to move device & cameras</span>
+          </div>
         </div>
 
         {/* Selected Node HUD Tactical Telemetry Inspector Card */}
@@ -936,7 +494,7 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
           <div className="map-selected-hud-card font-mono">
             <div className="hud-header-row">
               <div className="hud-title-left">
-                {selectedItem.type?.includes('Gateway') || selectedItem.model ? (
+                {selectedItem.id === 'DEV-EDGE-MASTER' || selectedItem.model ? (
                   <Cpu size={14} className="text-amber-400" />
                 ) : (
                   <Camera size={14} className={selectedItem.status === 'alert' ? 'text-coral' : 'text-cyan'} />
@@ -954,17 +512,17 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
                 <span className="hud-meta-val text-cyan font-bold">{selectedItem.gpsFormatted}</span>
               </div>
               <div className="hud-meta-item">
-                <span className="hud-meta-label">ELEVATION:</span>
-                <span className="hud-meta-val">{selectedItem.elevation}</span>
+                <span className="hud-meta-label">LOCATION:</span>
+                <span className="hud-meta-val">{locationName}</span>
               </div>
               <div className="hud-meta-item">
                 <span className="hud-meta-label">HARDWARE:</span>
                 <span className="hud-meta-val">{selectedItem.type || selectedItem.model}</span>
               </div>
               <div className="hud-meta-item">
-                <span className="hud-meta-label">DEVICE LINK:</span>
+                <span className="hud-meta-label">TOPOLOGY:</span>
                 <span className="hud-meta-val text-amber-400">
-                  {selectedItem.connectedDevice ? `Linked to ${selectedItem.connectedDevice} (PoE+)` : `${selectedItem.connectedCams?.length} Cams Connected`}
+                  {selectedItem.connectedDevice ? `Linked to ${selectedItem.connectedDevice}` : `${connectedCameras.length} Cams in Linear Chain`}
                 </span>
               </div>
             </div>
@@ -981,15 +539,21 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
         {/* Bottom Demarcation Legend Bar */}
         <div className="map-telemetry-bar font-mono">
           <div className="telemetry-item">
-            DEMARCATION: <span className="text-cyan">LINE ALPHA-4 (5 NODES IN SERIES)</span>
+            AREA: <span className="text-cyan font-bold">{locationName}</span>
           </div>
           <div className="telemetry-divider">|</div>
           <div className="telemetry-item">
-            EDGE DEVICE: <span className="text-amber-400">{currentSector.device?.name}</span>
+            COORDINATES: <span className="text-cyan font-bold">{coords.formatted}</span>
           </div>
           <div className="telemetry-divider">|</div>
           <div className="telemetry-item">
-            MAP SOURCE: <span className="text-main uppercase">{mapLayerType.replace('_', ' ')}</span>
+            SOURCE: <span className={isLiveGps ? "text-green-400 font-bold" : "text-amber-400 font-bold"}>
+              {isLiveGps ? 'LIVE HARDWARE GPS' : 'NETWORK/USER DEFINED'}
+            </span>
+          </div>
+          <div className="telemetry-divider">|</div>
+          <div className="telemetry-item">
+            TILES: <span className="text-main uppercase">{mapLayerType.replace('_', ' ')}</span>
           </div>
         </div>
       </div>
@@ -999,7 +563,7 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
         <div className="footer-status-info">
           <span className="dot-cyan status-dot pulse-ring"></span>
           <span className="footer-status-text">
-            Ping {lastPing}s <span className="text-sep">•</span> Latency {latency}ms <span className="text-sep">•</span> <strong className="cyan-highlight">All Perimeter Nodes In Sync</strong>
+            Ping {lastPing}s <span className="text-sep">•</span> Latency {latency}ms <span className="text-sep">•</span> <strong className="cyan-highlight">Dynamic Linear Perimeter Active</strong>
           </span>
         </div>
 
