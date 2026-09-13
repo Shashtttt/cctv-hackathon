@@ -261,11 +261,12 @@ class YOLODetector:
         detected_weapon_boxes: List[Tuple[float, float, float, float]] = []
         if self._weapon_model is not None:
             try:
-                # Sensitive threshold for high-recall weapon detection
+                # Sensitive threshold for high-recall weapon detection (calibrated via settings)
+                weapon_conf = getattr(settings, "YOLO_WEAPON_CONFIDENCE_THRESHOLD", 0.45)
                 results_w = self._weapon_model(
                     frame,
                     verbose=False,
-                    conf=0.20,
+                    conf=weapon_conf,
                     imgsz=infer_imgsz,
                     device=self._device,
                 )
@@ -304,11 +305,12 @@ class YOLODetector:
         # ── 3. General Object Detection (Casual items, Phones, Baggage, Tools, Vehicles, People)
         if self._obj_model is not None:
             try:
-                # Highly sensitive threshold (0.16) for rapid recall of cell phones, bottles, electronics, vehicles
+                # Calibrated threshold for general casual items, vehicles, phones
+                obj_conf = getattr(settings, "YOLO_OBJECT_CONFIDENCE_THRESHOLD", 0.30)
                 results_obj = self._obj_model(
                     frame,
                     verbose=False,
-                    conf=0.16,
+                    conf=obj_conf,
                     imgsz=infer_imgsz,
                     device=self._device,
                 )
@@ -596,7 +598,24 @@ class YOLODetector:
                 best_person.held_item = obj.class_name.upper()
                 best_person.held_by_hand = held_hand_label
 
-                if obj.is_weapon:
+                # Scale validation: Reject pens, clips, and small handheld stationery falsely detected as weapons
+                is_valid_weapon_scale = True
+                if obj.is_weapon and best_person.bbox and obj.bbox:
+                    person_area = max(1e-5, best_person.bbox.w * best_person.bbox.h)
+                    weapon_area = obj.bbox.w * obj.bbox.h
+                    area_ratio = weapon_area / person_area
+                    min_ratio = getattr(settings, "MIN_WEAPON_AREA_RATIO", 0.012)
+                    if area_ratio < min_ratio:
+                        is_valid_weapon_scale = False
+                        obj.is_weapon = False
+                        obj.is_casual_object = True
+                        obj.threat_level = "NORMAL"
+                        log.info(
+                            "[FILTER] Demoted small object '%s' held by %s (area_ratio=%.4f < %.4f min) to casual item (pen/accessory)",
+                            obj.class_name, best_person.target_id, area_ratio, min_ratio,
+                        )
+
+                if obj.is_weapon and is_valid_weapon_scale:
                     # 🚨 ARMED HOSTILE THREAT ESCALATION
                     best_person.held_item_type = "WEAPON"
                     best_person.threat_level = "CRITICAL"
@@ -609,7 +628,7 @@ class YOLODetector:
                         held_hand_label,
                     )
                 else:
-                    # Casual object in hand (phone, baggage, bottle, etc.)
+                    # Casual object in hand (phone, baggage, bottle, pen, tool, etc.)
                     best_person.held_item_type = "CASUAL_OBJECT"
                     obj.threat_level = "NORMAL"  # Attended item
                     if best_person.threat_level != "CRITICAL":

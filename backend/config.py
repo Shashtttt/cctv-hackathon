@@ -48,10 +48,14 @@ class Settings(BaseSettings):
     SFACE_FACE_MODEL: Path = MODELS_DIR / "face_recognition_sface_2021dec.onnx"
 
     # ── AI Thresholds ─────────────────────────────────────────────────────────
-    YOLO_CONFIDENCE_THRESHOLD: float = 0.25
-    FRS_SIMILARITY_THRESHOLD: float = 0.40        # SFace cosine similarity
+    YOLO_CONFIDENCE_THRESHOLD: float = 0.35
+    YOLO_WEAPON_CONFIDENCE_THRESHOLD: float = 0.45       # Stricter threshold to eliminate pen/clip false weapon alarms
+    YOLO_OBJECT_CONFIDENCE_THRESHOLD: float = 0.30       # Calibrated to eliminate remote/phone ambiguities
+    MIN_WEAPON_AREA_RATIO: float = 0.012                 # Minimum bbox area ratio vs person to qualify as weapon (rejects pens/pensil)
+    FRS_SIMILARITY_THRESHOLD: float = 0.40               # SFace cosine similarity
     ANPR_OCR_CONFIDENCE: float = 0.60
-    ANPR_FUZZY_DISTANCE: int = 2                  # Levenshtein edit distance tolerance
+    ANPR_FUZZY_DISTANCE: int = 2                         # Levenshtein edit distance tolerance
+
 
     # ── Surveillance Behaviour ────────────────────────────────────────────────
     LOITERING_TIMEOUT_SECONDS: float = 10.0
