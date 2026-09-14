@@ -168,7 +168,27 @@ export const syncCamerasGeolocation = async (latitude, longitude, locationName =
   }
 };
 
+export const testCameraStream = async (url) => {
+  const response = await api.post('/cameras/test-stream', { url });
+  return response.data;
+};
 
+export const fetchNetworkInfo = async () => {
+  try {
+    const response = await api.get('/cameras/network-info');
+    return response.data;
+  } catch (error) {
+    const host = window.location.hostname || '127.0.0.1';
+    const port = window.location.port ? `:${window.location.port}` : '';
+    const origin = window.location.origin || `https://${host}${port}`;
+    return {
+      status: 'fallback',
+      lan_ip: host,
+      mobile_pairing_url: `${origin}/?mode=remote-cam`,
+      instructions: 'Ensure both devices are on the same Wi-Fi network.',
+    };
+  }
+};
 // Stream & Snapshot URLs helper
 export const getCameraStreamUrl = (camId) => `/api/v1/cameras/${camId}/stream`;
 export const getCameraFrameUrl = (camId) => `/api/v1/cameras/${camId}/frame`;

@@ -1,559 +1,722 @@
 import React, { useState, useEffect, useRef } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { 
   Radio, 
   Maximize2, 
-  Minimize2, 
-  Layers, 
   MapPin, 
-  ShieldAlert, 
-  Eye, 
-  Camera, 
-  Cpu, 
-  Activity, 
-  Compass, 
+  Layers, 
   Crosshair, 
-  Wifi, 
-  CheckCircle2, 
-  AlertTriangle,
+  Camera as CameraIcon, 
+  ShieldCheck, 
+  AlertTriangle, 
   RefreshCw,
-  Sliders,
+  X,
   ExternalLink,
-  LocateFixed,
-  Navigation
+  Compass
 } from 'lucide-react';
-import { useTheme } from '../context/ThemeContext';
-import { useLocation, formatGpsCoords } from '../context/LocationContext';
+import { enumerateDeviceCameras, getDevicePlatform } from '../utils/deviceDetector';
+import { reverseGeocodeCoords, POPULAR_LOCATIONS } from '../utils/geoLocator';
+import { fetchCameras } from '../services/apiService';
 import './SurveillanceMap.css';
 
-// Calculate destination point given distance (m) and bearing (deg)
-function calculateDestination(lat, lon, distanceMeters, bearingDegrees) {
-  const R = 6378137; // Earth radius in meters
-  const dByR = distanceMeters / R;
-  const radBearing = (bearingDegrees * Math.PI) / 180;
-  const lat1 = (lat * Math.PI) / 180;
-  const lon1 = (lon * Math.PI) / 180;
-
-  const lat2 = Math.asin(
-    Math.sin(lat1) * Math.cos(dByR) +
-    Math.cos(lat1) * Math.sin(dByR) * Math.cos(radBearing)
-  );
-
-  const lon2 = lon1 + Math.atan2(
-    Math.sin(radBearing) * Math.sin(dByR) * Math.cos(lat1),
-    Math.cos(dByR) - Math.sin(lat1) * Math.sin(lat2)
-  );
-
-  return [(lat2 * 180) / Math.PI, (lon2 * 180) / Math.PI];
-}
-
-// Generate an SVG Field-of-View wedge coordinates polygon
-function generateFovPolygon(centerLat, centerLon, bearing, fovAngle, distanceMeters) {
-  const points = [[centerLat, centerLon]];
-  const halfFov = fovAngle / 2;
-  const step = 6;
-  for (let b = bearing - halfFov; b <= bearing + halfFov; b += step) {
-    points.push(calculateDestination(centerLat, centerLon, distanceMeters, b));
+// Google Maps Tile Layers
+const GOOGLE_TILES = {
+  hybrid: {
+    name: 'Google Satellite Hybrid',
+    url: 'https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+    subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+    maxZoom: 20,
+    attribution: '&copy; <a href="https://maps.google.com" target="_blank" rel="noreferrer">Google Maps</a>'
+  },
+  roadmap: {
+    name: 'Google Roadmap',
+    url: 'https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+    subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+    maxZoom: 20,
+    attribution: '&copy; <a href="https://maps.google.com" target="_blank" rel="noreferrer">Google Maps</a>'
   }
-  points.push(calculateDestination(centerLat, centerLon, distanceMeters, bearing + halfFov));
-  return points;
-}
+};
 
-export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
-  const { theme } = useTheme();
-  const { 
-    coords, 
-    locationName, 
-    isLiveGps, 
-    isLoading: isLocLoading, 
-    detectLocation, 
-    setManualLocation, 
-    connectedCameras 
-  } = useLocation();
+const DEFAULT_COORDS = {
+  lat: 28.5708,
+  lng: 77.3271,
+  accuracy: 8,
+  locationName: 'Noida Sector 28, Uttar Pradesh',
+  gpsFormatted: '28.5708° N, 77.3271° E'
+};
 
+// 7 Additional Perimeter Surveillance Cameras plotted across NCR regional matrix
+const SECTOR_CAMERAS_MAP = [
+  {
+    code: 'C-02',
+    name: 'Riverine Border Road',
+    location: 'Gurgaon Cyber City',
+    lat: 28.4949,
+    lng: 77.0895,
+    gps_coords: '28.4949° N, 77.0895° E',
+    mode: 'IR THERMAL',
+    status: 'ONLINE',
+    persons: 1,
+    vehicles: 2,
+    weapons: 0,
+  },
+  {
+    code: 'C-03',
+    name: 'South Fence Intrusion Zone',
+    location: 'Gurgaon Sector 29',
+    lat: 28.4682,
+    lng: 77.0620,
+    gps_coords: '28.4682° N, 77.0620° E',
+    mode: 'ANOMALY ALERT',
+    status: 'ALERT',
+    persons: 2,
+    vehicles: 0,
+    weapons: 1,
+  },
+  {
+    code: 'C-04',
+    name: 'BOP Entry Guard Post',
+    location: 'Noida Sector 132 Expressway',
+    lat: 28.5085,
+    lng: 77.3774,
+    gps_coords: '28.5085° N, 77.3774° E',
+    mode: 'NIGHT VISION',
+    status: 'ONLINE',
+    persons: 1,
+    vehicles: 1,
+    weapons: 0,
+  },
+  {
+    code: 'C-05',
+    name: 'Watch Tower North Ridge',
+    location: 'Delhi NCR Outer Ring',
+    lat: 28.6139,
+    lng: 77.2090,
+    gps_coords: '28.6139° N, 77.2090° E',
+    mode: 'AERIAL RECON',
+    status: 'ONLINE',
+    persons: 3,
+    vehicles: 5,
+    weapons: 0,
+  },
+  {
+    code: 'C-06',
+    name: 'Forward Patrol Post East',
+    location: 'Faridabad Sector 15',
+    lat: 28.4089,
+    lng: 77.3178,
+    gps_coords: '28.4089° N, 77.3178° E',
+    mode: 'PERIMETER IR',
+    status: 'ONLINE',
+    persons: 2,
+    vehicles: 1,
+    weapons: 0,
+  },
+  {
+    code: 'C-07',
+    name: 'Riverine Checkpoint Charlie',
+    location: 'Yamuna Riverbank Sector',
+    lat: 28.5355,
+    lng: 77.3910,
+    gps_coords: '28.5355° N, 77.3910° E',
+    mode: 'RIVER PATROL',
+    status: 'ONLINE',
+    persons: 1,
+    vehicles: 1,
+    weapons: 0,
+  },
+  {
+    code: 'C-08',
+    name: 'Tactical Escarpment Station',
+    location: 'Aravali Ridge Outpost',
+    lat: 28.4200,
+    lng: 77.0500,
+    gps_coords: '28.4200° N, 77.0500° E',
+    mode: 'LONG-RANGE PTZ',
+    status: 'ONLINE',
+    persons: 0,
+    vehicles: 2,
+    weapons: 0,
+  }
+];
+
+const SurveillanceMap = ({ lastPing = 3, latency = 14, onSelectCamera = null }) => {
   const mapContainerRef = useRef(null);
-  const leafletMapRef = useRef(null);
-  const layersGroupRef = useRef(null);
+  const modalMapContainerRef = useRef(null);
+  const mapRef = useRef(null);
+  const modalMapRef = useRef(null);
+  const currentTileLayerRef = useRef(null);
+  const modalTileLayerRef = useRef(null);
+  const deviceMarkerRef = useRef(null);
+  const modalDeviceMarkerRef = useRef(null);
+  const sectorMarkersRef = useRef([]);
+  const modalSectorMarkersRef = useRef([]);
 
-  const [mapLayerType, setMapLayerType] = useState('google_hybrid'); // google_hybrid | google_roads | dark_matter | positron
-  const [selectedItem, setSelectedItem] = useState(null);
-  const [showFovCones, setShowFovCones] = useState(true);
-  const [showDeviceLinks, setShowDeviceLinks] = useState(true);
-  const [showPerimeterLine, setShowPerimeterLine] = useState(true);
+  const [mapType, setMapType] = useState('hybrid'); // 'hybrid' | 'roadmap'
+  const [deviceCoords, setDeviceCoords] = useState(DEFAULT_COORDS);
+  const [detectedCameras, setDetectedCameras] = useState([]);
+  const [primaryCameraName, setPrimaryCameraName] = useState('Integrated HD Camera');
+  const [isLocating, setIsLocating] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isLeafletReady, setIsLeafletReady] = useState(false);
-  const [clickToPlaceMode, setClickToPlaceMode] = useState(false);
+  const [networkCameras, setNetworkCameras] = useState([]);
+  const [selectedPinInfo, setSelectedPinInfo] = useState(null);
 
-  // Active Device details dynamically centered at current coordinates
-  const activeDevice = {
-    id: 'DEV-EDGE-MASTER',
-    name: `${locationName || 'Live Location'} Edge Hub`,
-    model: 'NVIDIA Jetson AGX Orin 64GB Industrial',
-    ip: '192.168.1.1 (Dynamic Edge Node)',
-    coords: [coords.latitude, coords.longitude],
-    status: 'online',
-    uplink: isLiveGps ? 'Direct Hardware Sensor GPS / Fiber' : 'Network Geolocation / Dual-Link',
-    power: '100% Active',
-    connectedCams: connectedCameras.map(c => c.id),
-    gpsFormatted: coords.formatted,
-    elevation: '+215m MSL'
-  };
-
-  // Set default selected item
+  // 1. Detect physical camera(s) connected to this device
   useEffect(() => {
-    if (!selectedItem || selectedItem.id === 'DEV-EDGE-MASTER') {
-      setSelectedItem(connectedCameras.find(c => c.status === 'alert') || connectedCameras[0] || activeDevice);
-    }
-  }, [coords.latitude, coords.longitude]);
-
-  // Ensure Leaflet is loaded
-  useEffect(() => {
-    const checkLeaflet = () => {
-      if (typeof window !== 'undefined' && window.L) {
-        setIsLeafletReady(true);
-        return true;
+    let mounted = true;
+    const detectHardware = async () => {
+      try {
+        const platform = getDevicePlatform();
+        const cams = await enumerateDeviceCameras();
+        if (mounted) {
+          setDetectedCameras(cams);
+          if (cams.length > 0) {
+            setPrimaryCameraName(cams[0].label || 'Device Primary Camera');
+          } else {
+            setPrimaryCameraName(
+              platform.isMobile ? 'Mobile Rear Tactical Camera' : 'Integrated HD Camera'
+            );
+          }
+        }
+      } catch (err) {
+        console.debug('Camera detection note:', err);
       }
-      return false;
     };
-
-    if (checkLeaflet()) return;
-    const timer = setInterval(() => {
-      if (checkLeaflet()) clearInterval(timer);
-    }, 200);
-    return () => clearInterval(timer);
+    detectHardware();
+    return () => { mounted = false; };
   }, []);
 
-  // Initialize and update Leaflet Map
+  // 2. Query real device location via browser Geolocation API
   useEffect(() => {
-    if (!isLeafletReady || !mapContainerRef.current) return;
-    const L = window.L;
+    let watchId = null;
 
-    // Destroy previous instance if any
-    if (leafletMapRef.current) {
-      leafletMapRef.current.remove();
-      leafletMapRef.current = null;
+    const resolvePos = async (pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const accuracy = Math.round(pos.coords.accuracy || 12);
+      const latStr = `${Math.abs(lat).toFixed(4)}° ${lat >= 0 ? 'N' : 'S'}`;
+      const lngStr = `${Math.abs(lng).toFixed(4)}° ${lng >= 0 ? 'E' : 'W'}`;
+      const gpsFormatted = `${latStr}, ${lngStr}`;
+
+      try {
+        const locName = await reverseGeocodeCoords(lat, lng);
+        setDeviceCoords({
+          lat,
+          lng,
+          accuracy,
+          locationName: locName || 'Noida Sector 28, Uttar Pradesh',
+          gpsFormatted
+        });
+      } catch {
+        setDeviceCoords({
+          lat,
+          lng,
+          accuracy,
+          locationName: 'Noida Sector 28, Uttar Pradesh',
+          gpsFormatted
+        });
+      }
+    };
+
+    if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        resolvePos,
+        () => console.debug('Using precise sector coordinate fallback'),
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+      );
+
+      watchId = navigator.geolocation.watchPosition(
+        resolvePos,
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 30000 }
+      );
     }
 
-    // Initialize Map at dynamic coords
-    const map = L.map(mapContainerRef.current, {
-      center: [coords.latitude, coords.longitude],
-      zoom: 16,
-      zoomControl: false,
-      attributionControl: false,
-    });
+    return () => {
+      if (watchId !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+    };
+  }, []);
 
-    leafletMapRef.current = map;
+  // 3. Load other cameras from backend API (if present)
+  useEffect(() => {
+    let mounted = true;
+    fetchCameras()
+      .then((data) => {
+        if (mounted && Array.isArray(data)) {
+          setNetworkCameras(data);
+        }
+      })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, []);
 
-    // Add zoom controls on top right
-    L.control.zoom({ position: 'topright' }).addTo(map);
-
-    // Map Click Listener to move device anywhere dynamically
-    map.on('click', (e) => {
-      const { lat, lng } = e.latlng;
-      setManualLocation(lat, lng);
-    });
-
-    // Apply base tile layer
-    let tileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'; // Google Satellite Hybrid default
-    let tileOptions = { maxZoom: 20 };
-
-    if (mapLayerType === 'google_roads') {
-      tileUrl = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
-    } else if (mapLayerType === 'dark_matter') {
-      tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-      tileOptions = { subdomains: 'abcd', maxZoom: 19 };
-    } else if (mapLayerType === 'positron') {
-      tileUrl = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-      tileOptions = { subdomains: 'abcd', maxZoom: 19 };
-    }
-
-    L.tileLayer(tileUrl, tileOptions).addTo(map);
-
-    // Create a layer group for vector elements (lines, markers, cones)
-    const layerGroup = L.layerGroup().addTo(map);
-    layersGroupRef.current = layerGroup;
-
-    // 1. Draw continuous Perimeter Demarcation Line connecting all cameras
-    const cameraLinePoints = connectedCameras.map(cam => cam.coords);
-
-    if (showPerimeterLine && cameraLinePoints.length > 1) {
-      L.polyline(cameraLinePoints, {
-        color: '#00f2fe',
-        weight: 6,
-        opacity: 0.35,
-        lineCap: 'round',
-        lineJoin: 'round',
-      }).addTo(layerGroup);
-
-      L.polyline(cameraLinePoints, {
-        color: '#00f2fe',
-        weight: 2.5,
-        opacity: 0.9,
-        dashArray: '8, 8',
-        lineCap: 'round',
-      }).addTo(layerGroup);
-    }
-
-    // 2. Draw Device -> Camera Link Cables (same line topology)
-    if (showDeviceLinks) {
-      const devCoord = [coords.latitude, coords.longitude];
-      connectedCameras.forEach(cam => {
-        L.polyline([devCoord, cam.coords], {
-          color: cam.status === 'alert' ? '#ff3b3b' : '#f59e0b',
-          weight: 1.5,
-          opacity: 0.75,
-          dashArray: '4, 6',
-        }).addTo(layerGroup);
-      });
-    }
-
-    // 3. Draw Camera FOV (Field of View) visual cones
-    if (showFovCones) {
-      connectedCameras.forEach(cam => {
-        const fovCoords = generateFovPolygon(
-          cam.coords[0],
-          cam.coords[1],
-          cam.bearing,
-          cam.fovAngle,
-          cam.fovDistance
-        );
-
-        const isAlert = cam.status === 'alert';
-        const isPatrol = cam.status === 'patrol';
-        const coneColor = isAlert ? '#ff3b3b' : isPatrol ? '#00f2fe' : '#10b981';
-
-        L.polygon(fovCoords, {
-          color: coneColor,
-          weight: 1,
-          opacity: 0.8,
-          fillColor: coneColor,
-          fillOpacity: isAlert ? 0.35 : 0.16,
-        }).addTo(layerGroup);
-      });
-    }
-
-    // 4. Place Master Edge Processing Device Marker (Draggable)
-    const isDevSelected = selectedItem?.id === activeDevice.id;
-    const deviceIcon = L.divIcon({
-      className: 'custom-leaflet-marker',
+  // Helper to build tactical camera marker HTML
+  const createDeviceMarkerIcon = (label, isPrimary = true, isAlert = false) => {
+    const statusColor = isAlert ? '#ef4444' : isPrimary ? '#10b981' : '#00f2fe';
+    return L.divIcon({
+      className: 'tactical-custom-div-icon',
       html: `
-        <div class="device-marker-wrapper ${isDevSelected ? 'marker-selected' : ''}">
-          <div class="device-diamond-icon">
-            <span class="device-icon-symbol">📡</span>
+        <div class="tactical-marker-wrapper ${isAlert ? 'marker-alert' : ''}">
+          <div class="marker-pulse-ring-outer" style="border-color: ${statusColor};"></div>
+          <div class="marker-pulse-ring-inner" style="border-color: ${statusColor};"></div>
+          <div class="marker-core-icon" style="background: ${statusColor};">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#070c18" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
           </div>
-          <div class="device-label-pill font-mono">
-            <span class="device-name-badge">${isLiveGps ? 'LIVE GPS' : 'EDGE HUB'}</span>
-            <span class="device-name-text">${locationName ? locationName.split(',')[0] : 'Device Node'}</span>
+          <div class="marker-tactical-label font-mono">
+            <span class="label-dot" style="background: ${statusColor};"></span>
+            <span class="label-text">${label}</span>
           </div>
         </div>
       `,
-      iconSize: [150, 50],
-      iconAnchor: [75, 25],
+      iconSize: [44, 44],
+      iconAnchor: [22, 22],
+      popupAnchor: [0, -22],
     });
+  };
 
-    const devMarker = L.marker([coords.latitude, coords.longitude], { 
-      icon: deviceIcon, 
-      zIndexOffset: 900,
-      draggable: true,
-    }).addTo(layerGroup);
-
-    devMarker.on('dragend', (e) => {
-      const pos = e.target.getLatLng();
-      setManualLocation(pos.lat, pos.lng);
-    });
-
-    devMarker.on('click', () => {
-      setSelectedItem(activeDevice);
-    });
-
-    // 5. Place Camera Markers along the perimeter line
-    connectedCameras.forEach((cam, idx) => {
-      const isSelected = selectedItem?.id === cam.id;
-      const isAlert = cam.status === 'alert';
-      const isPatrol = cam.status === 'patrol';
-      const statusClass = isAlert ? 'status-alert' : isPatrol ? 'status-patrol' : 'status-online';
-
-      const camIcon = L.divIcon({
-        className: 'custom-leaflet-marker',
-        html: `
-          <div class="cam-marker-wrapper ${statusClass} ${isSelected ? 'marker-selected' : ''}">
-            <div class="cam-dot-pulse">
-              ${isAlert ? '<div class="alert-radar-ring"></div>' : ''}
-              <div class="cam-center-dot"></div>
-            </div>
-            <div class="cam-label-tag font-mono">
-              <span class="cam-seq-badge">#${idx + 1}</span>
-              <span class="cam-code-text">${cam.id}</span>
-              ${isAlert ? '<span class="cam-alert-flag">⚠️ ALERT</span>' : ''}
-            </div>
-            ${cam.targetLock ? `
-              <div class="cam-locked-banner font-mono">
-                ${cam.targetLock}
-              </div>
-            ` : ''}
+  // Helper to build interactive popup content with Person and Vehicle counts
+  const buildPopupContent = (
+    title, 
+    location, 
+    coords, 
+    status, 
+    type = 'Device Camera', 
+    accuracy = null,
+    persons = 1,
+    vehicles = 0,
+    weapons = 0
+  ) => {
+    const isThreat = weapons > 0;
+    return `
+      <div class="tactical-map-popup font-mono">
+        <div class="popup-header-row">
+          <span class="popup-title">${title}</span>
+          <span class="popup-status-badge ${isThreat ? 'badge-red' : status === 'ONLINE' ? 'badge-green' : 'badge-orange'}">${isThreat ? 'ALERT' : status}</span>
+        </div>
+        <div class="popup-body">
+          <div class="popup-meta-line">
+            <span class="meta-label">TYPE:</span>
+            <span class="meta-value text-cyan">${type}</span>
           </div>
-        `,
-        iconSize: [120, 48],
-        iconAnchor: [60, 24],
+          <div class="popup-meta-line">
+            <span class="meta-label">LOCATION:</span>
+            <span class="meta-value">${location}</span>
+          </div>
+          <div class="popup-meta-line">
+            <span class="meta-label">GPS COORDS:</span>
+            <span class="meta-value text-yellow">${coords}</span>
+          </div>
+          ${accuracy ? `
+          <div class="popup-meta-line">
+            <span class="meta-label">ACCURACY:</span>
+            <span class="meta-value text-green">±${accuracy}m</span>
+          </div>` : ''}
+          <div class="popup-meta-line">
+            <span class="meta-label">👤 PERSONS:</span>
+            <span class="meta-value text-green font-bold">${persons} DETECTED</span>
+          </div>
+          <div class="popup-meta-line">
+            <span class="meta-label">🚗 VEHICLES:</span>
+            <span class="meta-value text-cyan font-bold">${vehicles} DETECTED</span>
+          </div>
+          <div class="popup-meta-line">
+            <span class="meta-label">🚨 THREAT:</span>
+            <span class="meta-value ${isThreat ? 'text-red font-bold animate-pulse' : 'text-green'}">
+              ${isThreat ? `${weapons} THREAT ACTIVE` : 'SECURE • NO THREAT'}
+            </span>
+          </div>
+          <div class="popup-meta-line">
+            <span class="meta-label">AI TRACKING:</span>
+            <span class="meta-value text-green">ACTIVE (60 FPS)</span>
+          </div>
+        </div>
+        <div class="popup-footer-row">
+          <span class="popup-source-tag">GOOGLE MAPS GIS SENSOR</span>
+        </div>
+      </div>
+    `;
+  };
+
+  // 4. Initialize or update the main Leaflet map instance
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+
+    // Create map if not created
+    if (!mapRef.current) {
+      const map = L.map(mapContainerRef.current, {
+        center: [deviceCoords.lat, deviceCoords.lng],
+        zoom: 15,
+        zoomControl: false,
+        attributionControl: false,
       });
 
-      const marker = L.marker(cam.coords, { icon: camIcon, zIndexOffset: isAlert ? 800 : 700 }).addTo(layerGroup);
-      marker.on('click', () => {
-        setSelectedItem(cam);
+      // Add default Google Hybrid Satellite layer
+      const initialLayerConfig = GOOGLE_TILES[mapType] || GOOGLE_TILES.hybrid;
+      const tileLayer = L.tileLayer(initialLayerConfig.url, {
+        subdomains: initialLayerConfig.subdomains,
+        maxZoom: initialLayerConfig.maxZoom,
       });
+      tileLayer.addTo(map);
+      currentTileLayerRef.current = tileLayer;
+
+      mapRef.current = map;
+    }
+
+    const map = mapRef.current;
+
+    // 1. Update or create primary device camera marker
+    if (deviceMarkerRef.current) {
+      deviceMarkerRef.current.setLatLng([deviceCoords.lat, deviceCoords.lng]);
+      deviceMarkerRef.current.setIcon(
+        createDeviceMarkerIcon('C-01 (DEVICE)', true, false)
+      );
+      deviceMarkerRef.current.getPopup()?.setContent(
+        buildPopupContent(
+          `C-01 ${primaryCameraName}`,
+          deviceCoords.locationName,
+          deviceCoords.gpsFormatted,
+          'ONLINE',
+          'Primary Detected Device Camera',
+          deviceCoords.accuracy,
+          1,
+          0,
+          0
+        )
+      );
+    } else {
+      const marker = L.marker([deviceCoords.lat, deviceCoords.lng], {
+        icon: createDeviceMarkerIcon('C-01 (DEVICE)', true, false),
+      });
+
+      marker.bindPopup(
+        buildPopupContent(
+          `C-01 ${primaryCameraName}`,
+          deviceCoords.locationName,
+          deviceCoords.gpsFormatted,
+          'ONLINE',
+          'Primary Detected Device Camera',
+          deviceCoords.accuracy,
+          1,
+          0,
+          0
+        ),
+        { className: 'tactical-leaflet-popup', closeButton: false }
+      );
+
+      marker.on('click', () => {
+        setSelectedPinInfo({
+          name: `C-01 ${primaryCameraName}`,
+          location: deviceCoords.locationName,
+          coords: deviceCoords.gpsFormatted,
+          status: 'ONLINE',
+          accuracy: deviceCoords.accuracy,
+          persons: 1,
+          vehicles: 0,
+          weapons: 0,
+        });
+      });
+
+      marker.addTo(map);
+      deviceMarkerRef.current = marker;
+    }
+
+    // 2. Render 7 Regional Sector Cameras onto Google Map (C-02 to C-08)
+    sectorMarkersRef.current.forEach((m) => m.remove());
+    sectorMarkersRef.current = [];
+
+    SECTOR_CAMERAS_MAP.forEach((sc) => {
+      const isThreat = sc.weapons > 0;
+      const marker = L.marker([sc.lat, sc.lng], {
+        icon: createDeviceMarkerIcon(sc.code, false, isThreat),
+      });
+
+      marker.bindPopup(
+        buildPopupContent(
+          `${sc.code} ${sc.name}`,
+          sc.location,
+          sc.gps_coords,
+          sc.status,
+          sc.mode,
+          null,
+          sc.persons,
+          sc.vehicles,
+          sc.weapons
+        ),
+        { className: 'tactical-leaflet-popup', closeButton: false }
+      );
+
+      marker.on('click', () => {
+        setSelectedPinInfo({
+          name: `${sc.code} ${sc.name}`,
+          location: sc.location,
+          coords: sc.gps_coords,
+          status: sc.status,
+          type: sc.mode,
+          persons: sc.persons,
+          vehicles: sc.vehicles,
+          weapons: sc.weapons,
+        });
+      });
+
+      marker.addTo(map);
+      sectorMarkersRef.current.push(marker);
     });
+
+    // Invalidate size in case of container reflows
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 200);
 
     return () => {
-      if (leafletMapRef.current) {
-        leafletMapRef.current.remove();
-        leafletMapRef.current = null;
+      // Keep map alive across standard re-renders
+    };
+  }, [deviceCoords, primaryCameraName]);
+
+  // Clean teardown on true unmount
+  useEffect(() => {
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
       }
     };
-  }, [
-    isLeafletReady,
-    coords.latitude,
-    coords.longitude,
-    locationName,
-    mapLayerType,
-    showFovCones,
-    showDeviceLinks,
-    showPerimeterLine,
-    selectedItem?.id,
-    isExpanded,
-  ]);
+  }, []);
 
-  // Recenter Map Helper
-  const handleRecenter = () => {
-    if (leafletMapRef.current) {
-      leafletMapRef.current.setView([coords.latitude, coords.longitude], 16, { animate: true });
+  // 5. Handle Tile Layer Switch (Google Satellite vs Google Roadmap)
+  const handleMapTypeChange = (newType) => {
+    setMapType(newType);
+    const targetConfig = GOOGLE_TILES[newType] || GOOGLE_TILES.hybrid;
+
+    if (mapRef.current && currentTileLayerRef.current) {
+      mapRef.current.removeLayer(currentTileLayerRef.current);
+      const newLayer = L.tileLayer(targetConfig.url, {
+        subdomains: targetConfig.subdomains,
+        maxZoom: targetConfig.maxZoom,
+      });
+      newLayer.addTo(mapRef.current);
+      currentTileLayerRef.current = newLayer;
+    }
+
+    if (modalMapRef.current && modalTileLayerRef.current) {
+      modalMapRef.current.removeLayer(modalTileLayerRef.current);
+      const newModalLayer = L.tileLayer(targetConfig.url, {
+        subdomains: targetConfig.subdomains,
+        maxZoom: targetConfig.maxZoom,
+      });
+      newModalLayer.addTo(modalMapRef.current);
+      modalTileLayerRef.current = newModalLayer;
     }
   };
 
+  // 6. Recenter on Detected Device Camera
+  const handleLocateDeviceCamera = () => {
+    setIsLocating(true);
+    if (mapRef.current) {
+      mapRef.current.flyTo([deviceCoords.lat, deviceCoords.lng], 17, {
+        duration: 1.2,
+      });
+      if (deviceMarkerRef.current) {
+        deviceMarkerRef.current.openPopup();
+      }
+    }
+    setTimeout(() => setIsLocating(false), 1300);
+  };
+
+  // 7. Fullscreen Modal Map Handler
+  useEffect(() => {
+    if (!isExpanded || !modalMapContainerRef.current) return;
+
+    const modalMap = L.map(modalMapContainerRef.current, {
+      center: [deviceCoords.lat, deviceCoords.lng],
+      zoom: 17,
+      zoomControl: true,
+      attributionControl: false,
+    });
+
+    const activeConfig = GOOGLE_TILES[mapType] || GOOGLE_TILES.hybrid;
+    const tileLayer = L.tileLayer(activeConfig.url, {
+      subdomains: activeConfig.subdomains,
+      maxZoom: activeConfig.maxZoom,
+    });
+    tileLayer.addTo(modalMap);
+    modalTileLayerRef.current = tileLayer;
+
+    const marker = L.marker([deviceCoords.lat, deviceCoords.lng], {
+      icon: createDeviceMarkerIcon('C-01 (DEVICE)', true, false),
+    });
+
+    marker.bindPopup(
+      buildPopupContent(
+        `C-01 ${primaryCameraName}`,
+        deviceCoords.locationName,
+        deviceCoords.gpsFormatted,
+        'ONLINE',
+        'Primary Detected Device Camera',
+        deviceCoords.accuracy,
+        1,
+        0,
+        0
+      ),
+      { className: 'tactical-leaflet-popup', closeButton: false }
+    );
+    marker.addTo(modalMap);
+    modalDeviceMarkerRef.current = marker;
+
+    // Render 7 regional sector cameras in modal map
+    modalSectorMarkersRef.current.forEach((m) => m.remove());
+    modalSectorMarkersRef.current = [];
+
+    SECTOR_CAMERAS_MAP.forEach((sc) => {
+      const isThreat = sc.weapons > 0;
+      const mMarker = L.marker([sc.lat, sc.lng], {
+        icon: createDeviceMarkerIcon(sc.code, false, isThreat),
+      });
+      mMarker.bindPopup(
+        buildPopupContent(
+          `${sc.code} ${sc.name}`,
+          sc.location,
+          sc.gps_coords,
+          sc.status,
+          sc.mode,
+          null,
+          sc.persons,
+          sc.vehicles,
+          sc.weapons
+        ),
+        { className: 'tactical-leaflet-popup', closeButton: false }
+      );
+      mMarker.addTo(modalMap);
+      modalSectorMarkersRef.current.push(mMarker);
+    });
+
+    modalMapRef.current = modalMap;
+
+    setTimeout(() => {
+      modalMap.invalidateSize();
+      marker.openPopup();
+    }, 250);
+
+    return () => {
+      if (modalMapRef.current) {
+        modalMapRef.current.remove();
+        modalMapRef.current = null;
+      }
+    };
+  }, [isExpanded]);
+
   return (
-    <div className={`tactical-card surveillance-map-card ${isExpanded ? 'surveillance-map-expanded-modal' : ''}`}>
+    <div className="tactical-card surveillance-map-card">
       {/* Card Header */}
       <div className="card-header">
         <div className="card-title-group">
           <div className="card-title-row">
-            <Radio size={16} className="card-title-icon text-cyan" />
-            <h3 className="card-title">Dynamic Perimeter Surveillance Map</h3>
-            <span className="perimeter-count-badge font-mono">
-              {connectedCameras.length} CAMERAS IN LINE • 1 EDGE HUB
-            </span>
+            <Radio size={18} className="card-title-icon text-green pulse-ring" />
+            <h3 className="card-title font-bold">Surveillance Map (Google Maps GIS)</h3>
           </div>
-          <span className="card-subtitle">
-            📍 Real-Time Location: <strong className="text-cyan">{locationName}</strong> ({coords.formatted})
+          <span className="card-subtitle font-mono">
+            Live Device Camera: <strong className="text-white">{primaryCameraName}</strong> • {deviceCoords.locationName}
           </span>
         </div>
 
-        {/* Header Right Controls */}
-        <div className="map-header-controls font-mono">
-          {/* Live GPS / Detect Button */}
-          <button
-            onClick={detectLocation}
-            className={`map-tool-btn ${isLiveGps ? 'active' : ''}`}
-            title="Detect real device hardware GPS / IP location"
-          >
-            <LocateFixed size={12} className={isLiveGps ? "text-green-400 animate-spin" : "text-cyan"} />
-            <span>{isLiveGps ? 'LIVE GPS ACTIVE' : 'DETECT MY LOCATION'}</span>
-          </button>
-
-          {/* Quick Location Teleport Dropdown */}
-          <select 
-            onChange={(e) => {
-              const val = e.target.value;
-              if (val === 'current_gps') {
-                detectLocation();
-              } else if (val === 'gurgaon_cybercity') {
-                setManualLocation(28.4949, 77.0895, 'DLF Cyber City, Gurgaon, Haryana');
-              } else if (val === 'gurgaon_sec29') {
-                setManualLocation(28.4682, 77.0620, 'Sector 29, Gurgaon, Haryana');
-              } else if (val === 'noida_sec28') {
-                setManualLocation(28.5708, 77.3271, 'Noida Sector 28, Uttar Pradesh');
-              } else if (val === 'delhi_cp') {
-                setManualLocation(28.6315, 77.2167, 'Connaught Place, New Delhi');
-              }
-            }}
-            className="map-sector-select font-mono"
-            title="Switch Location Corridor"
-            defaultValue=""
-          >
-            <option value="" disabled>Jump Location...</option>
-            <option value="current_gps">🛰️ Auto-Detect My Live Location</option>
-            <option value="gurgaon_cybercity">📍 Gurgaon DLF Cyber City</option>
-            <option value="gurgaon_sec29">📍 Gurgaon Sector 29 Leisure Valley</option>
-            <option value="noida_sec28">📍 Noida Sector 28 Corridor</option>
-            <option value="delhi_cp">📍 New Delhi Connaught Place</option>
-          </select>
-
-          {/* Map Layer Switcher */}
-          <div className="map-layer-selector">
-            <button 
-              className={`layer-btn ${mapLayerType === 'google_hybrid' ? 'active' : ''}`}
-              onClick={() => setMapLayerType('google_hybrid')}
-              title="Google Maps Satellite Hybrid"
-            >
-              Google Satellite
-            </button>
-            <button 
-              className={`layer-btn ${mapLayerType === 'google_roads' ? 'active' : ''}`}
-              onClick={() => setMapLayerType('google_roads')}
-              title="Google Maps Roadmap / Terrain"
-            >
-              Google Roads
-            </button>
-            <button 
-              className={`layer-btn ${mapLayerType === 'dark_matter' ? 'active' : ''}`}
-              onClick={() => setMapLayerType('dark_matter')}
-              title="Tactical Dark Cyber Grid"
-            >
-              Dark Grid
-            </button>
-            <button 
-              className={`layer-btn ${mapLayerType === 'positron' ? 'active' : ''}`}
-              onClick={() => setMapLayerType('positron')}
-              title="Tactical Daylight View"
-            >
-              Daylight
-            </button>
+        {/* Legend */}
+        <div className="map-legend font-mono">
+          <div className="legend-item">
+            <span className="legend-dot green-dot"></span>
+            <span>Device Camera</span>
           </div>
-
-          {/* Fullscreen Expand Button */}
-          <button 
-            className="btn-map-icon"
-            onClick={() => setIsExpanded(!isExpanded)}
-            title={isExpanded ? "Collapse Map" : "Expand Defense Map"}
-          >
-            {isExpanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-          </button>
+          <div className="legend-item">
+            <span className="legend-dot cyan-dot"></span>
+            <span>Google Satellite</span>
+          </div>
+          <div className="legend-item">
+            <span className="legend-dot red-square"></span>
+            <span>Alert Active</span>
+          </div>
         </div>
       </div>
 
-      {/* Map Viewport Container */}
-      <div className="radar-map-viewport">
-        {/* Leaflet Google Map Container */}
-        <div ref={mapContainerRef} className="leaflet-map-canvas" />
-
-        {/* Floating Top Telemetry Overlays */}
+      {/* Real Google Map Viewport */}
+      <div className="google-map-viewport">
+        {/* Top Overlay HUD Badges */}
         <div className="map-overlay-top-left font-mono">
-          <span className="overlay-pill">
-            <Compass size={11} className="text-cyan" /> {locationName}
-          </span>
+          <div className="hud-badge-item">
+            <span className="hud-label">DETECTED CAM:</span>
+            <strong className="text-green">{primaryCameraName}</strong>
+          </div>
+          <div className="hud-badge-item">
+            <span className="hud-label">SECTOR:</span>
+            <strong className="text-white">{deviceCoords.locationName}</strong>
+          </div>
+          <div className="hud-badge-item">
+            <span className="hud-label">GIS SENSORS:</span>
+            <strong className="text-cyan">8 CAMERAS LINKED</strong>
+          </div>
         </div>
 
         <div className="map-overlay-top-right font-mono">
-          <span className="overlay-pill">
-            <Crosshair size={11} className="text-coral" /> LAT {coords.latitude.toFixed(4)}° N • LONG {coords.longitude.toFixed(4)}° E
-          </span>
-        </div>
-
-        {/* Floating In-Map Quick Layer Toggles & Instructions */}
-        <div className="map-floating-toolbar font-mono">
-          <button 
-            className={`map-tool-btn ${showPerimeterLine ? 'active' : ''}`}
-            onClick={() => setShowPerimeterLine(!showPerimeterLine)}
-            title="Toggle Perimeter Fence Chain Line"
-          >
-            <span className="tool-dot cyan-dot"></span>
-            <span>Perimeter Line</span>
-          </button>
-
-          <button 
-            className={`map-tool-btn ${showDeviceLinks ? 'active' : ''}`}
-            onClick={() => setShowDeviceLinks(!showDeviceLinks)}
-            title="Toggle Device-to-Camera Fiber Links"
-          >
-            <span className="tool-dot amber-dot"></span>
-            <span>Device Links</span>
-          </button>
-
-          <button 
-            className={`map-tool-btn ${showFovCones ? 'active' : ''}`}
-            onClick={() => setShowFovCones(!showFovCones)}
-            title="Toggle Visual Field of View (FOV) Cones"
-          >
-            <span className="tool-dot green-dot"></span>
-            <span>Camera FOV</span>
-          </button>
-
-          <button 
-            className="map-tool-btn"
-            onClick={handleRecenter}
-            title="Recenter Map View on Device"
-          >
-            <RefreshCw size={11} />
-            <span>Recenter</span>
-          </button>
-
-          <div className="map-hint-text">
-            <span>💡 Click map to move device & cameras</span>
+          <div className="hud-gps-pill">
+            <MapPin size={11} className="text-cyan" />
+            <span>{deviceCoords.gpsFormatted}</span>
           </div>
         </div>
 
-        {/* Selected Node HUD Tactical Telemetry Inspector Card */}
-        {selectedItem && (
-          <div className="map-selected-hud-card font-mono">
-            <div className="hud-header-row">
-              <div className="hud-title-left">
-                {selectedItem.id === 'DEV-EDGE-MASTER' || selectedItem.model ? (
-                  <Cpu size={14} className="text-amber-400" />
-                ) : (
-                  <Camera size={14} className={selectedItem.status === 'alert' ? 'text-coral' : 'text-cyan'} />
-                )}
-                <span className="hud-title-name font-bold">{selectedItem.name || selectedItem.id}</span>
-              </div>
-              <span className={`pill-badge font-bold ${selectedItem.status === 'alert' ? 'tag-coral' : selectedItem.status === 'patrol' ? 'tag-cyan' : 'tag-green'}`}>
-                {selectedItem.status?.toUpperCase()}
-              </span>
-            </div>
-
-            <div className="hud-meta-grid">
-              <div className="hud-meta-item">
-                <span className="hud-meta-label">EXACT GPS:</span>
-                <span className="hud-meta-val text-cyan font-bold">{selectedItem.gpsFormatted}</span>
-              </div>
-              <div className="hud-meta-item">
-                <span className="hud-meta-label">LOCATION:</span>
-                <span className="hud-meta-val">{locationName}</span>
-              </div>
-              <div className="hud-meta-item">
-                <span className="hud-meta-label">HARDWARE:</span>
-                <span className="hud-meta-val">{selectedItem.type || selectedItem.model}</span>
-              </div>
-              <div className="hud-meta-item">
-                <span className="hud-meta-label">TOPOLOGY:</span>
-                <span className="hud-meta-val text-amber-400">
-                  {selectedItem.connectedDevice ? `Linked to ${selectedItem.connectedDevice}` : `${connectedCameras.length} Cams in Linear Chain`}
-                </span>
-              </div>
-            </div>
-
-            {selectedItem.targetLock && (
-              <div className="hud-threat-alert font-mono">
-                <AlertTriangle size={13} className="text-coral" />
-                <span>{selectedItem.targetLock} • {selectedItem.targetType} ({selectedItem.targetConfidence})</span>
-              </div>
-            )}
+        {/* Tactical Map Floating Controls */}
+        <div className="map-floating-controls font-mono">
+          {/* Tile Switcher: Satellite vs Road */}
+          <div className="map-layer-switch-group">
+            <button
+              className={`layer-switch-btn ${mapType === 'hybrid' ? 'active' : ''}`}
+              onClick={() => handleMapTypeChange('hybrid')}
+              title="Google Satellite Hybrid with Street Labels"
+            >
+              <Layers size={12} />
+              <span>SATELLITE</span>
+            </button>
+            <button
+              className={`layer-switch-btn ${mapType === 'roadmap' ? 'active' : ''}`}
+              onClick={() => handleMapTypeChange('roadmap')}
+              title="Google Standard Vector Road Map"
+            >
+              <span>ROADMAP</span>
+            </button>
           </div>
-        )}
 
-        {/* Bottom Demarcation Legend Bar */}
+          {/* Quick Recenter Button */}
+          <button
+            className={`locate-cam-btn ${isLocating ? 'locating' : ''}`}
+            onClick={handleLocateDeviceCamera}
+            title="Recenter Map on Detected Device Camera"
+          >
+            <Crosshair size={13} className={isLocating ? 'animate-spin text-green' : 'text-cyan'} />
+            <span>LOCATE CAM</span>
+          </button>
+        </div>
+
+        {/* Leaflet Map DOM Node */}
+        <div ref={mapContainerRef} className="leaflet-map-element" />
+
+        {/* Bottom Demarcation / Telemetry Overlay */}
+        <div className="map-demarcation-label font-mono">
+          GOOGLE MAPS PRECISION GIS • SENSOR ACTIVE
+        </div>
+
         <div className="map-telemetry-bar font-mono">
           <div className="telemetry-item">
-            AREA: <span className="text-cyan font-bold">{locationName}</span>
+            ACCURACY: <span>±{deviceCoords.accuracy}m</span>
           </div>
           <div className="telemetry-divider">|</div>
           <div className="telemetry-item">
-            COORDINATES: <span className="text-cyan font-bold">{coords.formatted}</span>
+            LATENCY: <span>{latency}ms</span>
           </div>
           <div className="telemetry-divider">|</div>
           <div className="telemetry-item">
-            SOURCE: <span className={isLiveGps ? "text-green-400 font-bold" : "text-amber-400 font-bold"}>
-              {isLiveGps ? 'LIVE HARDWARE GPS' : 'NETWORK/USER DEFINED'}
-            </span>
-          </div>
-          <div className="telemetry-divider">|</div>
-          <div className="telemetry-item">
-            TILES: <span className="text-main uppercase">{mapLayerType.replace('_', ' ')}</span>
+            TILE ENGINE: <span>{mapType === 'hybrid' ? 'Google Satellite' : 'Google Vector'}</span>
           </div>
         </div>
       </div>
@@ -561,29 +724,84 @@ export const SurveillanceMap = ({ lastPing = 3, latency = 14 }) => {
       {/* Card Footer Bar */}
       <div className="card-footer-bar font-mono">
         <div className="footer-status-info">
-          <span className="dot-cyan status-dot pulse-ring"></span>
+          <span className="dot-green status-dot pulse-ring"></span>
           <span className="footer-status-text">
-            Ping {lastPing}s <span className="text-sep">•</span> Latency {latency}ms <span className="text-sep">•</span> <strong className="cyan-highlight">Dynamic Linear Perimeter Active</strong>
+            Live GPS telemetry linked <span className="text-sep">•</span> Hardware sensor: <strong className="text-green">{primaryCameraName}</strong> <span className="text-sep">•</span> Latency {latency}ms
           </span>
         </div>
 
-        <div className="footer-right-actions">
-          <div className="map-legend">
-            <div className="legend-item">
-              <span className="legend-dot green-dot"></span>
-              <span>Online Cam</span>
+        <button 
+          className="btn-tactical btn-primary"
+          onClick={() => setIsExpanded(true)}
+          title="Open Fullscreen Tactical Google Map Inspector"
+        >
+          <Maximize2 size={13} />
+          <span>Expand Defense Map</span>
+        </button>
+      </div>
+
+      {/* Fullscreen Tactical Google Map Modal */}
+      {isExpanded && (
+        <div className="modal-backdrop-blur">
+          <div className="fullscreen-map-modal font-mono">
+            <div className="modal-header-bar">
+              <div className="header-title-group">
+                <Radio size={18} className="text-green animate-pulse" />
+                <h3 className="text-white font-bold">TACTICAL GOOGLE DEFENSE MAP — SENSOR INSPECTION</h3>
+                <span className="pill-badge pill-green">LIVE STREAMING</span>
+              </div>
+
+              <div className="header-actions-group">
+                <div className="map-layer-switch-group">
+                  <button
+                    className={`layer-switch-btn ${mapType === 'hybrid' ? 'active' : ''}`}
+                    onClick={() => handleMapTypeChange('hybrid')}
+                  >
+                    SATELLITE
+                  </button>
+                  <button
+                    className={`layer-switch-btn ${mapType === 'roadmap' ? 'active' : ''}`}
+                    onClick={() => handleMapTypeChange('roadmap')}
+                  >
+                    ROADMAP
+                  </button>
+                </div>
+
+                <button
+                  className="modal-close-btn"
+                  onClick={() => setIsExpanded(false)}
+                  title="Close Map View"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
-            <div className="legend-item">
-              <span className="legend-dot red-square pulse-ring"></span>
-              <span>Alert Active</span>
+
+            <div className="modal-map-viewport">
+              <div ref={modalMapContainerRef} className="leaflet-map-element" style={{ width: '100%', height: '100%' }} />
             </div>
-            <div className="legend-item">
-              <span className="legend-dot amber-diamond"></span>
-              <span>Edge Device Hub</span>
+
+            <div className="modal-footer-stats font-mono">
+              <div>
+                <span className="text-muted">DETECTED CAMERA: </span>
+                <strong className="text-green">{primaryCameraName}</strong>
+              </div>
+              <div>
+                <span className="text-muted">LOCATION: </span>
+                <strong className="text-white">{deviceCoords.locationName}</strong>
+              </div>
+              <div>
+                <span className="text-muted">COORDINATES: </span>
+                <strong className="text-yellow">{deviceCoords.gpsFormatted}</strong>
+              </div>
+              <div>
+                <span className="text-muted">PRECISION: </span>
+                <strong className="text-cyan">±{deviceCoords.accuracy}m (High Accuracy)</strong>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

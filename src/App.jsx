@@ -15,6 +15,7 @@ import AnalyticsPage from './pages/AnalyticsPage';
 import SettingsPage from './pages/SettingsPage';
 import SnapshotsPage from './pages/SnapshotsPage';
 import LoginPage from './pages/LoginPage';
+import { RemoteCameraPage } from './pages/RemoteCameraPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { LocationProvider } from './context/LocationContext';
@@ -107,6 +108,13 @@ function MainAppLayout() {
 }
 
 function App() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const isRemoteCam = urlParams.get('mode') === 'remote-cam' || urlParams.get('mode') === 'camera';
+
+  if (isRemoteCam) {
+    return <RemoteCameraPage />;
+  }
+
   return (
     <ThemeProvider>
       <LocationProvider>

@@ -19,10 +19,14 @@ import {
   Eye,
   RefreshCw,
   Send,
-  Check
+  Check,
+  Flame,
+  Database,
+  Cloud
 } from 'lucide-react';
 import { fetchAlerts, acknowledgeAlert, dispatchAlert, resolveAlert } from '../services/apiService';
 import { soundController } from '../utils/audioAlert';
+import { syncAlertToFirestore, subscribeToCloudAlerts, updateCloudAlertStatus } from '../services/firestoreService';
 import './AlertsEventsPage.css';
 
 const defaultFallbackEvents = [
@@ -110,6 +114,9 @@ const AlertsEventsPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [actionSuccess, setActionSuccess] = useState('');
+  const [isCloudSyncActive, setIsCloudSyncActive] = useState(true);
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+  const [cloudSyncedCount, setCloudSyncedCount] = useState(0);
 
   const loadAlerts = async () => {
     setLoading(true);
@@ -177,21 +184,66 @@ const AlertsEventsPage = () => {
     return () => clearInterval(interval);
   }, [cameraFilter, severityFilter]);
 
+  // Live real-time listener to Cloud Firestore alerts
+  useEffect(() => {
+    if (!isCloudSyncActive) return;
+    const unsubscribe = subscribeToCloudAlerts((cloudAlerts) => {
+      if (Array.isArray(cloudAlerts) && cloudAlerts.length > 0) {
+        setCloudSyncedCount(cloudAlerts.length);
+        setEvents((prev) => {
+          const idMap = new Map();
+          prev.forEach((e) => idMap.set(e.id, e));
+          cloudAlerts.forEach((c) => {
+            const isCrit = (c.severity || '').toLowerCase() === 'critical';
+            const isWarn = (c.severity || '').toLowerCase() === 'warning' || (c.severity || '').toLowerCase() === 'high';
+            const mapped = {
+              id: c.id,
+              severity: isCrit ? 'critical' : isWarn ? 'warning' : 'info',
+              severityText: c.severity || (isCrit ? 'CRITICAL' : 'WARNING'),
+              eventType: c.title || c.type || 'Cloud Security Event',
+              typeIcon: isCrit ? <ShieldAlert size={16} className="text-red" /> : <AlertTriangle size={16} className="text-yellow" />,
+              objectId: c.target_id || 'P-102',
+              objectIdGreen: false,
+              personStatus: isCrit ? 'HOSTILE BREACH' : 'UNAUTHORIZED',
+              statusType: isCrit ? 'unauth-red' : 'unauth-yellow',
+              rolePlate: c.camera_code || c.camera_id || 'SECTOR 04',
+              rolePlateType: isCrit ? 'unauth-red' : '',
+              activity: c.description || c.title || 'Cloud Synchronized Trace',
+              activityType: isCrit ? 'breach-red' : 'loitering-yellow',
+              status: c.status || 'ACTIVE',
+              camera_id: c.camera_id,
+              isCloudSync: true,
+            };
+            idMap.set(c.id, mapped);
+          });
+          return Array.from(idMap.values());
+        });
+      }
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [isCloudSyncActive]);
+
   const handleAction = async (actionType, alertId) => {
     try {
       if (actionType === 'acknowledge') {
         soundController.playClick();
         await acknowledgeAlert(alertId);
+        updateCloudAlertStatus(alertId, 'ACKNOWLEDGED').catch(() => {});
         setActionSuccess(`Alert ${alertId} acknowledged by Operator.`);
         setEvents((prev) => prev.map((e) => (e.id === alertId ? { ...e, status: 'ACKNOWLEDGED' } : e)));
       } else if (actionType === 'dispatch') {
         soundController.playSirenBurst(1.8);
         await dispatchAlert(alertId);
+        updateCloudAlertStatus(alertId, 'DISPATCHED').catch(() => {});
         setActionSuccess(`🚨 Quick Reaction Team (QRT) Dispatched for ${alertId}!`);
         setEvents((prev) => prev.map((e) => (e.id === alertId ? { ...e, status: 'DISPATCHED' } : e)));
       } else if (actionType === 'resolve') {
         soundController.playWarningChime();
         await resolveAlert(alertId);
+        updateCloudAlertStatus(alertId, 'RESOLVED').catch(() => {});
         setActionSuccess(`Alert ${alertId} resolved & archived.`);
         setEvents((prev) =>
           prev.map((e) =>
@@ -218,6 +270,23 @@ const AlertsEventsPage = () => {
         setActionSuccess(`Alert ${alertId} resolved.`);
       }
       setTimeout(() => setActionSuccess(''), 3500);
+    }
+  };
+
+  const handleSyncAllToFirestore = async () => {
+    setIsSyncingCloud(true);
+    try {
+      let count = 0;
+      for (const evt of events) {
+        await syncAlertToFirestore(evt);
+        count++;
+      }
+      setActionSuccess(`Synced ${count} alerts to Cloud Firestore.`);
+      setTimeout(() => setActionSuccess(''), 4000);
+    } catch (err) {
+      console.error('Firestore sync error:', err);
+    } finally {
+      setIsSyncingCloud(false);
     }
   };
 
@@ -277,6 +346,17 @@ const AlertsEventsPage = () => {
         </div>
 
         <div className="header-status-pills font-mono">
+          <button
+            type="button"
+            className={`pill-badge ${isCloudSyncActive ? 'pill-orange' : 'pill-muted'} cloud-sync-btn`}
+            onClick={() => setIsCloudSyncActive((prev) => !prev)}
+            title="Toggle Firebase Cloud Firestore Live Real-Time Feed"
+            style={{ cursor: 'pointer', border: isCloudSyncActive ? '1px solid rgba(249, 115, 22, 0.45)' : '1px solid rgba(255, 255, 255, 0.15)', background: isCloudSyncActive ? 'rgba(249, 115, 22, 0.12)' : 'rgba(255, 255, 255, 0.05)', color: isCloudSyncActive ? '#f97316' : '#94a3b8' }}
+          >
+            <Flame size={12} className={isCloudSyncActive ? 'text-orange' : 'text-sub'} />
+            <span>{isCloudSyncActive ? `FIREBASE DB: SYNCED (${cloudSyncedCount})` : 'FIREBASE DB: PAUSED'}</span>
+          </button>
+
           <span className="pill-badge pill-green">
             <span className="status-dot dot-green pulse-ring"></span> System Online
           </span>
@@ -393,6 +473,17 @@ const AlertsEventsPage = () => {
 
           <button className="clear-filters-btn font-mono" onClick={loadAlerts} title="Refresh">
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          </button>
+
+          <button
+            className="clear-filters-btn font-mono"
+            style={{ background: 'rgba(249, 115, 22, 0.12)', borderColor: 'rgba(249, 115, 22, 0.45)', color: '#f97316' }}
+            onClick={handleSyncAllToFirestore}
+            disabled={isSyncingCloud}
+            title="Sync all loaded events to Cloud Firestore"
+          >
+            <Database size={13} className={isSyncingCloud ? 'animate-spin' : ''} />
+            <span>{isSyncingCloud ? 'SYNCING...' : 'SYNC TO FIREBASE'}</span>
           </button>
         </div>
 

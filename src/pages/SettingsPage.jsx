@@ -19,11 +19,15 @@ import {
   Clock, 
   Zap, 
   Plus, 
-  ShieldCheck, 
+  ShieldCheck,
   Info,
-  X
+  X,
+  Flame,
+  Database,
+  Cloud
 } from 'lucide-react';
 import { fetchFRSWatchlist, addFRSSubject, deleteFRSSubject } from '../services/apiService';
+import { testFirestoreConnection } from '../services/firestoreService';
 import './SettingsPage.css';
 
 const defaultAuthorizedList = [
@@ -92,6 +96,23 @@ const SettingsPage = () => {
   const [timeRangeScope, setTimeRangeScope] = useState('24h');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [showCamStatus, setShowCamStatus] = useState(true);
+
+  // Firebase Database State
+  const [testingDb, setTestingDb] = useState(false);
+  const [dbStatus, setDbStatus] = useState(null);
+  const [cloudSyncAuto, setCloudSyncAuto] = useState(true);
+
+  const handleTestDatabase = async () => {
+    setTestingDb(true);
+    try {
+      const res = await testFirestoreConnection();
+      setDbStatus(res);
+    } catch (e) {
+      setDbStatus({ connected: false, error: e.message });
+    } finally {
+      setTestingDb(false);
+    }
+  };
 
   // Authorized Persons Search & Data
   const [searchTerm, setSearchTerm] = useState('');
@@ -613,6 +634,77 @@ const SettingsPage = () => {
               </div>
             </div>
             <span className="pill-badge pill-muted font-mono text-xs">SHA-256</span>
+          </div>
+
+          {/* Card 4: Firebase Cloud Firestore Database */}
+          <div className="tactical-card settings-card font-mono" style={{ borderColor: 'rgba(249, 115, 22, 0.35)', background: 'linear-gradient(180deg, rgba(249, 115, 22, 0.05) 0%, rgba(10, 15, 25, 0.85) 100%)' }}>
+            <div className="card-header-with-badge font-mono">
+              <div className="header-icon-title">
+                <Flame size={16} className="text-orange" />
+                <div className="title-text-group">
+                  <h4 className="card-title font-bold text-white">Firebase Cloud Database</h4>
+                  <p className="card-subtitle text-muted">
+                    Cloud Firestore real-time threat replication & telemetry sync.
+                  </p>
+                </div>
+              </div>
+              <span className="pill-badge font-mono" style={{ background: 'rgba(249, 115, 22, 0.15)', color: '#f97316', border: '1px solid rgba(249, 115, 22, 0.4)' }}>
+                {dbStatus?.connected ? '● CLOUD SYNCED' : 'READY'}
+              </span>
+            </div>
+
+            <div className="card-form-body font-mono">
+              <div className="settings-stat-meta-row font-mono" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.72rem', background: 'rgba(0, 0, 0, 0.35)', padding: '10px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <div>
+                  <span className="text-muted">PROJECT ID: </span>
+                  <strong className="text-white">ibvap-acbd6</strong>
+                </div>
+                <div>
+                  <span className="text-muted">DATABASE: </span>
+                  <strong className="text-orange">Cloud Firestore</strong>
+                </div>
+                <div>
+                  <span className="text-muted">SYNC REGION: </span>
+                  <strong className="text-cyan">Global Multi-Zone</strong>
+                </div>
+                <div>
+                  <span className="text-muted">LATENCY: </span>
+                  <strong className="text-green">{dbStatus?.latencyMs ? `${dbStatus.latencyMs} ms` : 'Standby'}</strong>
+                </div>
+              </div>
+
+              <div className="toggle-row-item" style={{ marginTop: '10px' }}>
+                <div className="toggle-text-info">
+                  <span className="toggle-label text-white font-bold">Auto Real-Time Sync</span>
+                  <span className="toggle-desc text-muted">Replicate all live AI detections & alerts to Cloud Firestore.</span>
+                </div>
+                <button
+                  className={`switch-toggle ${cloudSyncAuto ? 'on' : ''}`}
+                  onClick={() => setCloudSyncAuto(!cloudSyncAuto)}
+                >
+                  <span className="switch-thumb"></span>
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                <button
+                  type="button"
+                  onClick={handleTestDatabase}
+                  disabled={testingDb}
+                  className="btn-person-edit font-mono"
+                  style={{ flex: 1, padding: '8px 12px', background: 'rgba(249, 115, 22, 0.15)', border: '1px solid rgba(249, 115, 22, 0.45)', color: '#f97316', cursor: 'pointer', borderRadius: '6px' }}
+                >
+                  <Database size={13} className={testingDb ? 'animate-spin' : ''} />
+                  <span>{testingDb ? 'PINGING DATABASE...' : 'TEST CLOUD DB CONNECTION'}</span>
+                </button>
+              </div>
+
+              {dbStatus && (
+                <div style={{ marginTop: '8px', fontSize: '0.72rem', color: dbStatus.connected ? '#10b981' : '#ef4444' }}>
+                  {dbStatus.connected ? `✔ Cloud Firestore connection verified (${dbStatus.latencyMs}ms latency).` : `✖ Connection note: ${dbStatus.error}`}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

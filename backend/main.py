@@ -120,11 +120,24 @@ async def lifespan(app: FastAPI):
     # Start AI pipeline (spawns camera worker processes)
     await pipeline_manager.start()
 
+    # Auto-start active external IP cameras registered in database
+    from .pipeline.ip_camera_manager import ip_camera_manager
+    from .database.db import get_all_cameras
+    try:
+        registered_cams = await get_all_cameras()
+        for cam in registered_cams:
+            if cam.rtsp_url and (cam.rtsp_url.startswith("http://") or cam.rtsp_url.startswith("https://") or cam.rtsp_url.startswith("rtsp://")):
+                ip_camera_manager.start_camera(cam)
+    except Exception as exc:
+        log.warning("Could not auto-start IP cameras: %s", exc)
+
     log.info("IBVAP platform ready. Listening for connections …")
     yield
 
     # Graceful shutdown
     log.info("IBVAP shutting down …")
+    for cam_id in list(ip_camera_manager._streamers.keys()):
+        ip_camera_manager.stop_camera(cam_id)
     await pipeline_manager.stop()
     log.info("Shutdown complete.")
 

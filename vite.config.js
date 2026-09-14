@@ -3,23 +3,31 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 
+const frontendPort = process.env.PORT
+  ? parseInt(process.env.PORT, 10)
+  : (process.env.VITE_PORT ? parseInt(process.env.VITE_PORT, 10) : 5173);
+
+const backendPort = process.env.BACKEND_PORT || '8000';
+const backendTarget = process.env.BACKEND_URL || `http://127.0.0.1:${backendPort}`;
+const wsBackendTarget = process.env.WS_BACKEND_URL || `ws://127.0.0.1:${backendPort}`;
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), basicSsl()],
   server: {
     host: '0.0.0.0',
-    port: 5173,
-    strictPort: true,
+    port: frontendPort,
+    strictPort: false,
     watch: {
       ignored: ['**/backend/**', '**/models/**', '**/snapshots/**', '**/*.db', '**/*.pt', '**/*.onnx'],
     },
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: backendTarget,
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://127.0.0.1:8000',
+        target: wsBackendTarget,
         ws: true,
       },
       '/snapshots': {

@@ -35,6 +35,8 @@ class CameraCreateRequest(BaseModel):
 
 
 class CameraUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    location: Optional[str] = None
     status: Optional[str] = None
     mode: Optional[str] = None
     latitude: Optional[float] = None

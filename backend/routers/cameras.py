@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 
 from ..database import db
 from ..database.models import CameraConfig
+from ..pipeline.ip_camera_manager import ip_camera_manager, get_lan_ip
 from ..pipeline.pipeline_manager import pipeline_manager
 from ..schemas import (
     CameraCreateRequest, CameraResponse, CameraUpdateRequest, SuccessResponse,
@@ -36,6 +37,32 @@ async def sync_camera_locations(req: CameraSyncGeoRequest):
         "status": "success",
         "message": f"Updated {len(updated)} cameras to {req.location_name}",
         "cameras": [_to_response(c) for c in updated],
+    }
+
+
+@router.post("/test-stream")
+async def test_stream(request: Request):
+    """
+    Test connection to an IP camera or stream URL (RTSP, HTTP MJPEG, /shot.jpg).
+    Returns latency, resolution, and a base64 preview snapshot.
+    """
+    body = await request.json()
+    url = body.get("url", "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="Stream URL is required.")
+    return ip_camera_manager.test_stream_url(url)
+
+
+@router.get("/network-info")
+async def get_network_info():
+    """Return local LAN IP and mobile pairing details for connecting other devices."""
+    lan_ip = get_lan_ip()
+    return {
+        "status": "success",
+        "lan_ip": lan_ip,
+        "mobile_pairing_url": f"https://{lan_ip}:5173/?mode=remote-cam",
+        "mobile_ingest_endpoint": f"https://{lan_ip}:5173/api/v1/cameras",
+        "instructions": "Ensure both devices are connected to the same Wi-Fi network.",
     }
 
 
@@ -81,7 +108,10 @@ async def create_camera(body: CameraCreateRequest):
     )
     await db.upsert_camera(cam)
     await pipeline_manager.add_camera(cam)
+    if cam.rtsp_url and not cam.rtsp_url.startswith("synthetic"):
+        ip_camera_manager.start_camera(cam)
     return _to_response(cam)
+
 
 
 # ── Parameterized routes ──────────────────────────────────────────────────────
@@ -158,6 +188,7 @@ async def update_fence(cam_id: str, request: Request):
 
 @router.delete("/{cam_id}", response_model=SuccessResponse)
 async def delete_camera(cam_id: str):
+    ip_camera_manager.stop_camera(cam_id)
     await pipeline_manager.remove_camera(cam_id)
     await db.delete_camera(cam_id)
     return SuccessResponse(message=f"Camera {cam_id} removed.")
@@ -182,7 +213,7 @@ def _generate_standby_frame(camera_code: str = "CAM-01") -> bytes:
 @router.get("/{cam_id}/frame")
 async def get_latest_frame(cam_id: str):
     """Serve the latest annotated JPEG frame for the camera."""
-    frame_bytes = pipeline_manager.get_latest_frame(cam_id)
+    frame_bytes = ip_camera_manager.get_latest_frame(cam_id) or pipeline_manager.get_latest_frame(cam_id)
     if not frame_bytes:
         cam = await db.get_camera(cam_id)
         code = cam.code if cam else cam_id.upper()
@@ -202,7 +233,7 @@ async def mjpeg_stream(cam_id: str):
 
     async def _frame_generator():
         while True:
-            frame_bytes = pipeline_manager.get_latest_frame(cam_id)
+            frame_bytes = ip_camera_manager.get_latest_frame(cam_id) or pipeline_manager.get_latest_frame(cam_id)
             if not frame_bytes:
                 frame_bytes = _generate_standby_frame(cam.code)
             
@@ -212,7 +243,7 @@ async def mjpeg_stream(cam_id: str):
                 b"Content-Length: " + str(len(frame_bytes)).encode() + b"\r\n\r\n"
                 + frame_bytes + b"\r\n"
             )
-            await asyncio.sleep(0.066)  # ~15 fps stream
+            await asyncio.sleep(0.05)  # ~20 fps stream
 
     return StreamingResponse(
         _frame_generator(),
@@ -234,7 +265,26 @@ async def ingest_camera_frame(cam_id: str, request: Request):
 
     cam = await db.get_camera(cam_id)
     if not cam:
-        raise HTTPException(status_code=404, detail=f"Camera {cam_id} not found.")
+        # Auto-provision camera so paired smartphones or new IP cameras connect seamlessly
+        cam = CameraConfig(
+            id=cam_id,
+            code=cam_id.upper()[:12],
+            name=f"Tactical Unit {cam_id.upper()[:12]}",
+            location="Field Patrol Sector",
+            gps_coords="34.1524° N, 74.8211° E",
+            rtsp_url=f"mobile://{cam_id}",
+            status="online",
+            fps=20,
+            resolution="720p HD",
+            mode="MOBILE PAIRED",
+            analytics_modes=["WEAPON", "INTRUSION", "PERSON"],
+            fence_points=[],
+        )
+        try:
+            await db.upsert_camera(cam)
+            await pipeline_manager.add_camera(cam)
+        except Exception as e:
+            log.warning("Could not auto-provision camera %s: %s", cam_id, e)
 
     content_type = request.headers.get("content-type", "")
     frame_bgr = None

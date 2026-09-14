@@ -149,7 +149,50 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
+  const loginWithGoogle = async () => {
+    setAuthError(null);
+    try {
+      const { signInWithGoogle } = await import('../services/firebase');
+      const res = await signInWithGoogle();
+      if (res.success && res.user) {
+        const fbUser = res.user;
+        const mappedUser = {
+          id: fbUser.uid,
+          username: fbUser.email ? fbUser.email.split('@')[0] : 'firebase_officer',
+          full_name: fbUser.displayName || 'Authorized Defense Officer',
+          email: fbUser.email,
+          photo_url: fbUser.photoURL,
+          role: 'COMMANDER',
+          clearance_level: 'TOP_SECRET',
+          badge_number: `SEC-${fbUser.uid.substring(0, 4).toUpperCase()}`,
+          department: 'Cloud Surveillance Command',
+          auth_provider: 'firebase_google',
+        };
+        const fbToken = await fbUser.getIdToken();
+        setToken(fbToken);
+        setUser(mappedUser);
+        localStorage.setItem('ibvap_token', fbToken);
+        localStorage.setItem('ibvap_user', JSON.stringify(mappedUser));
+        return { success: true, user: mappedUser };
+      } else {
+        const msg = res.error || 'Google authentication was not completed.';
+        setAuthError(msg);
+        return { success: false, error: msg };
+      }
+    } catch (err) {
+      const msg = err.message || 'Firebase Google Sign-In failed.';
+      setAuthError(msg);
+      return { success: false, error: msg };
+    }
+  };
+
+  const logout = async () => {
+    try {
+      const { logOutFirebase } = await import('../services/firebase');
+      await logOutFirebase();
+    } catch (e) {
+      // Ignore
+    }
     setToken(null);
     setUser(null);
     localStorage.removeItem('ibvap_token');
@@ -169,6 +212,7 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     demoLogin,
+    loginWithGoogle,
     logout,
   };
 

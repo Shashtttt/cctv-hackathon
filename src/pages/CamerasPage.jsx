@@ -21,12 +21,15 @@ import {
   VideoOff,
   Radio,
   RefreshCw,
-  MapPin
+  MapPin,
+  Plus,
+  Trash2
 } from 'lucide-react';
-import { fetchCameras, getCameraStreamUrl } from '../services/apiService';
+import { fetchCameras, getCameraStreamUrl, deleteCamera } from '../services/apiService';
 import { INDIA_TRAFFIC_CAMERAS } from '../services/trafficVisionCatalog';
 import { CameraDetailModal } from '../components/CameraDetailModal';
 import { VirtualFenceConfigModal } from '../components/VirtualFenceConfigModal';
+import { AddIpCameraModal } from '../components/AddIpCameraModal';
 import './CamerasPage.css';
 
 const trafficVisionCamEntries = INDIA_TRAFFIC_CAMERAS.map((tv, idx) => ({
@@ -179,36 +182,66 @@ const CamerasPage = () => {
   const [selectedCameraModal, setSelectedCameraModal] = useState(null);
   const [selectedFenceCamera, setSelectedFenceCamera] = useState(null);
 
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
   const loadCameras = async () => {
     try {
       const data = await fetchCameras();
       if (Array.isArray(data) && data.length > 0) {
-        const merged = data.map((item, index) => {
-          const fallback = defaultCamerasData[index] || defaultCamerasData[0];
-          return {
-            id: item.id || fallback.id,
+        const customCams = [];
+        const standardCams = [];
+
+        data.forEach((item, index) => {
+          const isCustom = item.id.startsWith('ip-') || item.id.startsWith('cam-mobile') || (item.rtsp_url && (item.rtsp_url.startsWith('http') || item.rtsp_url.startsWith('rtsp')));
+          const fallback = defaultCamerasData.find(c => c.id === item.id) || defaultCamerasData[index % defaultCamerasData.length];
+          
+          const camObj = {
+            id: item.id,
             code: item.code || fallback.code,
             name: item.name || fallback.name,
-            status: item.status || fallback.status,
+            status: item.status ? item.status.toLowerCase() : fallback.status,
             statusText: item.status ? item.status.toUpperCase() : fallback.statusText,
             location: item.location || fallback.location,
+            gps_coords: item.gps_coords || fallback.gps_coords,
             resolution: item.resolution || fallback.resolution,
             lastSeen: item.last_frame_at ? 'Just now' : fallback.lastSeen,
             image: fallback.image,
-            recText: fallback.recText,
-            badgeTopRight: item.mode || fallback.badgeTopRight,
-            overlayBottomLeft: item.location || fallback.overlayBottomLeft,
-            overlayBottomRight: `${item.resolution || '1080p'} @ ${item.fps || 30}fps`,
+            streamUrl: isCustom ? getCameraStreamUrl(item.id) : (fallback.streamUrl || getCameraStreamUrl(item.id)),
+            recText: isCustom ? 'REC ⚡' : fallback.recText,
+            badgeTopRight: isCustom ? 'IP CAMERA' : (item.mode || fallback.badgeTopRight),
+            overlayBottomLeft: (item.location || fallback.overlayBottomLeft || 'SECTOR 04').toUpperCase(),
+            overlayBottomRight: `${item.resolution || '1080p'} @ ${item.fps || 25}fps`,
             type: item.status || fallback.type,
             isOffline: item.status === 'offline',
-            hasDetections: fallback.hasDetections,
-            detectionMode: fallback.detectionMode,
+            hasDetections: true,
+            detectionMode: fallback.detectionMode || 'c01_double',
+            isCustomIp: isCustom,
+            rtsp_url: item.rtsp_url,
           };
+
+          if (isCustom) {
+            customCams.push(camObj);
+          } else {
+            standardCams.push(camObj);
+          }
         });
-        setCameras(merged);
+
+        // Prepend custom IP cameras so they appear prominently at the top
+        setCameras([...customCams, ...standardCams]);
       }
     } catch (e) {
       console.debug('Cameras API fallback loaded');
+    }
+  };
+
+  const handleDeleteCamera = async (e, camId) => {
+    e.stopPropagation();
+    if (!window.confirm(`Are you sure you want to delete camera ${camId}?`)) return;
+    try {
+      await deleteCamera(camId);
+      setCameras((prev) => prev.filter((c) => c.id !== camId));
+    } catch (err) {
+      console.error('Failed to delete camera:', err);
     }
   };
 
@@ -414,6 +447,14 @@ const CamerasPage = () => {
         </div>
 
         <div className="control-right-group">
+          <button
+            className="add-ip-camera-top-btn font-mono"
+            onClick={() => setIsAddModalOpen(true)}
+          >
+            <Plus size={14} />
+            <span>ADD IP CAMERA</span>
+          </button>
+
           <span className="showing-counter-text font-mono">
             Showing <strong>{filteredCameras.length}</strong> of <strong>{totalCamerasCount}</strong> cameras
           </span>
@@ -727,11 +768,9 @@ const CamerasPage = () => {
                 </div>
               )}
 
-              {/* Action Button Footer */}
-              <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+              <div className="card-actions-row">
                 {!cam.isOffline ? (
                   <button 
-                    style={{ flex: 1.2 }}
                     className={`btn-cam-action ${cam.status === 'warning' ? 'btn-warning-glow' : ''}`}
                     onClick={() => setSelectedCameraModal(cam)}
                   >
@@ -740,21 +779,20 @@ const CamerasPage = () => {
                   </button>
                 ) : (
                   <button 
-                    style={{ flex: 1.2 }}
                     className="btn-cam-action btn-offline"
                     onClick={() => setSelectedCameraModal(cam)}
                   >
                     <Wrench size={13} />
-                    <span>Diagnostics</span>
+                    <span>View Diagnostics</span>
                   </button>
                 )}
+
                 <button
+                  className="btn-cam-action"
                   style={{
-                    flex: 1,
                     background: 'rgba(239, 68, 68, 0.12)',
                     border: '1px solid rgba(239, 68, 68, 0.5)',
                     color: '#fca5a5',
-                    borderRadius: '6px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -762,7 +800,6 @@ const CamerasPage = () => {
                     fontSize: '11px',
                     fontWeight: 700,
                     cursor: 'pointer',
-                    transition: 'all 0.15s ease'
                   }}
                   onClick={() => setSelectedFenceCamera(cam)}
                   title="Configure RTSP Stream & Virtual Fence Polygon"
@@ -770,6 +807,16 @@ const CamerasPage = () => {
                   <Shield size={12} className="text-red" />
                   <span>Fence & RTSP</span>
                 </button>
+
+                {(cam.isCustomIp || cam.id.startsWith('ip-') || cam.id.startsWith('cam-mobile')) && (
+                  <button
+                    className="btn-cam-delete font-mono"
+                    title="Remove Camera"
+                    onClick={(e) => handleDeleteCamera(e, cam.id)}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -841,6 +888,15 @@ const CamerasPage = () => {
           }}
         />
       )}
+
+      {/* Add IP Camera Modal */}
+      <AddIpCameraModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onCameraAdded={() => {
+          loadCameras();
+        }}
+      />
     </div>
   );
 };

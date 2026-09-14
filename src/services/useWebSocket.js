@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { soundController } from '../utils/audioAlert';
+import { syncAlertToFirestore } from './firestoreService';
 
 /**
  * Custom hook to connect to FastAPI WebSocket alert broadcast stream (/ws/alerts)
@@ -74,6 +75,7 @@ export const useWebSocket = () => {
               }
 
               setAlerts((prev) => [newAlert, ...prev.slice(0, 19)]);
+              syncAlertToFirestore(newAlert).catch(() => {});
             } else if (data.type === 'PING') {
               setLastPing((p) => (p >= 5 ? 1 : p + 1));
             }

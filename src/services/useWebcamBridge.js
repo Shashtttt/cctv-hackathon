@@ -27,6 +27,8 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
 
   const [telemetry, setTelemetry] = useState({
     detectionsCount: 0,
+    personsCount: 0,
+    vehiclesCount: 0,
     unusualCount: 0,
     weaponsCount: 0,
     armedCount: 0,
@@ -250,10 +252,18 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
             return Boolean(d.is_weapon || isNamed || isArmed);
           };
 
+          const isVehicle = (d) => {
+            const name = (d.class_name || '').toLowerCase();
+            return [1, 2, 3, 5, 7].includes(d.class_id) || ['car', 'truck', 'bus', 'motorcycle', 'bicycle', 'vehicle', 'van', 'suv', 'auto'].some((v) => name.includes(v));
+          };
+          const isPerson = (d) => d.class_id === 0 || (d.class_name || '').toLowerCase() === 'person' || Boolean(d.pose_label) || Boolean(d.keypoints && d.keypoints.length > 0);
+
+          const personsCount = dets.filter(isPerson).length;
+          const vehiclesCount = dets.filter(isVehicle).length;
           const weaponsCount = dets.filter(isWeaponItem).length;
           const armedCount = dets.filter((d) => d.is_holding && d.held_item_type === 'WEAPON').length;
           const holdingCount = dets.filter((d) => d.is_holding).length;
-          const casualCount = dets.filter((d) => !isWeaponItem(d) && d.class_id !== 0).length;
+          const casualCount = dets.filter((d) => !isWeaponItem(d) && !isVehicle(d) && d.class_id !== 0).length;
           const phoneCount = dets.filter((d) => (d.class_name || '').toLowerCase().includes('phone') || (d.held_item || '').toLowerCase().includes('phone')).length;
           const objectsCount = dets.filter((d) => d.class_id !== 0 && !isWeaponItem(d)).length;
 
@@ -269,6 +279,8 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
           setTelemetry((prev) => ({
             ...prev,
             detectionsCount: dets.length,
+            personsCount,
+            vehiclesCount,
             unusualCount: weaponsCount,
             weaponsCount,
             armedCount,

@@ -1699,3 +1699,234 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+/* Hero Detected Device Camera View */
+.hero-device-camera-view {
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+.hero-camera-card {
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  background: linear-gradient(180deg, rgba(10, 16, 28, 0.95) 0%, rgba(6, 10, 20, 0.98) 100%);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), 0 0 20px rgba(0, 242, 254, 0.1);
+}
+
+.hero-camera-header {
+  padding: 12px 18px;
+  background: rgba(13, 22, 40, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.hero-cam-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hero-location-subtext {
+  font-size: 0.7rem;
+  color: var(--text-sub, #94a3b8);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hero-cam-controls-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hero-camera-viewport {
+  width: 100%;
+  height: 520px;
+  min-height: 440px;
+  background: #040812;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hero-standby-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, rgba(14, 25, 48, 0.8) 0%, rgba(4, 8, 18, 0.98) 100%);
+  z-index: 5;
+}
+
+.hero-standby-box {
+  background: rgba(10, 16, 30, 0.9);
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  border-radius: 12px;
+  padding: 30px 40px;
+  text-align: center;
+  max-width: 520px;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.8), 0 0 25px rgba(0, 242, 254, 0.15);
+}
+
+.btn-hero-activate {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #ffffff;
+  border: 1px solid #34d399;
+  border-radius: 6px;
+  padding: 12px 24px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
+  transition: all 0.2s ease;
+}
+
+.btn-hero-activate:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 25px rgba(16, 185, 129, 0.6);
+}
+
+.hero-cam-telemetry-bar {
+  position: absolute;
+  bottom: 12px;
+  left: 14px;
+  right: 14px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  pointer-events: none;
+}
+
+.telemetry-pill {
+  background: rgba(7, 12, 24, 0.85);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 0.68rem;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+}
+
+.telemetry-pill.pill-alert {
+  border-color: rgba(239, 68, 68, 0.6);
+  background: rgba(45, 10, 10, 0.85);
+}
+
+.telemetry-pill.pill-person {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(5, 35, 25, 0.85);
+}
+
+.telemetry-pill.pill-vehicle {
+  border-color: rgba(0, 242, 254, 0.4);
+  background: rgba(6, 30, 48, 0.85);
+}
+
+/* Dynamic Camera Grid Layouts */
+.video-streams-grid.layout-dynamic-1,
+.video-streams-grid.layout-1x1 {
+  grid-template-columns: 1fr;
+}
+
+.video-streams-grid.layout-dynamic-2,
+.video-streams-grid.layout-1x2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.video-streams-grid.layout-dynamic-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.video-streams-grid.layout-dynamic-4,
+.video-streams-grid.layout-2x2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.video-streams-grid.layout-dynamic-6,
+.video-streams-grid.layout-3x2 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.video-streams-grid.layout-dynamic-8,
+.video-streams-grid.layout-4x2 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.card-detection-summary-strip {
+  position: absolute;
+  bottom: 36px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  z-index: 8;
+  pointer-events: none;
+}
+
+.det-summary-badge {
+  background: rgba(8, 14, 26, 0.85);
+  backdrop-filter: blur(4px);
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.det-badge-person {
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  color: #10b981;
+}
+
+.det-badge-vehicle {
+  border: 1px solid rgba(0, 242, 254, 0.45);
+  color: #00f2fe;
+}
+
+.det-badge-weapon {
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #ef4444;
+}
+
+@media (max-width: 1440px) {
+  .video-streams-grid.layout-dynamic-8,
+  .video-streams-grid.layout-4x2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 960px) {
+  .video-streams-grid.layout-dynamic-2,
+  .video-streams-grid.layout-dynamic-3,
+  .video-streams-grid.layout-dynamic-4,
+  .video-streams-grid.layout-dynamic-6,
+  .video-streams-grid.layout-dynamic-8,
+  .video-streams-grid.layout-1x2,
+  .video-streams-grid.layout-2x2,
+  .video-streams-grid.layout-3x2,
+  .video-streams-grid.layout-4x2 {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+
+
