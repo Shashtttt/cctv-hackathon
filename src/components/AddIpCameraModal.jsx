@@ -98,9 +98,7 @@ const ANALYTICS_OPTIONS = [
 ];
 
 export const AddIpCameraModal = ({ isOpen = true, onClose, onCameraAdded }) => {
-  const [activeTab, setActiveTab] = useState('network'); // 'network' | 'webpair'
-  
-  // Network stream form state
+  const [activeTab, setActiveTab] = useState('network');
   const [selectedPreset, setSelectedPreset] = useState('ipwebcam');
   const [cameraName, setCameraName] = useState('Mobile IP Surveillance Unit');
   const [cameraCode, setCameraCode] = useState(`IP-CAM-${Math.floor(10 + Math.random() * 90)}`);
@@ -110,18 +108,15 @@ export const AddIpCameraModal = ({ isOpen = true, onClose, onCameraAdded }) => {
   const [resolution, setResolution] = useState('1080p FHD');
   const [selectedAnalytics, setSelectedAnalytics] = useState(['WEAPON', 'INTRUSION', 'PERSON', 'LOITERING']);
 
-  // Stream test state
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
 
-  // Web Pair (Phone pairing) state
   const [networkInfo, setNetworkInfo] = useState(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
 
-  // Helper to compute pairing origin with detected LAN IP
   const getPairOrigin = (netInfo) => {
     const lan = netInfo?.lan_ip;
     if (lan && lan !== '127.0.0.1' && lan !== 'localhost') {
@@ -131,7 +126,6 @@ export const AddIpCameraModal = ({ isOpen = true, onClose, onCameraAdded }) => {
     return window.location.origin;
   };
 
-  // Load network info on mount
   useEffect(() => {
     if (!isOpen) return;
     const loadNet = async () => {
@@ -141,7 +135,6 @@ export const AddIpCameraModal = ({ isOpen = true, onClose, onCameraAdded }) => {
       const origin = getPairOrigin(info);
       const pairUrl = `${origin}/?mode=remote-cam&cam_id=${cameraCode.toLowerCase()}`;
       
-      // Attempt dynamic QRCode generation
       try {
         const QRCode = await import('qrcode');
         const qr = await QRCode.toDataURL(pairUrl, {
@@ -165,7 +158,6 @@ export const AddIpCameraModal = ({ isOpen = true, onClose, onCameraAdded }) => {
   const handleSelectPreset = (preset) => {
     setSelectedPreset(preset.id);
     if (preset.url) {
-      // Replace IP segment if user already entered an IP
       const currentIpMatch = streamUrl.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
       if (currentIpMatch && currentIpMatch[0] !== '192.168.1.50') {
         const newUrl = preset.url.replace('192.168.1.50', currentIpMatch[0]);
@@ -273,7 +265,6 @@ export const AddIpCameraModal = ({ isOpen = true, onClose, onCameraAdded }) => {
   return (
     <div className="ip-modal-backdrop" onClick={onClose}>
       <div className="ip-modal-dialog" onClick={(e) => e.stopPropagation()}>
-        {/* Top Header Bar */}
         <div className="ip-modal-header">
           <div className="header-title-group">
             <div className="header-icon-box">
@@ -294,7 +285,6 @@ export const AddIpCameraModal = ({ isOpen = true, onClose, onCameraAdded }) => {
           </button>
         </div>
 
-        {/* Tab Selection Bar */}
         <div className="ip-modal-tabs font-mono">
           <button
             className={`ip-tab-btn ${activeTab === 'network' ? 'active' : ''}`}
@@ -310,11 +300,9 @@ export const AddIpCameraModal = ({ isOpen = true, onClose, onCameraAdded }) => {
           </button>
         </div>
 
-        {/* Modal Body Container */}
         <div className="ip-modal-body">
           {activeTab === 'network' && (
             <div className="network-stream-layout">
-              {/* Presets Strip */}
               <div className="presets-section">
                 <span className="section-label font-mono">SELECT FEED PRESET / DEVICE TYPE:</span>
                 <div className="preset-cards-grid">
@@ -340,7 +328,6 @@ export const AddIpCameraModal = ({ isOpen = true, onClose, onCameraAdded }) => {
                 </div>
               </div>
 
-              {/* Camera Details Form */}
               <form onSubmit={handleSaveCamera} className="ip-form-grid">
                 <div className="form-column">
                   <div className="form-group">
@@ -412,7 +399,6 @@ export const AddIpCameraModal = ({ isOpen = true, onClose, onCameraAdded }) => {
                   </div>
                 </div>
 
-                {/* Right Column: Stream URL + Test Box + Analytics */}
                 <div className="form-column">
                   <div className="form-group">
                     <label className="font-mono stream-url-label">
@@ -450,7 +436,6 @@ export const AddIpCameraModal = ({ isOpen = true, onClose, onCameraAdded }) => {
                     </div>
                   </div>
 
-                  {/* Test Stream Result Feedback */}
                   {testResult && (
                     <div className={`stream-test-card ${testResult.reachable ? 'success' : 'failed'}`}>
                       {testResult.reachable ? (
@@ -480,7 +465,6 @@ export const AddIpCameraModal = ({ isOpen = true, onClose, onCameraAdded }) => {
                     </div>
                   )}
 
-                  {/* AI Analytics Modules */}
                   <div className="form-group">
                     <label className="font-mono">ACTIVE AI SURVEILLANCE MODULES</label>
                     <div className="analytics-checkboxes-grid">
@@ -591,7 +575,6 @@ export const AddIpCameraModal = ({ isOpen = true, onClose, onCameraAdded }) => {
           )}
         </div>
 
-        {/* Modal Footer Controls */}
         <div className="ip-modal-footer">
           <button type="button" className="btn-secondary font-mono" onClick={onClose}>
             CANCEL

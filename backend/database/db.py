@@ -23,7 +23,7 @@ from .models import (
 
 log = logging.getLogger("ibvap.db")
 
-# ── Connection helper ──────────────────────────────────────────────────────────
+
 
 @asynccontextmanager
 async def get_db() -> AsyncIterator[aiosqlite.Connection]:
@@ -40,7 +40,7 @@ async def get_db() -> AsyncIterator[aiosqlite.Connection]:
         await db.close()
 
 
-# ── Schema init ──────────────────────────────────────────────────────────────
+
 
 async def init_db() -> None:
     """Create all tables and indexes. Idempotent — safe to call on every startup."""
@@ -210,7 +210,7 @@ async def init_db() -> None:
         raise SystemExit(1) from exc
 
 
-# ── Initial Data Seeding ──────────────────────────────────────────────────────
+
 
 async def seed_initial_data_if_empty() -> None:
     """Populates default intelligence watchlists if tables are empty. Does not seed dummy cameras."""
@@ -282,7 +282,7 @@ async def seed_initial_data_if_empty() -> None:
         log.info("Initial demo dataset seeded successfully.")
 
 
-# ── Camera CRUD ───────────────────────────────────────────────────────────────
+
 
 async def upsert_camera(cam: CameraConfig) -> None:
     gps = cam.gps_coords
@@ -428,7 +428,7 @@ def _row_to_camera(row: aiosqlite.Row) -> CameraConfig:
     )
 
 
-# ── Alert CRUD ────────────────────────────────────────────────────────────────
+
 
 async def save_alert(alert: AlertRecord) -> None:
     async with get_db() as db:
@@ -536,7 +536,7 @@ def _row_to_alert(row: aiosqlite.Row) -> AlertRecord:
     )
 
 
-# ── FRS Watchlist CRUD ────────────────────────────────────────────────────────
+
 
 async def save_frs_subject(subject: WatchlistSubject) -> None:
     async with get_db() as db:
@@ -604,7 +604,7 @@ def _row_to_frs(row: aiosqlite.Row) -> WatchlistSubject:
     )
 
 
-# ── ANPR Watchlist CRUD ───────────────────────────────────────────────────────
+
 
 async def save_anpr_vehicle(vehicle: WatchlistVehicle) -> None:
     async with get_db() as db:
@@ -654,7 +654,7 @@ def _row_to_anpr(row: aiosqlite.Row) -> WatchlistVehicle:
     )
 
 
-# ── Snapshot CRUD ─────────────────────────────────────────────────────────────
+
 
 async def save_snapshot(snap: SnapshotRecord) -> None:
     async with get_db() as db:
@@ -896,7 +896,7 @@ async def get_alert_summary(hours: int = 24) -> dict:
     }
 
 
-# ── User & Auth helpers ───────────────────────────────────────────────────────
+
 
 async def get_user_by_username(username: str) -> Optional[dict]:
     async with get_db() as db:
@@ -943,7 +943,7 @@ async def update_user_last_login(user_id: str) -> None:
         await db.commit()
 
 
-# ── Blockchain Audit Ledger CRUD ───────────────────────────────────────────────
+
 
 async def save_blockchain_block(block) -> None:
     """Persists an AuditBlock to SQLite."""

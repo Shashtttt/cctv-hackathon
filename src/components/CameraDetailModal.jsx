@@ -43,7 +43,7 @@ import { useSentinelCamera } from '../context/SentinelCameraContext';
 import { VirtualFenceConfigModal } from './VirtualFenceConfigModal';
 import './CameraDetailModal.css';
 
-// ── COCO 17 Keypoints & Skeletal Bone Connections ──
+// COCO 17 keypoints and skeletal connections
 const SKELETON_CONNECTIONS = [
   [0, 1], [0, 2], [1, 3], [2, 4], // Head: Nose to Eyes, Eyes to Ears
   [5, 6], // Shoulders
@@ -106,7 +106,7 @@ export const CameraDetailModal = ({
   const offscreenCanvasRef = useRef(null);
   const isInferringRef = useRef(false);
 
-  // ── Adjustable Virtual Fence State (Line / Horizon, Diagonal, Circle, Box) ──
+  // Virtual fence state
   const [fenceShape, setFenceShape] = useState('line'); // 'line' | 'diagonal' | 'circle' | 'box'
   const [fenceHeightY, setFenceHeightY] = useState(0.50); // 0.1 to 0.9 (for horizontal tripwire)
   const [fenceDiagY1, setFenceDiagY1] = useState(0.25); // 0.05 to 0.95 (left anchor for diagonal)
@@ -265,7 +265,7 @@ export const CameraDetailModal = ({
     };
   }, [camera, isDeviceCam, webcamStream, activeStream, isSentinelActive, streamUrl, isHls, isMjpeg]);
 
-  // ── Continuous real-time AI inference loop for camera in modal view (Fallback) ──
+  // Fallback inference loop for modal view
   useEffect(() => {
     // Never run duplicate inference if camera is device/webcam (managed by page/sentinel) or IP camera (managed by backend)
     if (isDeviceCam || isWebcam || webcamStream || isSentinelActive || camera?.isIpCamera || camera?.id?.startsWith('ip-')) {
@@ -347,7 +347,7 @@ export const CameraDetailModal = ({
     };
   }, [camera?.id, camLocation, isDeviceCam]);
 
-  // ── Virtual Fence Breach Detection Helper ──
+  // Virtual fence breach detection
   const checkTargetBreach = (det) => {
     if (!det.bbox) return false;
     const cx = det.bbox.x + det.bbox.w / 2;
@@ -381,7 +381,7 @@ export const CameraDetailModal = ({
     return false;
   };
 
-  // ── Save Virtual Fence Geometry to Backend AI Pipeline ──
+  // Save virtual fence geometry
   const handleSaveFenceToBackend = async () => {
     try {
       let pts = [];
@@ -427,7 +427,7 @@ export const CameraDetailModal = ({
     }
   };
 
-  // ── On-Canvas Mouse Dragging for Virtual Fence Adjustments ──
+  // Mouse drag handlers for fence adjustment
   const handleContainerMouseDown = (e) => {
     if (!showVirtualFence || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
@@ -737,7 +737,7 @@ export const CameraDetailModal = ({
             ctx.setLineDash([]);
           }
 
-          // ── Skeleton Keypoints & Limb Connections (YOLOv8-pose 17 joints) ──
+          // Draw skeleton keypoints
           if (det.keypoints) {
             const pts = Array.isArray(det.keypoints) ? det.keypoints : (det.keypoints.points || []);
             if (pts.length > 0) {

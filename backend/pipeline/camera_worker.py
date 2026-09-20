@@ -38,7 +38,6 @@ from ..database.models import (
 log = logging.getLogger("ibvap.pipeline.camera_worker")
 
 
-# ── Frame-level result container ──────────────────────────────────────────────
 
 def _now_iso() -> str:
     return datetime.datetime.utcnow().isoformat()
@@ -92,7 +91,6 @@ class CameraWorker:
         self._frame_number = 0
         self._synth_cap = None
 
-    # ── Main run loop (entry point from multiprocessing) ──────────────────────
 
     def run(self) -> None:
         """
@@ -111,7 +109,7 @@ class CameraWorker:
         reader_thread.join(timeout=5)
         log.info("[%s] CameraWorker stopped.", self.camera.code)
 
-    # ── Thread-1: RTSP Frame Reader ───────────────────────────────────────────
+    # Frame reader thread
 
     def _reader_loop(self) -> None:
         """
@@ -274,7 +272,7 @@ class CameraWorker:
 
         return frame
 
-    # ── Thread-2: Inference Loop ──────────────────────────────────────────────
+    # Inference loop
 
     def _inference_loop(self) -> None:
         """
@@ -311,7 +309,6 @@ class CameraWorker:
                 if removed:
                     log.debug("[%s] Cleaned up %d stale loitering records.", self.camera.code, removed)
 
-    # ── AI pipeline ───────────────────────────────────────────────────────────
 
     def _process_frame(self, frame: np.ndarray) -> FrameResult:
         """
@@ -362,7 +359,6 @@ class CameraWorker:
             br = breach_by_id.get(det.target_id)
             is_in_fence = br is not None and self._fence._zone_state.is_inside(det.target_id)
 
-            # ── Loitering update ──────────────────────────────────────────────
             dwell_rec = self._loitering.update(
                 det.target_id,
                 is_in_zone=is_in_fence,
@@ -372,7 +368,6 @@ class CameraWorker:
             det.loiter_seconds = dwell_rec.dwell_seconds
             det.is_in_fence = is_in_fence
 
-            # ── Virtual fence breach alert ─────────────────────────────────────
             if br and br.is_breaching:
                 alert = self._make_alert(
                     camera_id=self.camera.id,
@@ -386,7 +381,6 @@ class CameraWorker:
                 if alert:
                     alerts.append(alert)
 
-            # ── Loitering alert ────────────────────────────────────────────────
             if self._loitering.should_fire_loitering_alert(det.target_id):
                 alert = self._make_alert(
                     camera_id=self.camera.id,
@@ -400,7 +394,6 @@ class CameraWorker:
                 if alert:
                     alerts.append(alert)
 
-            # ── Armed Person & Hand-Held Object Alerts ────────────────────────
             if getattr(det, "is_holding", False):
                 if getattr(det, "held_item_type", "") == "WEAPON":
                     alert = self._make_alert(
@@ -425,7 +418,6 @@ class CameraWorker:
                     if alert:
                         alerts.append(alert)
 
-            # ── Unattended Weapon Alert ───────────────────────────────────────
             if getattr(det, "is_weapon", False) and not getattr(det, "is_held", False):
                 w_name = (det.unusual_item or det.class_name).upper()
                 alert = self._make_alert(
@@ -439,7 +431,6 @@ class CameraWorker:
                 if alert:
                     alerts.append(alert)
 
-            # ── Unattended Baggage Alert (backpack, suitcase, handbag) ─────────
             if det.class_name in ("backpack", "suitcase", "handbag") and not getattr(det, "is_held", False):
                 b_name = det.class_name.upper()
                 alert = self._make_alert(
@@ -453,7 +444,6 @@ class CameraWorker:
                 if alert:
                     alerts.append(alert)
 
-            # ── Person analysis: FRS + activity ───────────────────────────────
             if det.class_id in HUMAN_CLASSES and "FRS" in self.camera.analytics_modes:
                 x1, y1, x2, y2 = det.bbox.to_pixel(w, h)
                 faces = self._face_det.detect_in_crop(frame, (x1, y1, x2, y2))
@@ -496,7 +486,6 @@ class CameraWorker:
                     if alert:
                         alerts.append(alert)
 
-            # ── Vehicle analysis: ANPR ─────────────────────────────────────────
             if det.class_id in VEHICLE_CLASSES and "ANPR" in self.camera.analytics_modes:
                 x1, y1, x2, y2 = det.bbox.to_pixel(w, h)
                 plates = self._anpr.detect_in_vehicle_crop(frame, (x1, y1, x2, y2))
@@ -525,7 +514,6 @@ class CameraWorker:
             # Update previous position for velocity in next frame
             self._prev_positions[det.target_id] = (det.bbox.cx, det.bbox.cy)
 
-        # ── Group cluster check ────────────────────────────────────────────────
         cluster_warn = self._activity.classify_group(detections)
         if cluster_warn:
             alert = self._make_alert(
@@ -538,7 +526,6 @@ class CameraWorker:
             if alert:
                 alerts.append(alert)
 
-        # ── Annotate frame ────────────────────────────────────────────────────
         annotated_jpg = self._annotate_and_encode(annotated, detections, alerts)
 
         return FrameResult(
@@ -551,7 +538,6 @@ class CameraWorker:
             annotated_frame_jpg=annotated_jpg,
         )
 
-    # ── Alert throttling ──────────────────────────────────────────────────────
 
     def _make_alert(
         self,
@@ -591,7 +577,6 @@ class CameraWorker:
             plate_text=plate_text,
         )
 
-    # ── Frame annotation ──────────────────────────────────────────────────────
 
     def _annotate_and_encode(
         self,
@@ -767,7 +752,6 @@ class CameraWorker:
             log.debug("Frame annotation error: %s", exc)
             return None
 
-    # ── Hot-update methods (called from PipelineManager) ─────────────────────
 
     def update_fence(self, new_fence_points: list) -> None:
         """Hot-update virtual fence geometry without restarting the worker."""

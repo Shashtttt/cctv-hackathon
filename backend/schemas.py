@@ -1,15 +1,9 @@
-"""
-IBVAP — Pydantic v2 request/response schemas for all REST API endpoints.
-"""
-
 from __future__ import annotations
 
 import datetime
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
-
-# ── Camera schemas ─────────────────────────────────────────────────────────────
 
 class FencePointSchema(BaseModel):
     x: float = Field(ge=0.0, le=1.0)
@@ -77,8 +71,6 @@ class CameraResponse(BaseModel):
     frame_url: Optional[str] = None
 
 
-# ── Alert schemas ──────────────────────────────────────────────────────────────
-
 class AlertResponse(BaseModel):
     id: str
     camera_id: str
@@ -106,10 +98,8 @@ class AlertListResponse(BaseModel):
 
 
 class AlertStatusUpdate(BaseModel):
-    status: str   # ACKNOWLEDGED | DISPATCHED | RESOLVED
+    status: str
 
-
-# ── FRS schemas ────────────────────────────────────────────────────────────────
 
 class FRSSubjectCreate(BaseModel):
     id: Optional[str] = None
@@ -136,12 +126,9 @@ class FRSSubjectResponse(BaseModel):
 
 
 class EmbeddingEnrollRequest(BaseModel):
-    """Upload a face embedding vector directly (128 floats)."""
     subject_id: str
     embedding: List[float] = Field(min_length=128, max_length=512)
 
-
-# ── ANPR schemas ───────────────────────────────────────────────────────────────
 
 class ANPRVehicleCreate(BaseModel):
     plate: str
@@ -162,8 +149,6 @@ class ANPRVehicleResponse(BaseModel):
     notes: str
     flagged_date: Optional[str]
 
-
-# ── Analytics schemas ──────────────────────────────────────────────────────────
 
 class AlertSummaryResponse(BaseModel):
     total: int
@@ -191,8 +176,6 @@ class WorkerStatusResponse(BaseModel):
     result_queue_depth: int
 
 
-# ── Generic responses ──────────────────────────────────────────────────────────
-
 class SuccessResponse(BaseModel):
     success: bool = True
     message: str = "OK"
@@ -207,15 +190,13 @@ class HealthResponse(BaseModel):
     queue_depth: int
 
 
-# ── Auth schemas ──────────────────────────────────────────────────────────────
-
 class UserRegisterRequest(BaseModel):
     username: str
     email: str
     password: str
     full_name: str = "Surveillance Officer"
-    role: str = "OPERATOR"              # COMMANDER | OPERATOR | ANALYST | ADMIN
-    clearance_level: str = "SECRET"     # CONFIDENTIAL | SECRET | TOP_SECRET
+    role: str = "OPERATOR"
+    clearance_level: str = "SECRET"
     badge_number: Optional[str] = "SEC-8821"
     department: Optional[str] = "Sector-4 Border Defense"
 
@@ -242,4 +223,3 @@ class AuthTokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
-

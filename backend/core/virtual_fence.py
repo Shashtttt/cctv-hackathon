@@ -19,7 +19,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 
-# ── Types ─────────────────────────────────────────────────────────────────────
+
 
 Point = Tuple[float, float]           # (x_norm, y_norm) in [0, 1]
 Polygon = List[Dict[str, float]]      # [{"x": .., "y": ..}, ...]
@@ -70,7 +70,7 @@ class ZoneState:
         return self._was_inside.get(target_id, False)
 
 
-# ── Core geometry functions ───────────────────────────────────────────────────
+
 
 def is_point_in_polygon(point: Dict[str, float], polygon: Polygon) -> bool:
     """
@@ -281,7 +281,7 @@ def point_to_polygon_distance(point: Dict[str, float], polygon: Polygon) -> floa
     return min_dist
 
 
-# ── Directional Virtual Fence Manager ────────────────────────────────────────
+
 
 class VirtualFenceEngine:
     """

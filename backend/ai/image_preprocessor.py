@@ -44,7 +44,6 @@ class ImagePreprocessor:
         self._clahe = cv2.createCLAHE(clipLimit=self._clip_limit, tileGridSize=self._tile_grid)
         self._gamma_luts: dict[float, np.ndarray] = {}
 
-    # ── Fast Gamma LUT Cache ──────────────────────────────────────────────────
 
     def _get_gamma_lut(self, gamma: float) -> np.ndarray:
         gamma_key = round(gamma, 2)
@@ -57,7 +56,6 @@ class ImagePreprocessor:
             self._gamma_luts[gamma_key] = table
         return self._gamma_luts[gamma_key]
 
-    # ── Public Pipeline Entry Point ───────────────────────────────────────────
 
     def process(self, frame: np.ndarray, mode: str = "AUTO") -> np.ndarray:
         """
@@ -97,7 +95,6 @@ class ImagePreprocessor:
 
         return frame
 
-    # ── Scene Condition Analyzer (Auto-Detection) ─────────────────────────────
 
     def detect_scene_condition(self, frame: np.ndarray) -> PreprocessingMode:
         """
@@ -127,7 +124,6 @@ class ImagePreprocessor:
 
         return PreprocessingMode.STANDARD
 
-    # ── Filter Implementations ────────────────────────────────────────────────
 
     def apply_clahe(self, frame: np.ndarray, clip_limit: Optional[float] = None) -> np.ndarray:
         """

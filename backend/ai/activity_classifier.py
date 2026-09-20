@@ -99,7 +99,6 @@ class ActivityClassifier:
             x, y, c = pts[idx]
             return (x, y) if c > 0.25 else None
 
-        # ── Feature extraction ────────────────────────────────────────────────
 
         nose_pt   = kp("nose")
         l_sho     = kp("l_sho")
@@ -145,7 +144,6 @@ class ActivityClassifier:
         if r_sho and r_wri:
             wrist_above_shoulder = wrist_above_shoulder or r_wri[1] < r_sho[1]
 
-        # ── Classification rules ──────────────────────────────────────────────
 
         # Velocity from bbox centre delta
         speed = 0.0
@@ -223,7 +221,6 @@ class ActivityClassifier:
 
         return None
 
-    # ── Fallback heuristic (no keypoints) ────────────────────────────────────
 
     @staticmethod
     def _bbox_heuristic(bbox) -> ActivityLabel:

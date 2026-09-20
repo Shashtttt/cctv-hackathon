@@ -1,15 +1,3 @@
-"""
-IBVAP — Cryptographic Blockchain Audit Trail & Chain of Custody Subsystem
-Provides immutable, mathematically verifiable logging for border intrusion alerts,
-cyber-tamper events, and forensic video snapshots.
-
-Complies with Ministry of Home Affairs (MHA) Cybersecurity & Evidentiary standards:
-- SHA-256 Block Hashing with Merkle Leaf Construction
-- Cryptographic Linkage: block_hash = SHA256(index + prev_hash + timestamp + data_hash + merkle_root + nonce)
-- Digital Defense Node Signing (HMAC-SHA256 / SHA-256 seal)
-- Mathematical integrity verification & Proof-of-Inclusion receipts
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -24,7 +12,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 log = logging.getLogger("ibvap.core.blockchain")
 
-# Border Node Security Key used for digital seals (can be set via env var)
 NODE_SECURITY_SECRET = os.getenv("IBVAP_NODE_SECRET", "MHA-SEC-IBVAP-SECTOR-4-NODE-ALPHA-2026")
 DEFENSE_NODE_ID = os.getenv("IBVAP_DEFENSE_NODE_ID", "NODE-BSF-SECTOR4-ALPHA")
 
@@ -32,17 +19,17 @@ DEFENSE_NODE_ID = os.getenv("IBVAP_DEFENSE_NODE_ID", "NODE-BSF-SECTOR4-ALPHA")
 @dataclass
 class AuditBlock:
     index: int
-    timestamp: str                       # ISO-8601 UTC
-    event_type: str                      # GENESIS | INTRUSION_ALERT | CYBER_TAMPER | SYSTEM_AUDIT
+    timestamp: str
+    event_type: str
     camera_id: str
     alert_id: Optional[str]
-    payload: Dict[str, Any]             # Structured event metadata (coordinates, targets, threat)
-    data_hash: str                      # SHA-256 of payload (+ snapshot image bytes)
+    payload: Dict[str, Any]
+    data_hash: str
     previous_hash: str
     merkle_root: str
     block_hash: str
     validator_node: str = DEFENSE_NODE_ID
-    signature: str = ""                 # HMAC-SHA256 digital defense seal
+    signature: str = ""
     nonce: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
@@ -50,14 +37,12 @@ class AuditBlock:
 
 
 def calculate_sha256(data: bytes | str) -> str:
-    """Calculate SHA-256 hexadecimal digest."""
     if isinstance(data, str):
         data = data.encode("utf-8")
     return hashlib.sha256(data).hexdigest()
 
 
 def compute_merkle_root(hashes: List[str]) -> str:
-    """Computes Merkle root from a list of leaf hashes."""
     if not hashes:
         return calculate_sha256(b"EMPTY_BLOCK")
     if len(hashes) == 1:
@@ -76,7 +61,6 @@ def compute_merkle_root(hashes: List[str]) -> str:
 
 
 def sign_block(block_hash: str, secret: str = NODE_SECURITY_SECRET) -> str:
-    """Generates an HMAC-SHA256 digital seal over the block hash."""
     return hmac.new(secret.encode("utf-8"), block_hash.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
@@ -95,16 +79,11 @@ def calculate_block_hash(
 
 
 class BlockchainLedger:
-    """
-    In-memory / persistent manager for the IBVAP Cryptographic Audit Chain.
-    Maintains sequential chain integrity with instant tamper detection.
-    """
-
     _instance: Optional["BlockchainLedger"] = None
 
     def __init__(self) -> None:
         self.chain: List[AuditBlock] = []
-        self._alert_index_map: Dict[str, int] = {}  # alert_id -> block.index
+        self._alert_index_map: Dict[str, int] = {}
         log.info("BlockchainLedger initialized.")
 
     @classmethod
@@ -114,7 +93,6 @@ class BlockchainLedger:
         return cls._instance
 
     def create_genesis_block(self) -> AuditBlock:
-        """Initializes the genesis block for the MHA Border Surveillance Network."""
         timestamp = datetime.now(timezone.utc).isoformat()
         payload = {
             "platform": "IBVAP — Intelligent Border Video Analytics Platform",
@@ -126,7 +104,7 @@ class BlockchainLedger:
         data_hash = calculate_sha256(json.dumps(payload, sort_keys=True))
         merkle_root = compute_merkle_root([data_hash])
         prev_hash = "0" * 64
-        nonce = 187  # Homage to SIH Problem Statement 187
+        nonce = 187
         block_hash = calculate_block_hash(
             index=0,
             timestamp=timestamp,
@@ -164,10 +142,6 @@ class BlockchainLedger:
         payload: Dict[str, Any],
         snapshot_bytes: Optional[bytes] = None,
     ) -> AuditBlock:
-        """
-        Appends a new immutable block to the chain.
-        Cryptographically binds the event payload and raw snapshot image bytes.
-        """
         if not self.chain:
             genesis = self.create_genesis_block()
             self.chain.append(genesis)
@@ -176,16 +150,12 @@ class BlockchainLedger:
         index = prev_block.index + 1
         timestamp = datetime.now(timezone.utc).isoformat()
 
-        # Compute payload hash + snapshot hash (if available)
         if snapshot_bytes:
-            snap_hash = calculate_sha256(snapshot_bytes)
-            payload["snapshot_sha256"] = snap_hash
+            payload["snapshot_sha256"] = calculate_sha256(snapshot_bytes)
 
         payload_json = json.dumps(payload, sort_keys=True)
         data_hash = calculate_sha256(payload_json)
         merkle_root = compute_merkle_root([data_hash])
-
-        # Simple lightweight Proof-of-Authority proof nonce
         nonce = 0
         block_hash = calculate_block_hash(
             index=index,
@@ -226,14 +196,6 @@ class BlockchainLedger:
         return block
 
     def verify_entire_chain(self) -> Dict[str, Any]:
-        """
-        Verifies the cryptographic integrity of every block from genesis to tip:
-        1. Verifies payload data_hash recomputation
-        2. Verifies previous_hash pointers
-        3. Recomputes block_hash
-        4. Validates digital HMAC signature
-        Returns comprehensive verification report.
-        """
         if not self.chain:
             return {
                 "is_valid": True,
@@ -244,7 +206,6 @@ class BlockchainLedger:
             }
 
         for i, block in enumerate(self.chain):
-            # 1. Check payload data hash recomputation (tamper protection)
             recomputed_data_hash = calculate_sha256(json.dumps(block.payload, sort_keys=True))
             if block.data_hash != recomputed_data_hash:
                 return {
@@ -257,7 +218,6 @@ class BlockchainLedger:
                     "status": "PAYLOAD_ALTERATION_DETECTED",
                 }
 
-            # 2. Check hash linkage
             if i == 0:
                 if block.previous_hash != "0" * 64:
                     return {
@@ -279,7 +239,6 @@ class BlockchainLedger:
                         "status": "CHAIN_BROKEN_TAMPER_DETECTED",
                     }
 
-            # 3. Check block hash recomputation
             expected_hash = calculate_block_hash(
                 index=block.index,
                 timestamp=block.timestamp,
@@ -301,7 +260,6 @@ class BlockchainLedger:
                     "status": "PAYLOAD_ALTERATION_DETECTED",
                 }
 
-            # 3. Check digital signature
             expected_sig = sign_block(block.block_hash)
             if block.signature != expected_sig:
                 return {
@@ -323,10 +281,6 @@ class BlockchainLedger:
         }
 
     def get_proof_for_alert(self, alert_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Generates a court-admissible forensic proof certificate for a specific alert.
-        Contains block metadata, cryptographic hashes, Merkle root, and digital signature.
-        """
         target_block: Optional[AuditBlock] = None
         for b in self.chain:
             if b.alert_id == alert_id:
@@ -361,13 +315,7 @@ class BlockchainLedger:
         }
 
     def simulate_tamper_attack(self, block_index: Optional[int] = None) -> Dict[str, Any]:
-        """
-        For Hackathon Demonstrations:
-        Intentionally alters a past block's payload to show the cryptographic
-        audit engine immediately catching unauthorized data modification.
-        """
         if len(self.chain) <= 1:
-            # Need at least one non-genesis block
             self.add_block(
                 event_type="INTRUSION_ALERT",
                 camera_id="CAM-BOP-01",
@@ -382,7 +330,6 @@ class BlockchainLedger:
         corrupted_block = self.chain[target_idx]
         original_data = dict(corrupted_block.payload)
 
-        # Inject covert alteration (e.g., hacker trying to downgrade intrusion severity or delete weapons)
         corrupted_block.payload["threat"] = "NORMAL_PATROL (FRAUDULENTLY MODIFIED BY ATTACKER)"
         corrupted_block.payload["tampered"] = True
 
@@ -398,7 +345,6 @@ class BlockchainLedger:
         }
 
     def restore_chain(self) -> Dict[str, Any]:
-        """Restores and recalculates all hashes to return the chain to a valid state after demo attack."""
         if not self.chain:
             return {"status": "EMPTY"}
 
@@ -433,5 +379,4 @@ class BlockchainLedger:
         return self.verify_entire_chain()
 
 
-# Global Singleton
 blockchain_ledger = BlockchainLedger.get_instance()

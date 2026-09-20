@@ -45,7 +45,6 @@ class FaceRecognizer:
         self._ort_session = None
         self._load()
 
-    # ── Loading ───────────────────────────────────────────────────────────────
 
     def _load(self) -> None:
         model_path: Path = settings.SFACE_FACE_MODEL
@@ -74,7 +73,6 @@ class FaceRecognizer:
             log.error("SFace load error: %s — SIMULATION mode.", exc)
             self._simulation = True
 
-    # ── Embedding ─────────────────────────────────────────────────────────────
 
     def embed(self, aligned_face: np.ndarray) -> Optional[np.ndarray]:
         """
@@ -116,7 +114,6 @@ class FaceRecognizer:
                 return None
         return None
 
-    # ── Watchlist management ──────────────────────────────────────────────────
 
     def load_watchlist(self, subjects: List[Dict]) -> None:
         """
@@ -165,7 +162,6 @@ class FaceRecognizer:
         all_embs = [v[2] for v in self._watchlist.values()]
         self._embedding_matrix = np.stack(all_embs, axis=0) if all_embs else None
 
-    # ── Matching ──────────────────────────────────────────────────────────────
 
     def match_against_watchlist(self, embedding: np.ndarray) -> Optional[MatchResult]:
         """
@@ -204,7 +200,6 @@ class FaceRecognizer:
         n2 = np.linalg.norm(emb2) + 1e-8
         return float(np.dot(emb1 / n1, emb2 / n2))
 
-    # ── Serialisation helpers ─────────────────────────────────────────────────
 
     @staticmethod
     def embedding_to_list(embedding: np.ndarray) -> List[float]:
@@ -214,7 +209,6 @@ class FaceRecognizer:
     def list_to_embedding(lst: List[float]) -> np.ndarray:
         return np.array(lst, dtype=np.float32)
 
-    # ── Simulation ────────────────────────────────────────────────────────────
 
     @staticmethod
     def _sim_embedding() -> np.ndarray:

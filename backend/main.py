@@ -1,13 +1,3 @@
-"""
-IBVAP — FastAPI Application Entry Point
-Implements:
-  • Lifespan context (startup/shutdown)
-  • Secure WebSocket broadcast with error isolation
-  • API key middleware
-  • All REST routers
-  • CORS with explicit origin whitelist
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -29,7 +19,6 @@ from .pipeline.pipeline_manager import pipeline_manager
 from .routers import alerts, analytics, anpr, auth, cameras, frs, snapshots, blockchain
 from .schemas import HealthResponse
 
-# ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
@@ -38,11 +27,7 @@ logging.basicConfig(
 log = logging.getLogger("ibvap.main")
 
 
-# ── WebSocket connection manager ──────────────────────────────────────────────
-
 class ConnectionManager:
-    """Thread-safe WebSocket connection pool with safe broadcast."""
-
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
         self._connections: Set[WebSocket] = set()
@@ -59,12 +44,8 @@ class ConnectionManager:
         log.info("WebSocket client disconnected. Remaining: %d", len(self._connections))
 
     async def broadcast(self, payload: dict) -> None:
-        """
-        Send payload to all connected clients concurrently.
-        Isolates individual send failures so one dead client never stops others.
-        """
         async with self._lock:
-            targets = set(self._connections)   # snapshot to avoid mutation during iteration
+            targets = set(self._connections)
 
         if not targets:
             return
@@ -89,41 +70,23 @@ class ConnectionManager:
 ws_manager = ConnectionManager()
 
 
-# ── Alert callback (pipeline → WebSocket broadcast) ──────────────────────────
-
 async def _on_alert(alert: AlertRecord) -> None:
-    """Broadcast a new alert to all connected WebSocket clients."""
     await ws_manager.broadcast({
         "type": "ALERT",
         "payload": alert.to_dict(),
     })
 
 
-# ── FastAPI lifespan ──────────────────────────────────────────────────────────
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Startup: initialise DB, start pipeline workers.
-    Shutdown: gracefully stop all workers.
-    """
-    log.info("=" * 60)
-    log.info(" IBVAP — Intelligent Border Video Analytics Platform")
-    log.info("=" * 60)
+    log.info("Starting IBVAP surveillance platform...")
 
-    # Initialise database
     await init_db()
-
-    # Load cryptographic blockchain audit ledger
     await load_blockchain_from_db()
 
-    # Register WebSocket alert callback
     pipeline_manager.register_alert_callback(_on_alert)
-
-    # Start AI pipeline (spawns camera worker processes)
     await pipeline_manager.start()
 
-    # Auto-start active external IP cameras registered in database
     from .pipeline.ip_camera_manager import ip_camera_manager
     from .database.db import get_all_cameras
     try:
@@ -135,7 +98,6 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         log.warning("Could not auto-start IP cameras: %s", exc)
 
-    # Pre-warm DirectAIAnalyzer in background
     async def _warmup_ai():
         try:
             from .ai.direct_analyzer import DirectAIAnalyzer
@@ -149,18 +111,15 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(_warmup_ai())
 
-    log.info("IBVAP platform ready. Listening for connections …")
+    log.info("IBVAP platform ready. Listening for connections.")
     yield
 
-    # Graceful shutdown
-    log.info("IBVAP shutting down …")
+    log.info("IBVAP shutting down...")
     for cam_id in list(ip_camera_manager._streamers.keys()):
         ip_camera_manager.stop_camera(cam_id)
     await pipeline_manager.stop()
     log.info("Shutdown complete.")
 
-
-# ── App creation ──────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -172,8 +131,6 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
-# ── CORS ──────────────────────────────────────────────────────────────────────
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -184,14 +141,8 @@ app.add_middleware(
 )
 
 
-# ── API Key middleware ────────────────────────────────────────────────────────
-
 @app.middleware("http")
 async def api_key_middleware(request: Request, call_next):
-    """
-    Validate X-API-Key header on all /api/v1 routes.
-    Skips /api/docs, /api/health, and WebSocket upgrade requests.
-    """
     path = request.url.path
     exempt_prefixes = ("/api/docs", "/api/redoc", "/api/openapi", "/api/health", "/ws")
     if path.startswith(settings.API_V1_STR) and not any(path.startswith(e) for e in exempt_prefixes):
@@ -205,8 +156,6 @@ async def api_key_middleware(request: Request, call_next):
     return await call_next(request)
 
 
-# ── REST Routers ──────────────────────────────────────────────────────────────
-
 prefix = settings.API_V1_STR
 app.include_router(auth.router,       prefix=prefix)
 app.include_router(cameras.router,    prefix=prefix)
@@ -217,12 +166,9 @@ app.include_router(analytics.router,  prefix=prefix)
 app.include_router(snapshots.router,  prefix=prefix)
 app.include_router(blockchain.router, prefix=prefix)
 
-# Mount snapshots static folder for direct image access
 if settings.SNAPSHOT_DIR.exists():
     app.mount("/snapshots", StaticFiles(directory=str(settings.SNAPSHOT_DIR)), name="snapshots")
 
-
-# ── Health check ──────────────────────────────────────────────────────────────
 
 @app.get("/api/health", response_model=HealthResponse, tags=["System"])
 async def health_check():
@@ -238,24 +184,15 @@ async def health_check():
     )
 
 
-# ── WebSocket alert stream ────────────────────────────────────────────────────
-
 @app.websocket("/ws/alerts")
 async def alert_websocket(ws: WebSocket):
-    """
-    Real-time alert stream. Clients receive JSON messages:
-      {"type": "ALERT", "payload": {...}}
-      {"type": "PING",  "payload": null}
-    """
     await ws_manager.connect(ws)
 
-    # Send initial handshake
     await ws.send_text(json.dumps({"type": "CONNECTED", "payload": {
         "message": "IBVAP Alert Stream active.",
         "platform": settings.PROJECT_NAME,
     }}))
 
-    # Keepalive ping every 30 seconds
     async def _ping():
         while True:
             await asyncio.sleep(30)
@@ -268,7 +205,6 @@ async def alert_websocket(ws: WebSocket):
 
     try:
         while True:
-            # Keep connection alive; ignore incoming messages (read-only stream)
             data = await ws.receive_text()
             if data == "CLOSE":
                 break
@@ -279,14 +215,8 @@ async def alert_websocket(ws: WebSocket):
         await ws_manager.disconnect(ws)
 
 
-# ── WebSocket live frame stream ───────────────────────────────────────────────
-
 @app.websocket("/ws/stream/{cam_id}")
 async def frame_stream(ws: WebSocket, cam_id: str):
-    """
-    Stream annotated JPEG frames for a specific camera as binary WebSocket messages.
-    Clients receive binary JPEG bytes at ~15 fps.
-    """
     await ws.accept()
     log.info("Frame stream opened for camera %s", cam_id)
     try:

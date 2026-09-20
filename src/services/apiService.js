@@ -494,7 +494,6 @@ export const bulkDeleteSnapshots = async (ids) => {
   }
 };
 
-// ── Blockchain & Cybersecurity APIs ──────────────────────────────────────────
 
 export const fetchBlockchainLedger = async (limit = 50, offset = 0) => {
   try {

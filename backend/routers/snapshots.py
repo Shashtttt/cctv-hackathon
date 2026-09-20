@@ -52,7 +52,6 @@ def _infer_camera(filename: str, rel_path: str) -> str:
     return "CAM-01"
 
 
-# ── Static / Collection routes (Must precede parameterized /{alert_id}) ───────
 
 @router.get("/")
 async def list_snapshots(limit: int = 150, category: Optional[str] = None):
@@ -231,7 +230,6 @@ async def delete_single_snapshot(snapshot_id: str):
     }
 
 
-# ── Parameterized Route for Alert Snapshot fallback ───────────────────────────
 
 @router.get("/{alert_id}")
 async def get_snapshot_image(alert_id: str):

@@ -151,7 +151,6 @@ export const INITIAL_CAMERAS = [
   }
 ];
 
-// ── Helper: Point-in-polygon (normalised 0..1 coordinates) ──────────────────
 export function isPointInPolygon(point, polygon) {
   if (!polygon || polygon.length < 3) return false;
   let { x, y } = point;
@@ -166,10 +165,8 @@ export function isPointInPolygon(point, polygon) {
   return inside;
 }
 
-// ── Alert throttle: minimum ms between alerts of the same target ──────────────
 const ALERT_THROTTLE_MS = 2000;
 
-// ── Vision Simulation Engine ──────────────────────────────────────────────────
 export class VisionSimulationEngine {
   constructor(camId) {
     this.camId = camId;
@@ -181,7 +178,6 @@ export class VisionSimulationEngine {
     this._initTargets();
   }
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   /**
    * Start the engine tick loop at the correct FPS.
@@ -221,7 +217,6 @@ export class VisionSimulationEngine {
     });
   }
 
-  // ── Internal step ──────────────────────────────────────────────────────────
 
   _step(cameraFence) {
     this.ticks++;
@@ -302,7 +297,6 @@ export class VisionSimulationEngine {
     }
   }
 
-  // ── Initial target setup ───────────────────────────────────────────────────
 
   _initTargets() {
     if (this.camId === 'cam-01') {

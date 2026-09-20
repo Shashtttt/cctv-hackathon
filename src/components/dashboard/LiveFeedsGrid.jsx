@@ -100,7 +100,7 @@ export function CameraFeedItem({
     }
   }, [effectiveDetections, onDetectionsUpdate]);
 
-  // ── AI Frame Ingestion Loop for Real Hardware Webcams (Fallback if Sentinel is paused) ──
+  // Fallback ingestion loop when Sentinel is paused
   useEffect(() => {
     // If Sentinel is running in background, let Sentinel handle ingest to avoid duplicate pipeline load
     if (isSentinelActive && isWebcam) return;
@@ -180,7 +180,7 @@ export function CameraFeedItem({
     };
   }, [stream, isWebcam, isModalOpen, isSentinelActive, locationName, coords?.formatted]);
 
-  // ── Render Unified Tactical AI HUD, Coordinates, Bounding Boxes & Skeletons ──
+  // Draw HUD overlays and bounding boxes
   useEffect(() => {
     const canvas = overlayCanvasRef.current;
     const video = videoRef.current;

@@ -1229,7 +1229,7 @@
   color: #10b981;
 }
 
-/* ── Dynamic Device Camera Controls ────────────────────────── */
+/* Device Camera Controls */
 .camera-flip-btn {
   display: inline-flex;
   align-items: center;
@@ -1296,7 +1296,7 @@
   to { transform: translateY(0); opacity: 1; }
 }
 
-/* ── Dynamic Mobile Responsiveness for Surveillance Page ───── */
+/* Mobile Responsiveness */
 @media (max-width: 768px) {
   .surveillance-page-container {
     gap: 12px;
@@ -1943,7 +1943,7 @@
   }
 }
 
-/* ── In-Video HUD Toolbar & AI Toggles ────────────────────────── */
+/* In-Video HUD Toolbar & AI Toggles */
 .in-video-hud-toolbar {
   position: absolute;
   bottom: 50px;

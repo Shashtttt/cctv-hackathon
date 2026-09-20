@@ -40,7 +40,6 @@ class FaceDetector:
         self._mode     = "simulation"
         self._load()
 
-    # ── Loading ───────────────────────────────────────────────────────────────
 
     def _load(self) -> None:
         onnx_path: Path = settings.YUNET_FACE_MODEL
@@ -75,7 +74,6 @@ class FaceDetector:
             log.warning("Haar cascade init failed: %s — face detector in SIMULATION mode.", exc)
             self._mode = "simulation"
 
-    # ── Public API ────────────────────────────────────────────────────────────
 
     def detect(self, frame: np.ndarray) -> List[FaceDetection]:
         """Detect all faces in a BGR frame. Returns list of FaceDetection."""
@@ -109,7 +107,6 @@ class FaceDetector:
             f.landmarks = [(lx + x1, ly + y1) for lx, ly in f.landmarks]
         return faces
 
-    # ── Backend-specific implementations ─────────────────────────────────────
 
     def _detect_yunet(self, frame: np.ndarray) -> List[FaceDetection]:
         import cv2                                           # type: ignore

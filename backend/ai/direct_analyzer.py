@@ -223,8 +223,7 @@ class DirectAIAnalyzer:
                 if alert:
                     alerts.append(alert)
 
-            # Unusual Item / Contraband alert (bottle, knife, pen, phone, bag, scissors)
-            # ── Weapon & Hand-Held Threat Alerts ──────────────────────────────
+            # Weapon & Hand-Held Threat Alerts
             if getattr(det, "is_holding", False):
                 if getattr(det, "held_item_type", "") == "WEAPON":
                     alert = self._make_alert(

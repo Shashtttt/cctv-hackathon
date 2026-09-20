@@ -59,7 +59,6 @@ export const database = rtdbInstance;
 
 export { app, firebaseConfig, auth, googleProvider, db, storage, analytics };
 
-// ── Auth Helper Functions ──────────────────────────────────────────────────
 
 /**
  * Sign in with Google Popup
@@ -147,7 +146,6 @@ export const onAuthStatusChange = (callback) => {
   return onAuthStateChanged(auth, callback);
 };
 
-// ── Firestore Sync Helpers ─────────────────────────────────────────────────
 
 /**
  * Log an alert to Cloud Firestore
@@ -166,7 +164,6 @@ export const logAlertToFirestore = async (alertData) => {
   }
 };
 
-// ── Realtime Database Operations ───────────────────────────────────────────
 
 export const pushRealtimeAlert = async (alertData) => {
   if (!database) return { success: false, error: "Database in standby" };

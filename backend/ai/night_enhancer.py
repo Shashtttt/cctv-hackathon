@@ -47,7 +47,6 @@ class NightEnhancer:
         except ImportError:
             log.warning("OpenCV not available — NightEnhancer will pass frames through unchanged.")
 
-    # ── Public entry point ────────────────────────────────────────────────────
 
     def enhance(self, frame: np.ndarray, mode: str) -> np.ndarray:
         """
@@ -60,7 +59,6 @@ class NightEnhancer:
         from .image_preprocessor import preprocessor
         return preprocessor.process(frame, mode=mode)
 
-    # ── Enhancement implementations ───────────────────────────────────────────
 
     def _apply_clahe(self, frame: np.ndarray) -> np.ndarray:
         """
@@ -136,7 +134,6 @@ class NightEnhancer:
         clahe    = self._apply_clahe(denoised)
         return self._apply_gamma(clahe, gamma=0.5)
 
-    # ── Frame quality assessor ────────────────────────────────────────────────
 
     @staticmethod
     def mean_brightness(frame: np.ndarray) -> float:

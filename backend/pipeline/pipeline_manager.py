@@ -30,9 +30,7 @@ from .camera_worker import CameraWorker
 log = logging.getLogger("ibvap.pipeline.manager")
 
 
-# ────────────────────────────────────────────────────────────────────────────
 # Worker process entry-point (must be top-level for multiprocessing to pickle)
-# ────────────────────────────────────────────────────────────────────────────
 
 def _run_worker(
     camera_dict: dict,
@@ -61,9 +59,6 @@ def _run_worker(
     worker.run()
 
 
-# ────────────────────────────────────────────────────────────────────────────
-# Pipeline Manager
-# ────────────────────────────────────────────────────────────────────────────
 
 class PipelineManager:
     """
@@ -103,7 +98,6 @@ class PipelineManager:
         # Last categorized snapshot saved timestamp (key -> epoch float) to prevent disk thrashing
         self._last_categorized_snap_ts: Dict[str, float] = {}
 
-    # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     async def start(self) -> None:
         """
@@ -167,7 +161,6 @@ class PipelineManager:
         self._cameras.clear()
         log.info("PipelineManager stopped.")
 
-    # ── Camera hot-plug ───────────────────────────────────────────────────────
 
     async def add_camera(self, camera: CameraConfig) -> None:
         """Hot-add a new camera and spawn its worker if pull-based worker mode is enabled."""
@@ -225,7 +218,6 @@ class PipelineManager:
             self._cameras[cam.id] = cam
         await self.start()
 
-    # ── Alert callback registration ───────────────────────────────────────────
 
     def register_alert_callback(self, cb: Callable) -> None:
         """Register an async callback that receives AlertRecord on each new alert."""
@@ -234,7 +226,6 @@ class PipelineManager:
     def unregister_alert_callback(self, cb: Callable) -> None:
         self._alert_callbacks = [c for c in self._alert_callbacks if c is not cb]
 
-    # ── Internal: spawn worker process ────────────────────────────────────────
 
     def _spawn_worker(
         self,
@@ -267,7 +258,6 @@ class PipelineManager:
         self._workers[camera.id] = proc
         log.info("[%s] Worker process PID %d spawned.", camera.code, proc.pid)
 
-    # ── Result drain thread ───────────────────────────────────────────────────
 
     def _drain_result_queue(self) -> None:
         """
@@ -479,7 +469,6 @@ class PipelineManager:
         except Exception as exc:
             log.error("Categorized snapshot save error: %s", exc)
 
-    # ── Status API ────────────────────────────────────────────────────────────
     def update_latest_frame(self, cam_id: str, frame_bytes: bytes) -> None:
         """Manually update the latest frame for a camera."""
         self._latest_frames[cam_id] = frame_bytes

@@ -46,7 +46,6 @@ class LoiteringTracker:
         self._records: Dict[str, DwellRecord] = {}
         self._last_cleanup = datetime.datetime.utcnow()
 
-    # ── Public API ────────────────────────────────────────────────────────────
 
     def update(
         self,

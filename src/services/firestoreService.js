@@ -24,7 +24,6 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase.js";
 
-// ── 1. Connection & Diagnostics ─────────────────────────────────────────────
 
 /**
  * Ping Cloud Firestore to verify connectivity and project authorization.
@@ -56,7 +55,6 @@ export const testFirestoreConnection = async () => {
   }
 };
 
-// ── Rate Limiting & Concurrency Guard ──────────────────────────────────────
 const _recentSyncCache = new Map();
 let _activeWrites = 0;
 const MAX_CONCURRENT_WRITES = 4;
@@ -74,7 +72,6 @@ if (typeof window !== "undefined") {
   }, 30000);
 }
 
-// ── 2. Alerts & Threat Synchronization ──────────────────────────────────────
 
 /**
  * Persist or update an alert in Cloud Firestore.
@@ -338,7 +335,6 @@ export const updateCloudAlertStatus = async (alertId, newStatus) => {
   }
 };
 
-// ── 3. Camera Fleet Synchronization ─────────────────────────────────────────
 
 /**
  * Sync camera registration and telemetry to Cloud Firestore.
@@ -398,7 +394,6 @@ export const subscribeToCloudCameras = (onUpdate, onError) => {
   }
 };
 
-// ── 4. Tactical Incidents & Field Recon Logs ─────────────────────────────────
 
 /**
  * Record a critical security incident (weapons, breaches, unauthorized persons) in Firestore.

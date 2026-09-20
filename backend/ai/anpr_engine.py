@@ -59,7 +59,6 @@ class ANPREngine:
         self._simulation = False
         self._load()
 
-    # ── Loading ───────────────────────────────────────────────────────────────
 
     def _load(self) -> None:
         # Load EasyOCR (shared singleton across workers to conserve RAM and avoid duplicate loading)
@@ -95,7 +94,6 @@ class ANPREngine:
             except Exception as exc:
                 log.warning("LP YOLO load failed: %s — using contour fallback.", exc)
 
-    # ── Public API ────────────────────────────────────────────────────────────
 
     def detect_plates(self, frame: np.ndarray) -> List[PlateResult]:
         """
@@ -176,7 +174,6 @@ class ANPREngine:
             return best_match, best_dist
         return None, -1
 
-    # ── Detection strategies ──────────────────────────────────────────────────
 
     def _detect_plates_yolo(
         self, frame: np.ndarray
@@ -224,7 +221,6 @@ class ANPREngine:
             log.debug("Contour detection error: %s", exc)
             return []
 
-    # ── OCR ───────────────────────────────────────────────────────────────────
 
     def _read_plate(self, crop: np.ndarray) -> Optional[dict]:
         """Run EasyOCR on a plate crop and return normalised text + confidence."""
@@ -257,7 +253,6 @@ class ANPREngine:
             log.debug("OCR error: %s", exc)
             return None
 
-    # ── Text normalisation helpers ────────────────────────────────────────────
 
     @staticmethod
     def _normalise(text: str) -> str:
@@ -298,7 +293,6 @@ class ANPREngine:
             return None
         return frame[y:y2, x:x2]
 
-    # ── Simulation ────────────────────────────────────────────────────────────
 
     @staticmethod
     def _simulate() -> List[PlateResult]:

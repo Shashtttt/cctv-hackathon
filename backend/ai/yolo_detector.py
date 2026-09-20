@@ -300,7 +300,7 @@ class YOLODetector:
         # Adaptive inference resolution: 320 on CPU for fast real-time inference, 640 on GPU/MPS
         infer_imgsz = 320 if self._device == "cpu" else 640
 
-        # ── 1. YOLOv8 Pose Inference (Human Skeletons) ────────────────────────
+        # Pose inference (human skeletons)
         if self._pose_model is not None:
             try:
                 results_pose = self._pose_model(
@@ -364,7 +364,7 @@ class YOLODetector:
             except Exception as exc:
                 log.error("YOLO pose parsing error: %s", exc)
 
-        # ── 2. Dedicated Weapon Detection (Pistols, Knives) ───────────────────
+        # Dedicated weapon detection (pistols, knives)
         detected_weapon_boxes: List[Tuple[float, float, float, float]] = []
         if self._weapon_model is not None:
             try:
@@ -497,7 +497,7 @@ class YOLODetector:
             except Exception as exc:
                 log.error("Weapon model inference error: %s", exc)
 
-        # ── 3. General & Open-Vocabulary Object Detection (YOLO-World / YOLOv8)
+        # General & open-vocabulary object detection (YOLO-World / YOLOv8)
         active_detector = self._world_model if self._world_model is not None else self._obj_model
         if active_detector is not None:
             try:
@@ -652,11 +652,10 @@ class YOLODetector:
             except Exception as exc:
                 log.error("Object model inference error: %s", exc)
 
-        # ── 4. Fallback for Synthetic Feeds Disabled on Real Frames ──────────
         # Note: Do not run color-contour vehicle detection on real camera frames
         # as blue/orange furniture (coolers, cabinets) gets falsely classified as cars/buses.
 
-        # ── 5. Hand-Held Object Spatial Association & Threat Escalation ───────
+        # Hand-held object spatial association
         self._associate_hands_and_objects(persons, objects)
 
         return persons + objects + vehicles

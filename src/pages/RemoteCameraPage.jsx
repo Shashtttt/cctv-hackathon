@@ -19,12 +19,11 @@ import axios from 'axios';
 import './RemoteCameraPage.css';
 
 export const RemoteCameraPage = () => {
-  // Parse camera ID from query params or default
   const params = new URLSearchParams(window.location.search);
   const camId = params.get('cam_id') || 'ip-cam-mobile-01';
 
   const [isStreaming, setIsStreaming] = useState(false);
-  const [facingMode, setFacingMode] = useState('environment'); // 'environment' | 'user'
+  const [facingMode, setFacingMode] = useState('environment');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const [telemetry, setTelemetry] = useState({
@@ -46,7 +45,6 @@ export const RemoteCameraPage = () => {
   const fpsTimerRef = useRef(Date.now());
   const geoRef = useRef(null);
 
-  // Geolocation tracker
   useEffect(() => {
     if ('geolocation' in navigator) {
       const watchId = navigator.geolocation.watchPosition(
@@ -116,10 +114,8 @@ export const RemoteCameraPage = () => {
     setIsStreaming(false);
   };
 
-  // Switch camera between front and back
   const toggleFacingMode = () => {
-    const next = facingMode === 'environment' ? 'user' : 'environment';
-    setFacingMode(next);
+    setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
   };
 
   const toggleFullscreen = () => {
@@ -136,14 +132,12 @@ export const RemoteCameraPage = () => {
     }
   };
 
-  // Re-start if facingMode changes while streaming
   useEffect(() => {
     if (isStreaming) {
       startStream();
     }
   }, [facingMode]);
 
-  // Frame sender loop
   useEffect(() => {
     if (!isStreaming) return;
 
@@ -152,8 +146,7 @@ export const RemoteCameraPage = () => {
     }
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-
-    const sendIntervalMs = 80; // ~12-15 FPS ingest for smooth analysis without choking network
+    const sendIntervalMs = 80;
 
     timerRef.current = setInterval(async () => {
       const video = videoRef.current;
@@ -163,7 +156,6 @@ export const RemoteCameraPage = () => {
       const tStart = Date.now();
 
       try {
-        // Downscale to 640px width for fast transit
         const scale = 640 / (video.videoWidth || 640);
         canvas.width = 640;
         canvas.height = (video.videoHeight || 480) * scale;
@@ -216,7 +208,6 @@ export const RemoteCameraPage = () => {
 
   return (
     <div className="remote-camera-container font-mono">
-      {/* Tactical Video Viewport */}
       <div className="remote-viewport">
         <video
           ref={videoRef}
@@ -226,7 +217,6 @@ export const RemoteCameraPage = () => {
           className="remote-video-feed"
         />
 
-        {/* HUD Crosshairs */}
         <div className="hud-overlay">
           <div className="hud-corner top-left"></div>
           <div className="hud-corner top-right"></div>
@@ -234,7 +224,6 @@ export const RemoteCameraPage = () => {
           <div className="hud-corner bottom-right"></div>
           <div className="hud-center-cross"></div>
 
-          {/* Top Status Bar */}
           <div className="hud-top-bar">
             <div className="hud-pill pill-cyan">
               <span className={`status-dot ${isStreaming ? 'pulse-active' : ''}`}></span>
@@ -257,7 +246,6 @@ export const RemoteCameraPage = () => {
             </div>
           </div>
 
-          {/* Bottom Telemetry Bar */}
           <div className="hud-bottom-bar">
             <div className="telemetry-item">
               <MapPin size={13} className="text-cyan" />
@@ -277,7 +265,6 @@ export const RemoteCameraPage = () => {
         </div>
       </div>
 
-      {/* Control Actions Bar */}
       <div className="remote-controls-bar">
         {!isStreaming ? (
           <button className="ctrl-btn btn-launch" onClick={startStream}>

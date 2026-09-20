@@ -16,7 +16,6 @@ from ..schemas import (
 router = APIRouter(prefix="/cameras", tags=["Cameras"])
 
 
-# ── Static routes (MUST be defined before /{cam_id}) ──────────────────────────
 
 @router.get("/", response_model=List[CameraResponse])
 async def list_cameras(running_only: bool = False):
@@ -117,7 +116,6 @@ async def create_camera(body: CameraCreateRequest):
 
 
 
-# ── Parameterized routes ──────────────────────────────────────────────────────
 
 @router.get("/{cam_id}", response_model=CameraResponse)
 async def get_camera(cam_id: str):
@@ -197,7 +195,6 @@ async def delete_camera(cam_id: str):
     return SuccessResponse(message=f"Camera {cam_id} removed.")
 
 
-# ── Live Video & Frame Endpoints ──────────────────────────────────────────────
 
 def _generate_standby_frame(camera_code: str = "CAM-01") -> bytes:
     """Generate a clean dark tactical standby frame when no stream frame is ready."""
