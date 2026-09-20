@@ -340,6 +340,47 @@ class DirectAIAnalyzer:
                     det.pose_label = activity.label.value
                 self._prev_positions[det.target_id] = (det.bbox.cx, det.bbox.cy)
 
+            # Vehicle & ANPR License Plate Recognition
+            if det.class_id in VEHICLE_CLASSES:
+                x1, y1, x2, y2 = det.bbox.to_pixel(w, h)
+                crop = frame_bgr[y1:y2, x1:x2]
+                if crop.size > 0 and hasattr(self, "anpr") and self.anpr:
+                    try:
+                        plates = self.anpr.detect_in_vehicle_crop(frame_bgr, (x1, y1, x2, y2))
+                        for plate in plates:
+                            det.plate_text = plate.plate_text
+                            det.plate_confidence = plate.confidence
+                            matched_plate, dist = self.anpr.fuzzy_check_watchlist(
+                                plate.plate_text, self._anpr_watchlist
+                            )
+                            if matched_plate:
+                                det.is_blacklisted = True
+                                alert = self._make_alert(
+                                    camera_id=camera_id,
+                                    category="ANPR_MATCH",
+                                    severity="CRITICAL",
+                                    title=f"Blacklisted Vehicle [{camera_code}]: {plate.plate_text}",
+                                    description=f"Plate '{plate.plate_text}' matched watchlist entry '{matched_plate}' (OCR conf: {plate.confidence:.1%}, dist: {dist}).",
+                                    target_id=det.target_id,
+                                    plate_text=plate.plate_text,
+                                )
+                                if alert:
+                                    alerts.append(alert)
+                            elif det.is_in_fence:
+                                alert = self._make_alert(
+                                    camera_id=camera_id,
+                                    category="VEHICLE_INTRUSION",
+                                    severity="CRITICAL",
+                                    title=f"Vehicle Perimeter Breach [{camera_code}]: {plate.plate_text}",
+                                    description=f"Vehicle {det.target_id} with plate '{plate.plate_text}' entered restricted perimeter boundary.",
+                                    target_id=det.target_id,
+                                    plate_text=plate.plate_text,
+                                )
+                                if alert:
+                                    alerts.append(alert)
+                    except Exception as anpr_err:
+                        log.debug("ANPR detection failed: %s", anpr_err)
+
         # 4. Annotate frame with HUD, Skeletons, and Bounding Boxes (if requested)
         annotated_jpg = (
             self._annotate_frame(frame_bgr.copy(), detections, alerts, camera_code, fence_points, gps_info)
@@ -367,16 +408,18 @@ class DirectAIAnalyzer:
         target_id: Optional[str] = None,
         frs_match_name: Optional[str] = None,
         frs_match_score: Optional[float] = None,
+        plate_text: Optional[str] = None,
     ) -> Optional[AlertRecord]:
-        key = f"{camera_id}:{category}:{target_id or 'all'}"
+        key = f"{camera_id}:{category}:{target_id or plate_text or 'all'}"
         now_ts = time.time()
         throttle_secs = 15.0 if category in ("LOITERING", "SUSPICIOUS_POSTURE", "MONITORED_OBJECT", "UNUSUAL_ITEM") else 6.0
         if now_ts - self._last_alert_ts.get(key, 0) < throttle_secs:
             return None
         self._last_alert_ts[key] = now_ts
 
+        alert_id = f"ALT-{uuid.uuid4().hex[:10].upper()}"
         return AlertRecord(
-            id=f"ALT-{uuid.uuid4().hex[:10].upper()}",
+            id=alert_id,
             camera_id=camera_id,
             timestamp=datetime.datetime.utcnow(),
             category=category,
@@ -387,6 +430,8 @@ class DirectAIAnalyzer:
             status="NEW",
             frs_match_name=frs_match_name,
             frs_match_score=frs_match_score,
+            plate_text=plate_text,
+            snapshot_url=f"/api/v1/snapshots/{alert_id}",
         )
 
     def _annotate_frame(
@@ -536,6 +581,8 @@ class DirectAIAnalyzer:
                 label_parts.append(f"[{det.pose_label}]")
             if det.frs_match_name:
                 label_parts.append(f"FRS:{det.frs_match_name}")
+            if getattr(det, "plate_text", None):
+                label_parts.append(f"PLATE:{det.plate_text}")
             if det.loiter_seconds > 3:
                 label_parts.append(f"DWELL:{det.loiter_seconds:.0f}s")
 
@@ -550,10 +597,12 @@ class DirectAIAnalyzer:
 
         # Tactical HUD matching Screenshot 2
         people_cnt = sum(1 for d in detections if d.class_id == 0)
+        vehicle_cnt = sum(1 for d in detections if d.class_id in VEHICLE_CLASSES)
         unusual_cnt = sum(1 for d in detections if d.is_unusual or getattr(d, "is_weapon", False) or getattr(d, "is_holding", False))
         alert_cnt = len(alerts)
 
-        hud = f"{camera_code} AI | PEOPLE: {people_cnt} | UNUSUAL ITEMS: {unusual_cnt} | ALERTS: {alert_cnt}"
+        vehicle_part = f" | VEHICLES: {vehicle_cnt}" if vehicle_cnt > 0 else ""
+        hud = f"{camera_code} AI | PEOPLE: {people_cnt}{vehicle_part} | UNUSUAL ITEMS: {unusual_cnt} | ALERTS: {alert_cnt}"
         cv2.putText(frame, hud, (20, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.60, (0, 0, 240), 2, cv2.LINE_AA)
 
         # Bottom Geo-Location & GPS Telemetry HUD on Captured Image

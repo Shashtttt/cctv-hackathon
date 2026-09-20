@@ -82,6 +82,7 @@ class AlertResponse(BaseModel):
     target_id: Optional[str] = None
     status: str
     snapshot_path: Optional[str] = None
+    snapshot_url: Optional[str] = None
     frs_match_name: Optional[str] = None
     frs_match_score: Optional[float] = None
     plate_text: Optional[str] = None

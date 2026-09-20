@@ -418,6 +418,8 @@ async def ingest_camera_frame(cam_id: str, request: Request):
                 ] if d.keypoints and hasattr(d.keypoints, "points") and d.keypoints.points else [],
                 "frs_match_name": str(d.frs_match_name) if d.frs_match_name else None,
                 "frs_match_score": float(d.frs_match_score) if d.frs_match_score is not None else None,
+                "plate_text": str(d.plate_text) if getattr(d, "plate_text", None) else None,
+                "plate_confidence": float(d.plate_confidence) if getattr(d, "plate_confidence", None) is not None else None,
                 "loiter_seconds": float(d.loiter_seconds),
                 "is_in_fence": bool(d.is_in_fence),
             }

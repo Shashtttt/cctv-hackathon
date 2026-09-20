@@ -25,7 +25,7 @@ import {
   Plus,
   Trash2
 } from 'lucide-react';
-import { fetchCameras, getCameraStreamUrl, deleteCamera } from '../services/apiService';
+import { fetchCameras, getCameraStreamUrl, deleteCamera, fetchAlerts } from '../services/apiService';
 import { enumerateDeviceCameras } from '../utils/deviceDetector';
 import { CameraDetailModal } from '../components/CameraDetailModal';
 import { VirtualFenceConfigModal } from '../components/VirtualFenceConfigModal';
@@ -48,34 +48,55 @@ const CamerasPage = () => {
 
   const loadCameras = async () => {
     try {
+      // 0. Fetch recent alerts across cameras
+      let alertsByCamera = {};
+      try {
+        const alertRes = await fetchAlerts({ limit: 100 });
+        if (alertRes && Array.isArray(alertRes.items)) {
+          alertRes.items.forEach(a => {
+            const cId = (a.camera_id || '').toLowerCase();
+            if (!alertsByCamera[cId]) alertsByCamera[cId] = [];
+            alertsByCamera[cId].push(a);
+          });
+        }
+      } catch (aErr) {
+        console.debug('Alerts fetch notice in CamerasPage:', aErr);
+      }
+
       // 1. Detect genuine physical hardware cameras on this device
       let hardwareCams = [];
       try {
         const detected = await enumerateDeviceCameras();
-        hardwareCams = (detected || []).map((d, index) => ({
-          id: d.id || `dev-cam-${index + 1}`,
-          code: d.isBack ? 'DEV-REAR-01' : (index === 0 ? 'DEV-OPTICAL-01' : `DEV-OPTICAL-0${index + 1}`),
-          name: d.name || d.label || (index === 0 ? 'Integrated HD Camera' : `External USB CCTV ${index}`),
-          status: 'online',
-          statusText: 'ONLINE ⚡',
-          location: 'Local Optical Device (Hardware)',
-          gps_coords: 'Active Device Sensor',
-          resolution: d.resolution || '1080p FHD',
-          lastSeen: 'Live Now',
-          image: '/assets/cam1.png',
-          streamUrl: null,
-          frameUrl: null,
-          recText: 'LIVE HARDWARE ⚡',
-          badgeTopRight: d.isBack ? '📷 REAR SENSOR' : '💻 FRONT WEBCAM',
-          overlayBottomLeft: (d.name || d.label || 'OPTICAL SENSOR').toUpperCase(),
-          overlayBottomRight: `${d.resolution || '1080p'} @ 30fps`,
-          type: 'online',
-          isOffline: false,
-          hasDetections: true,
-          detectionMode: 'c01_double',
-          isDeviceHardware: true,
-          isCustomIp: false,
-        }));
+        hardwareCams = (detected || []).map((d, index) => {
+          const camId = d.id || `dev-cam-${index + 1}`;
+          const camCode = d.isBack ? 'DEV-REAR-01' : (index === 0 ? 'DEV-OPTICAL-01' : `DEV-OPTICAL-0${index + 1}`);
+          const cAlerts = alertsByCamera[camId.toLowerCase()] || alertsByCamera[camCode.toLowerCase()] || [];
+
+          return {
+            id: camId,
+            code: camCode,
+            name: d.name || d.label || (index === 0 ? 'Integrated HD Camera' : `External USB CCTV ${index}`),
+            status: 'online',
+            statusText: 'ONLINE ⚡',
+            location: 'Local Optical Device (Hardware)',
+            gps_coords: 'Active Device Sensor',
+            resolution: d.resolution || '1080p FHD',
+            lastSeen: 'Live Now',
+            image: '/assets/cam1.png',
+            streamUrl: null,
+            frameUrl: null,
+            recText: 'LIVE HARDWARE ⚡',
+            badgeTopRight: d.isBack ? '📷 REAR SENSOR' : '💻 FRONT WEBCAM',
+            overlayBottomLeft: (d.name || d.label || 'OPTICAL SENSOR').toUpperCase(),
+            overlayBottomRight: `${d.resolution || '1080p'} @ 30fps`,
+            type: 'online',
+            isOffline: false,
+            hasDetections: true,
+            activeAlerts: cAlerts.slice(0, 3),
+            isDeviceHardware: true,
+            isCustomIp: false,
+          };
+        });
       } catch (devErr) {
         console.debug('Hardware camera enumeration notice:', devErr);
       }
@@ -100,6 +121,7 @@ const CamerasPage = () => {
             const isOnline = item.status === 'online' || item.is_active;
             const isConnecting = item.status === 'connecting';
             const currentStatus = isOnline ? 'online' : (isConnecting ? 'connecting' : (isMobile ? 'standby' : 'offline'));
+            const cAlerts = alertsByCamera[item.id.toLowerCase()] || alertsByCamera[(item.code || '').toLowerCase()] || [];
 
             return {
               id: item.id,
@@ -121,7 +143,7 @@ const CamerasPage = () => {
               type: currentStatus,
               isOffline: !isOnline,
               hasDetections: true,
-              detectionMode: 'c01_double',
+              activeAlerts: cAlerts.slice(0, 3),
               isCustomIp: true,
               isMobile,
               rtsp_url: item.rtsp_url,
@@ -520,106 +542,65 @@ const CamerasPage = () => {
                 </span>
               </div>
 
-              {/* Optional Detections Box */}
-              {cam.hasDetections && cam.detectionMode === 'c01_double' && (
-                <div className="detections-info-box font-mono">
+              {/* Dynamic Camera Detections & Alerts Box */}
+              {cam.activeAlerts && cam.activeAlerts.length > 0 ? (
+                <div className={`detections-info-box font-mono ${cam.activeAlerts.some(a => a.severity === 'CRITICAL' || a.category?.includes('WEAPON')) ? 'box-warning-purple' : ''}`}>
                   <div className="box-header">
                     <span>CURRENT DETECTIONS</span>
-                    <span className="text-green">● 2 ACTIVE</span>
+                    <span className="text-green">● {cam.activeAlerts.length} ACTIVE</span>
                   </div>
                   <div className="det-card-stacked font-mono">
-                    <div className="det-row-card">
-                      <div className="det-left-info">
-                        <User size={13} className="text-green" />
-                        <span className="det-name-text">P-115 • Security Officer</span>
-                      </div>
-                      <span className="badge-authorized font-mono">AUTHORIZED</span>
-                    </div>
-                    <div className="det-row-card font-mono">
-                      <div className="det-left-info">
-                        <Truck size={13} className="text-cyan" />
-                        <span className="det-name-text">V-021 • Vehicle</span>
-                      </div>
-                      <span className="plate-tag-box font-mono">PLATE: <strong className="plate-val">HR26AB1234</strong></span>
-                    </div>
-                  </div>
-                </div>
-              )}
+                    {cam.activeAlerts.map((alt, aIdx) => {
+                      const isVehicle = alt.category?.includes('VEHICLE') || alt.category?.includes('ANPR') || Boolean(alt.plate_text);
+                      const isFrs = Boolean(alt.frs_match_name) || alt.category?.includes('FRS');
+                      const isWeapon = alt.category?.includes('WEAPON') || alt.category?.includes('ARMED') || alt.title?.includes('Weapon') || alt.title?.includes('Armed');
 
-              {cam.hasDetections && cam.detectionMode === 'c02_patrol' && (
-                <div className="detections-info-box font-mono">
-                  <div className="box-header">
-                    <span>CURRENT DETECTIONS</span>
-                    <span className="text-green">● 1 ACTIVE</span>
-                  </div>
-                  <div className="det-card-stacked font-mono">
-                    <div className="det-row-card-single font-mono">
-                      <div className="det-row-line1">
-                        <div className="det-left-info">
-                          <Truck size={13} className="text-cyan" />
-                          <span className="det-name-text">V-021 • Vehicle</span>
+                      return (
+                        <div key={alt.id || aIdx} className="det-row-card font-mono">
+                          <div className="det-left-info">
+                            {isWeapon ? (
+                              <ShieldAlert size={13} className="text-red-alert" />
+                            ) : isVehicle ? (
+                              <Truck size={13} className="text-cyan" />
+                            ) : isFrs ? (
+                              <User size={13} className="text-green" />
+                            ) : (
+                              <User size={13} className="text-purple-light" />
+                            )}
+                            <span className="det-name-text">
+                              {alt.frs_match_name
+                                ? `${alt.target_id || 'ID'}: ${alt.frs_match_name}`
+                                : alt.plate_text
+                                ? `${alt.target_id || 'V-021'} • Vehicle`
+                                : (alt.title || `${alt.target_id || 'TGT'} • ${alt.category}`)}
+                            </span>
+                          </div>
+                          {alt.plate_text ? (
+                            <span className="plate-tag-box font-mono">PLATE: <strong className="plate-val">{alt.plate_text}</strong></span>
+                          ) : isFrs ? (
+                            <span className="badge-authorized font-mono">AUTHORIZED</span>
+                          ) : isWeapon ? (
+                            <span className="pill-badge-alert font-mono" style={{ background: '#dc2626' }}>CRITICAL</span>
+                          ) : (
+                            <span className="conf-badge-green font-mono">{alt.severity || 'ACTIVE'}</span>
+                          )}
                         </div>
-                        <span className="conf-badge-green font-mono">93%</span>
-                      </div>
-                      <div className="det-row-line2 font-mono">
-                        <span className="plate-tag-box font-mono">PLATE: <strong className="plate-val">HR26AB1234</strong></span>
-                        <span className="text-green font-mono">● Patrol en route</span>
-                      </div>
-                    </div>
+                      );
+                    })}
                   </div>
                 </div>
-              )}
-
-              {cam.hasDetections && cam.detectionMode === 'c03_alerts' && (
-                <div className="detections-info-box font-mono box-warning-purple">
+              ) : cam.isOffline ? (
+                <div className="detections-info-box font-mono box-offline-red">
                   <div className="box-header">
-                    <span>CURRENT DETECTIONS</span>
-                    <span className="pill-badge-alert font-mono">⚠️ 2 ALERTS</span>
+                    <span>PREVIOUS / CACHED ACTIVITY</span>
+                    <span className="badge-no-feed font-mono">NO LIVE FEED</span>
                   </div>
-                  <div className="det-card-stacked font-mono">
-                    <div className="det-row-card font-mono">
-                      <div className="det-left-info">
-                        <User size={13} className="text-purple-light" />
-                        <span className="det-name-text text-white font-bold">P-102 • UNAUTHORIZED PERSON</span>
-                      </div>
-                      <span className="badge-conf-purple font-mono">95%</span>
-                    </div>
-                    <div className="suspicious-activity-card font-mono">
-                      <div className="suspicious-top-row">
-                        <div className="det-left-info text-cyan">
-                          <ShieldAlert size={13} className="text-cyan" />
-                          <span className="suspicious-title font-bold">SUSPICIOUS ACTIVITY</span>
-                        </div>
-                        <span className="time-badge-purple font-mono">04:32</span>
-                      </div>
-                      <div className="suspicious-meta-row font-mono text-muted">
-                        <span>Activity: <strong className="text-white">Loitering</strong></span>
-                        <span>Object: <strong className="text-white">P-108</strong></span>
-                      </div>
-                    </div>
+                  <div className="box-content-clear font-mono">
+                    <VideoOff size={14} className="text-red-alert" />
+                    <span className="text-muted font-bold">Camera feed offline</span>
                   </div>
                 </div>
-              )}
-
-              {cam.hasDetections && cam.detectionMode === 'c04_security' && (
-                <div className="detections-info-box font-mono">
-                  <div className="box-header">
-                    <span>CURRENT DETECTIONS</span>
-                    <span className="text-green">● 1 ACTIVE</span>
-                  </div>
-                  <div className="det-card-stacked font-mono">
-                    <div className="det-row-card font-mono">
-                      <div className="det-left-info">
-                        <User size={13} className="text-green" />
-                        <span className="det-name-text">P-115 • Role: Security Officer</span>
-                      </div>
-                      <span className="badge-authorized font-mono">AUTHORIZED</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {cam.hasDetections && cam.detectionMode === 'c05_clear' && (
+              ) : (
                 <div className="detections-info-box font-mono">
                   <div className="box-header">
                     <span>CURRENT DETECTIONS</span>
@@ -632,27 +613,6 @@ const CamerasPage = () => {
                 </div>
               )}
 
-              {cam.hasDetections && cam.detectionMode === 'c06_cached' && (
-                <div className="detections-info-box font-mono box-offline-red">
-                  <div className="box-header">
-                    <span>PREVIOUS / CACHED ACTIVITY</span>
-                    <span className="badge-no-feed font-mono">NO LIVE FEED</span>
-                  </div>
-                  <div className="cached-activity-card font-mono">
-                    <div className="cached-line1 font-mono">
-                      <div className="det-left-info text-red">
-                        <AlertTriangle size={13} className="text-red-alert" />
-                        <span className="det-name-bold text-red-alert">P-102 • UNAUTHORIZED PERSON</span>
-                      </div>
-                      <span className="text-muted font-mono">Cached</span>
-                    </div>
-                    <div className="cached-line2 font-mono text-muted">
-                      <span>Last Detection: <strong>P-102</strong></span>
-                      <span className="text-muted font-bold">5 minutes ago</span>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               <div className="card-actions-row">
                 {!cam.isOffline ? (

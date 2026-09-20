@@ -44,6 +44,14 @@ async def resolve_alert(alert_id: str):
     return SuccessResponse(message=f"Alert {alert_id} resolved.")
 
 
+@router.get("/{alert_id}", response_model=AlertResponse)
+async def get_single_alert(alert_id: str):
+    alert = await db.get_alert(alert_id)
+    if not alert:
+        raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found.")
+    return _to_response(alert)
+
+
 @router.patch("/{alert_id}/status", response_model=SuccessResponse)
 async def update_alert_status(alert_id: str, body: AlertStatusUpdate):
     await db.update_alert_status(alert_id, body.status)
@@ -51,13 +59,25 @@ async def update_alert_status(alert_id: str, body: AlertStatusUpdate):
 
 
 def _to_response(alert) -> dict:
+    url = getattr(alert, "snapshot_url", None)
+    if not url and getattr(alert, "id", None):
+        url = f"/api/v1/snapshots/{alert.id}"
     return {
-        "id": alert.id, "camera_id": alert.camera_id,
-        "timestamp": alert.timestamp, "category": alert.category,
-        "severity": alert.severity, "title": alert.title,
-        "description": alert.description, "target_id": alert.target_id,
-        "status": alert.status, "snapshot_path": alert.snapshot_path,
+        "id": alert.id,
+        "camera_id": alert.camera_id,
+        "timestamp": alert.timestamp,
+        "category": alert.category,
+        "severity": alert.severity,
+        "title": alert.title,
+        "description": alert.description,
+        "target_id": alert.target_id,
+        "status": alert.status,
+        "snapshot_path": alert.snapshot_path,
+        "snapshot_url": url,
         "frs_match_name": alert.frs_match_name,
         "frs_match_score": alert.frs_match_score,
         "plate_text": alert.plate_text,
+        "latitude": getattr(alert, "latitude", None),
+        "longitude": getattr(alert, "longitude", None),
+        "gps_coords": getattr(alert, "gps_coords", None),
     }
