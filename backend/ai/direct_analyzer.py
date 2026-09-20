@@ -136,6 +136,33 @@ class DirectAIAnalyzer:
 
         alerts: List[AlertRecord] = []
 
+        # 1c. Cyber Anti-Tamper & Stream Integrity Check (Spray, Blinding, Blur, Replay)
+        try:
+            from ..core.tamper_detector import tamper_manager
+            tamper_detector = tamper_manager.get_detector(camera_id)
+            telemetry = tamper_detector.analyze_frame(frame_bgr)
+            tamper_manager.record_telemetry(telemetry)
+
+            if telemetry.is_tampered:
+                last_tamper_alert = self._last_alert_ts.get(f"{camera_id}_tamper", 0)
+                if now_ts - last_tamper_alert > 15.0:
+                    self._last_alert_ts[f"{camera_id}_tamper"] = now_ts
+                    alerts.append(
+                        AlertRecord(
+                            id=f"CYBER-{uuid.uuid4().hex[:8].upper()}",
+                            camera_id=camera_id,
+                            timestamp=now,
+                            category="CYBER_TAMPER",
+                            severity=telemetry.severity,
+                            title=f"CYBER DEFENSE: {telemetry.tamper_type} [{camera_code}]",
+                            description=telemetry.details,
+                            target_id="CYBER_TAMPER",
+                            status="NEW",
+                        )
+                    )
+        except Exception as t_err:
+            log.debug("Tamper detector check skipped: %s", t_err)
+
         # 2. Virtual Fence setup
         fence_checker = None
         if fence_points and len(fence_points) >= 3:
@@ -344,7 +371,8 @@ class DirectAIAnalyzer:
     ) -> Optional[AlertRecord]:
         key = f"{camera_id}:{category}:{target_id or 'all'}"
         now_ts = time.time()
-        if now_ts - self._last_alert_ts.get(key, 0) < 4.0:  # 4s throttle
+        throttle_secs = 15.0 if category in ("LOITERING", "SUSPICIOUS_POSTURE", "MONITORED_OBJECT", "UNUSUAL_ITEM") else 6.0
+        if now_ts - self._last_alert_ts.get(key, 0) < throttle_secs:
             return None
         self._last_alert_ts[key] = now_ts
 
@@ -481,11 +509,25 @@ class DirectAIAnalyzer:
             if is_armed:
                 label_parts.append(f"🚨 ARMED: {det.held_item}")
             elif is_holding_casual:
-                label_parts.append(f"📦 HOLDING: {det.held_item}")
+                if "WATCH" in (det.held_item or "").upper():
+                    label_parts.append(f"⌚ HOLDING: {det.held_item}")
+                elif "PHONE" in (det.held_item or "").upper():
+                    label_parts.append(f"📱 HOLDING: {det.held_item}")
+                elif "UNKNOWN" in (det.held_item or "").upper():
+                    label_parts.append(f"🔍 HOLDING: {det.held_item}")
+                else:
+                    label_parts.append(f"📦 HOLDING: {det.held_item}")
             elif is_weapon:
-                label_parts.append(f"🚨 WEAPON: {det.class_name.upper()}")
+                conf_val = det.bbox.confidence if det.bbox else 0.0
+                label_parts.append(f"🚨 WEAPON: {det.class_name.upper()} [{conf_val:.0%}]")
             elif is_unattended_bag:
                 label_parts.append(f"⚠️ UNATTENDED: {det.class_name.upper()}")
+            elif "WATCH" in (det.unusual_item or det.class_name).upper():
+                conf_val = det.bbox.confidence if det.bbox else 0.0
+                label_parts.append(f"⌚ WRISTWATCH [{conf_val:.0%}]")
+            elif "UNKNOWN" in (det.unusual_item or det.class_name).upper():
+                conf_val = det.bbox.confidence if det.bbox else 0.0
+                label_parts.append(f"🔍 UNKNOWN OBJECT [{conf_val:.0%}]")
             elif det.is_unusual:
                 label_parts.append(f"⚠️ UNUSUAL: {(det.unusual_item or det.class_name).upper()}")
             else:

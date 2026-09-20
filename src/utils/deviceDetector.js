@@ -54,28 +54,9 @@ export const enumerateDeviceCameras = async () => {
     const videoDevices = devices.filter((d) => d.kind === 'videoinput');
     const { isMobile } = getDevicePlatform();
 
-    return videoDevices.map((d, index) => {
+    // Filter out virtual audio/screen devices
+    const opticalInputs = videoDevices.filter((d) => {
       const lower = (d.label || '').toLowerCase();
-      const isBack = lower.includes('back') || lower.includes('rear') || lower.includes('environment') || lower.includes('world') || lower.includes('wide') || lower.includes('main');
-      const isFront = lower.includes('front') || lower.includes('user') || lower.includes('selfie') || lower.includes('face') || lower.includes('facetime');
-
-      let cleanLabel = d.label;
-      if (!cleanLabel) {
-        if (isMobile) {
-          cleanLabel = index === 0 ? 'Primary Rear Camera (Environment)' : 'Front Camera (User)';
-        } else {
-          cleanLabel = index === 0 ? 'Integrated HD Camera' : `External Camera / USB CCTV ${index}`;
-        }
-      }
-
-      // Infer facing mode
-      let facingMode = 'user';
-      if (isBack || (isMobile && index === 0 && !isFront)) {
-        facingMode = 'environment';
-      } else if (isFront) {
-        facingMode = 'user';
-      }
-
       const isVirtual = 
         lower.includes('omen') ||
         lower.includes('voice') ||
@@ -84,22 +65,118 @@ export const enumerateDeviceCameras = async () => {
         lower.includes('obs') ||
         lower.includes('screen') ||
         lower.includes('stereo');
+      return !isVirtual;
+    });
+
+    // Mobile Dynamic Mode: Smartphones have 2 cameras (Rear Environment + Front User)
+    if (isMobile) {
+      if (opticalInputs.length >= 2) {
+        return opticalInputs.map((d, index) => {
+          const lower = (d.label || '').toLowerCase();
+          const isFront = lower.includes('front') || lower.includes('user') || lower.includes('selfie') || lower.includes('facetime');
+          const isBack = lower.includes('back') || lower.includes('rear') || lower.includes('environment') || lower.includes('main');
+          const facingMode = isFront ? 'user' : (isBack ? 'environment' : (index === 0 ? 'environment' : 'user'));
+          const cleanLabel = d.label || (facingMode === 'environment' ? 'Rear Camera (Environment)' : 'Front Camera (User)');
+          return {
+            id: `dev-cam-${index + 1}`,
+            deviceId: d.deviceId,
+            label: cleanLabel,
+            name: cleanLabel,
+            facingMode,
+            isBack: facingMode === 'environment',
+            isFront: facingMode === 'user',
+            isOptical: true,
+            isDeviceHardware: true,
+            resolution: '1080p FHD',
+            fps: 30,
+            status: 'online',
+          };
+        });
+      }
+
+      // If mobile browser reports 1 device before permission or lacks multiple labels, expose the 2 standard mobile cameras
+      return [
+        {
+          id: 'dev-cam-01',
+          deviceId: opticalInputs[0]?.deviceId || 'mobile-rear-camera',
+          label: opticalInputs[0]?.label || 'Primary Rear Camera (Environment)',
+          name: opticalInputs[0]?.label || 'Primary Rear Camera (Environment)',
+          facingMode: 'environment',
+          isBack: true,
+          isFront: false,
+          isOptical: true,
+          isDeviceHardware: true,
+          resolution: '1080p FHD',
+          fps: 30,
+          status: 'online',
+        },
+        {
+          id: 'dev-cam-02',
+          deviceId: opticalInputs[1]?.deviceId || 'mobile-front-camera',
+          label: 'Front Sentry Camera (User)',
+          name: 'Front Sentry Camera (User)',
+          facingMode: 'user',
+          isBack: false,
+          isFront: true,
+          isOptical: true,
+          isDeviceHardware: true,
+          resolution: '1080p FHD',
+          fps: 30,
+          status: 'online',
+        },
+      ];
+    }
+
+    // Laptop / Desktop Mode:
+    // A standard laptop has 1 front camera (e.g., HP Wide Vision, Integrated Camera).
+    // If external USB cameras are attached, enumerate all of them.
+    if (opticalInputs.length === 0) {
+      return [
+        {
+          id: 'dev-cam-01',
+          deviceId: 'default-cam-01',
+          label: 'Integrated HD Camera (Front)',
+          name: 'Integrated HD Camera (Front)',
+          facingMode: 'user',
+          isBack: false,
+          isFront: true,
+          isOptical: true,
+          isDeviceHardware: true,
+          resolution: '1080p FHD',
+          fps: 30,
+          status: 'online',
+        }
+      ];
+    }
+
+    return opticalInputs.map((d, index) => {
+      const lower = (d.label || '').toLowerCase();
+      // HP Wide Vision, FaceTime, Integrated, Webcam are front webcams on laptops
+      const isFront = lower.includes('front') || lower.includes('user') || lower.includes('selfie') || 
+                      lower.includes('face') || lower.includes('facetime') || lower.includes('integrated') || 
+                      lower.includes('webcam') || lower.includes('laptop') || lower.includes('wide vision');
+      const isBack = !isFront && (lower.includes('back') || lower.includes('rear') || lower.includes('environment') || lower.includes('world'));
+
+      let facingMode = isBack ? 'environment' : 'user';
+      let cleanLabel = d.label;
+      if (!cleanLabel) {
+        cleanLabel = index === 0 ? 'Integrated HD Camera (Front)' : `External USB Camera ${index + 1}`;
+      }
 
       return {
+        id: `dev-cam-${index + 1}`,
         deviceId: d.deviceId,
         label: cleanLabel,
+        name: cleanLabel,
         facingMode,
         isBack: facingMode === 'environment',
         isFront: facingMode === 'user',
-        isVirtualVoice: isVirtual,
-        isOptical: !isVirtual,
-        groupId: d.groupId,
+        isOptical: true,
+        isDeviceHardware: true,
+        resolution: '1080p FHD',
+        fps: 30,
+        status: 'online',
       };
-    }).sort((a, b) => {
-      // Prioritize genuine optical cameras over virtual voice/audio devices
-      if (a.isVirtualVoice && !b.isVirtualVoice) return 1;
-      if (!a.isVirtualVoice && b.isVirtualVoice) return -1;
-      return 0;
     });
   } catch (err) {
     console.debug('Camera enumeration fallback:', err);
@@ -111,6 +188,6 @@ export const enumerateDeviceCameras = async () => {
  * Helper to retrieve only genuine physical optical video cameras.
  */
 export const getOpticalCameras = async () => {
-  const devices = await enumerateDeviceCameras();
-  return devices.filter((d) => !d.isVirtualVoice);
+  return await enumerateDeviceCameras();
 };
+

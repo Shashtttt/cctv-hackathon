@@ -1,0 +1,790 @@
+/* IBVAP — Cyber Defense & Blockchain Command CSS */
+
+.blockchain-page-root {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px;
+  color: #e2e8f0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  min-height: calc(100vh - 80px);
+}
+
+/* Header Banner */
+.blockchain-header-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9));
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 12px;
+  padding: 20px 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.banner-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.shield-icon-badge {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: rgba(14, 165, 233, 0.12);
+  border: 1px solid rgba(14, 165, 233, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #38bdf8;
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.25);
+}
+
+.shield-icon-glow {
+  animation: pulse-glow 3s infinite ease-in-out;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); filter: drop-shadow(0 0 8px #38bdf8); }
+}
+
+.banner-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.blockchain-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: #f8fafc;
+  text-transform: uppercase;
+}
+
+.sih-badge {
+  background: rgba(168, 85, 247, 0.2);
+  border: 1px solid rgba(168, 85, 247, 0.5);
+  color: #c084fc;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.06em;
+}
+
+.blockchain-subtitle {
+  margin: 4px 0 0 0;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.banner-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.chain-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.chain-status-indicator.valid {
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  color: #4ade80;
+}
+
+.chain-status-indicator.corrupted {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  color: #f87171;
+  animation: blink-alarm 1.2s infinite;
+}
+
+@keyframes blink-alarm {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.btn-audit-now {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+  color: #ffffff;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+}
+
+.btn-audit-now:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0369a1, #075985);
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.6);
+  transform: translateY(-1px);
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  100% { transform: rotate(360deg); }
+}
+
+/* Alert Notification Banner */
+.blockchain-alert-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  position: relative;
+}
+
+.blockchain-alert-banner.info {
+  background: rgba(14, 165, 233, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+}
+
+.blockchain-alert-banner.success {
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  color: #4ade80;
+}
+
+.blockchain-alert-banner.warning {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+
+.blockchain-alert-banner.error {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #f87171;
+}
+
+.banner-close-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 18px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.banner-close-btn:hover {
+  opacity: 1;
+}
+
+/* KPI Grid */
+.blockchain-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.kpi-card {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(51, 65, 85, 0.7);
+  border-radius: 10px;
+  padding: 16px 20px;
+}
+
+.kpi-card.highlight-danger {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.kpi-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.08em;
+}
+
+.kpi-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: #f1f5f9;
+  margin: 6px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-subtext {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* Mid Grid: Simulation Deck & Camera Matrix */
+.blockchain-mid-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 20px;
+}
+
+.panel-card {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.panel-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.6);
+  padding-bottom: 14px;
+  margin-bottom: 16px;
+}
+
+.header-icon-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-icon-title h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.demo-pill {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  color: #fbbf24;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.live-pill {
+  background: rgba(6, 182, 212, 0.15);
+  border: 1px solid rgba(6, 182, 212, 0.5);
+  color: #22d3ee;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.demo-description {
+  font-size: 13px;
+  color: #94a3b8;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.demo-controls-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-row label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.select-input {
+  background: #0f172a;
+  border: 1px solid #334155;
+  color: #f8fafc;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+}
+
+.select-input:focus {
+  border-color: #38bdf8;
+}
+
+.demo-action-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.btn-action {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.btn-attack {
+  background: linear-gradient(135deg, #b45309, #92400e);
+  color: #fef3c7;
+}
+
+.btn-attack:hover:not(:disabled) {
+  background: linear-gradient(135deg, #d97706, #b45309);
+}
+
+.btn-fraud {
+  background: linear-gradient(135deg, #991b1b, #7f1d1d);
+  color: #fee2e2;
+}
+
+.btn-fraud:hover:not(:disabled) {
+  background: linear-gradient(135deg, #dc2626, #991b1b);
+}
+
+.btn-restore {
+  background: linear-gradient(135deg, #15803d, #166534);
+  color: #dcfce7;
+}
+
+.btn-restore:hover:not(:disabled) {
+  background: linear-gradient(135deg, #16a34a, #15803d);
+}
+
+/* Camera Health Table */
+.camera-health-table-wrap {
+  overflow-x: auto;
+}
+
+.camera-health-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.camera-health-table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: #94a3b8;
+  font-weight: 600;
+  border-bottom: 1px solid #334155;
+}
+
+.camera-health-table td {
+  padding: 10px;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.4);
+}
+
+.row-tampered {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.cam-cell-name {
+  display: flex;
+  flex-direction: column;
+}
+
+.cam-cell-name b {
+  color: #f8fafc;
+}
+
+.cam-cell-name span {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.text-danger { color: #f87171; font-weight: 700; }
+.text-success { color: #4ade80; font-weight: 700; }
+.text-nominal { color: #94a3b8; }
+
+.status-badge-secure {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #4ade80;
+  background: rgba(34, 197, 94, 0.1);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.status-badge-tampered {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.2);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+/* Block Chain Stream Visualizer */
+.blockchain-ledger-card {
+  margin-top: 4px;
+}
+
+.header-right-meta {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.block-chain-stream {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  padding: 16px 4px 24px 4px;
+}
+
+.block-node-card {
+  flex: 0 0 320px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid #334155;
+  border-radius: 10px;
+  padding: 16px;
+  position: relative;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.block-node-card:hover {
+  transform: translateY(-2px);
+  border-color: #38bdf8;
+}
+
+.block-node-card.genesis {
+  border-color: rgba(168, 85, 247, 0.6);
+  background: linear-gradient(180deg, rgba(30, 27, 75, 0.8), rgba(15, 23, 42, 0.95));
+}
+
+.block-node-card.tamper {
+  border-color: rgba(239, 68, 68, 0.6);
+  background: linear-gradient(180deg, rgba(69, 10, 10, 0.8), rgba(15, 23, 42, 0.95));
+}
+
+.block-node-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.block-number-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #38bdf8;
+}
+
+.block-event-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.block-event-pill.genesis {
+  background: rgba(168, 85, 247, 0.2);
+  color: #c084fc;
+}
+
+.block-event-pill.cyber_tamper {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+.block-event-pill.intrusion_alert,
+.block-event-pill.virtual_fence_intrusion {
+  background: rgba(234, 88, 12, 0.2);
+  color: #fb923c;
+}
+
+.block-timestamp {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.block-hash-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #090d16;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+}
+
+.block-hash-field.sub {
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  margin-bottom: 8px;
+}
+
+.hash-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.hash-text {
+  font-size: 11px;
+  color: #cbd5e1;
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.btn-copy-hash {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.btn-copy-hash:hover {
+  color: #38bdf8;
+}
+
+.block-meta-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: #94a3b8;
+  margin: 10px 0;
+}
+
+.block-footer-action {
+  margin-top: 12px;
+}
+
+.btn-view-proof {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid #334155;
+  color: #38bdf8;
+  padding: 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-view-proof:hover {
+  background: rgba(14, 165, 233, 0.15);
+  border-color: #38bdf8;
+}
+
+.block-connector-line {
+  position: absolute;
+  top: 50%;
+  right: -16px;
+  width: 16px;
+  height: 2px;
+  background: #334155;
+}
+
+/* Proof Modal Styles */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+}
+
+.certificate-modal-box {
+  background: #0b1120;
+  border: 2px solid #38bdf8;
+  border-radius: 14px;
+  max-width: 680px;
+  width: 100%;
+  box-shadow: 0 0 50px rgba(56, 189, 248, 0.3);
+  padding: 24px;
+  color: #f8fafc;
+}
+
+.certificate-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 2px solid #1e293b;
+  padding-bottom: 16px;
+  position: relative;
+}
+
+.mha-logo-emblem {
+  color: #38bdf8;
+}
+
+.cert-title-group h2 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: 0.05em;
+  color: #f8fafc;
+}
+
+.cert-title-group h4 {
+  margin: 4px 0 0 0;
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.btn-close-modal {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.cert-id-strip {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  margin: 16px 0;
+  font-size: 12px;
+}
+
+.cert-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.cert-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cert-item.full {
+  grid-column: span 2;
+}
+
+.cert-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.cert-val {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.cert-code {
+  font-family: monospace;
+  font-size: 11px;
+  background: #030712;
+  border: 1px solid #1f2937;
+  padding: 6px 8px;
+  border-radius: 4px;
+  color: #38bdf8;
+  word-break: break-all;
+}
+
+.cert-affidavit-box {
+  background: rgba(30, 41, 59, 0.5);
+  border-left: 3px solid #38bdf8;
+  padding: 12px 14px;
+  margin-top: 16px;
+  font-size: 11px;
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+.certificate-footer {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  border-top: 1px solid #1e293b;
+  padding-top: 16px;
+}
+
+.btn-cert-action {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #0284c7;
+  color: #ffffff;
+  border: none;
+  padding: 10px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn-cert-action:hover {
+  background: #0369a1;
+}
+
+.btn-cert-secondary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #1e293b;
+  color: #cbd5e1;
+  border: 1px solid #334155;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}

@@ -652,13 +652,15 @@ class CameraWorker:
             # 2. Draw Detections & Skeletons
             for det in detections:
                 x1, y1, x2, y2 = det.bbox.to_pixel(w, h)
-                is_weapon_keyword = any(w in (det.class_name or "").lower() for w in ("knife", "pistol", "gun", "rifle", "shotgun", "firearm", "weapon", "blade", "dagger", "sword", "scissors"))
-                is_weapon = getattr(det, "is_weapon", False) or is_weapon_keyword
+                is_casual = getattr(det, "is_casual_object", False) or getattr(det, "held_item_type", "") == "CASUAL_OBJECT"
                 held_item_str = (getattr(det, "held_item", "") or "").lower()
-                is_held_weapon = any(w in held_item_str for w in ("knife", "pistol", "gun", "rifle", "shotgun", "firearm", "weapon", "blade", "dagger", "sword"))
-                is_armed = getattr(det, "is_holding", False) and (getattr(det, "held_item_type", "") == "WEAPON" or is_held_weapon)
+                c_name_str = (det.class_name or "").lower()
+                is_watch_or_unknown = "watch" in c_name_str or "watch" in held_item_str or "unknown" in c_name_str or "unknown" in held_item_str
+
+                is_weapon = bool(getattr(det, "is_weapon", False)) and not is_casual and not is_watch_or_unknown
+                is_armed = bool(getattr(det, "is_holding", False)) and getattr(det, "held_item_type", "") == "WEAPON" and not is_casual and not is_watch_or_unknown
                 is_weapon_threat = is_armed or is_weapon
-                is_holding_casual = getattr(det, "is_holding", False) and getattr(det, "held_item_type", "") == "CASUAL_OBJECT" and not is_weapon_threat
+                is_holding_casual = getattr(det, "is_holding", False) and not is_weapon_threat
                 is_unattended_bag = det.class_name in ("backpack", "suitcase", "handbag") and not getattr(det, "is_held", False)
                 is_critical = is_weapon_threat or det.pose_label in ("CROUCHING", "PRONE")
 

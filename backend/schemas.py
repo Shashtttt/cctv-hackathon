@@ -71,6 +71,10 @@ class CameraResponse(BaseModel):
     analytics_modes: List[str]
     fence_points: List[FencePointSchema]
     last_frame_at: Optional[datetime.datetime]
+    is_running: bool = False
+    is_active: bool = False
+    stream_url: Optional[str] = None
+    frame_url: Optional[str] = None
 
 
 # ── Alert schemas ──────────────────────────────────────────────────────────────
@@ -166,6 +170,17 @@ class AlertSummaryResponse(BaseModel):
     hours: int
     by_severity: Dict[str, int]
     by_category: Dict[str, int]
+    hourly_trend: Optional[List[Dict[str, Any]]] = None
+    peak_hour: Optional[str] = "12:00"
+    peak_count: Optional[int] = 0
+    person_count: Optional[int] = 0
+    intrusion_count: Optional[int] = 0
+    loitering_count: Optional[int] = 0
+    weapon_count: Optional[int] = 0
+    anpr_count: Optional[int] = 0
+    frs_count: Optional[int] = 0
+    top_cameras: Optional[List[Dict[str, Any]]] = None
+    top_targets: Optional[List[Dict[str, Any]]] = None
 
 
 class WorkerStatusResponse(BaseModel):

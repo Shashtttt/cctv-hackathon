@@ -64,57 +64,62 @@ async def list_snapshots(limit: int = 150, category: Optional[str] = None):
     if not base_dir.exists():
         return {"total": 0, "total_size_bytes": 0, "total_size_formatted": "0 B", "snapshots": []}
 
-    records = []
-    total_bytes = 0
+    import asyncio
 
-    # Walk all files inside snapshots directory
-    for fpath in base_dir.rglob("*"):
-        if fpath.is_file() and fpath.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]:
-            try:
-                st = fpath.stat()
-                file_size = st.st_size
-                total_bytes += file_size
-                mtime = datetime.datetime.fromtimestamp(st.st_mtime).isoformat()
-                rel_path = str(fpath.relative_to(base_dir)).replace("\\", "/")
-                cat = _infer_category(fpath.name, rel_path)
-                cam = _infer_camera(fpath.name, rel_path)
+    def _scan_snapshots_sync():
+        records = []
+        total_bytes = 0
+        valid_exts = {".jpg", ".jpeg", ".png", ".webp"}
 
-                if category and category.upper() != "ALL" and cat != category.upper():
-                    continue
+        for root, dirs, files in os.walk(base_dir):
+            for fname in files:
+                ext = os.path.splitext(fname)[1].lower()
+                if ext in valid_exts:
+                    fpath = os.path.join(root, fname)
+                    try:
+                        st = os.stat(fpath)
+                        file_size = st.st_size
+                        total_bytes += file_size
+                        mtime = datetime.datetime.fromtimestamp(st.st_mtime).isoformat()
+                        rel_path = os.path.relpath(fpath, base_dir).replace("\\", "/")
+                        cat = _infer_category(fname, rel_path)
+                        cam = _infer_camera(fname, rel_path)
 
-                # Extract potential alert ID if formatted as ALT-XXXXXXXX
-                alert_id = None
-                if "_ALT-" in fpath.name:
-                    parts = fpath.name.split("_ALT-")
-                    if len(parts) > 1:
-                        alert_id = "ALT-" + parts[1].split("_")[0].split(".")[0]
+                        if category and category.upper() != "ALL" and cat != category.upper():
+                            continue
 
-                records.append({
-                    "id": fpath.stem,
-                    "filename": fpath.name,
-                    "relative_path": rel_path,
-                    "camera_id": cam,
-                    "category": cat,
-                    "alert_id": alert_id,
-                    "captured_at": mtime,
-                    "file_size_bytes": file_size,
-                    "file_size_formatted": _format_size(file_size),
-                    "url": f"/api/v1/snapshots/image/{rel_path}",
-                })
-            except Exception as exc:
-                log.debug("Error reading snapshot %s: %s", fpath, exc)
+                        alert_id = None
+                        if "_ALT-" in fname:
+                            parts = fname.split("_ALT-")
+                            if len(parts) > 1:
+                                alert_id = "ALT-" + parts[1].split("_")[0].split(".")[0]
 
-    # Sort descending by captured timestamp
-    records.sort(key=lambda r: r["captured_at"], reverse=True)
-    sliced = records[:limit]
+                        records.append({
+                            "id": os.path.splitext(fname)[0],
+                            "filename": fname,
+                            "relative_path": rel_path,
+                            "camera_id": cam,
+                            "category": cat,
+                            "alert_id": alert_id,
+                            "captured_at": mtime,
+                            "file_size_bytes": file_size,
+                            "file_size_formatted": _format_size(file_size),
+                            "url": f"/api/v1/snapshots/image/{rel_path}",
+                        })
+                    except Exception as exc:
+                        log.debug("Error reading snapshot %s: %s", fpath, exc)
 
-    return {
-        "total": len(records),
-        "returned": len(sliced),
-        "total_size_bytes": total_bytes,
-        "total_size_formatted": _format_size(total_bytes),
-        "snapshots": sliced,
-    }
+        records.sort(key=lambda r: r["captured_at"], reverse=True)
+        sliced = records[:limit]
+        return {
+            "total": len(records),
+            "returned": len(sliced),
+            "total_size_bytes": total_bytes,
+            "total_size_formatted": _format_size(total_bytes),
+            "snapshots": sliced,
+        }
+
+    return await asyncio.to_thread(_scan_snapshots_sync)
 
 
 @router.get("/image/{file_path:path}")

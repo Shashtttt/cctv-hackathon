@@ -115,16 +115,16 @@ const AnalyticsPage = () => {
 
   const byCat = summaryData?.by_category || {};
   const bySev = summaryData?.by_severity || {};
-  const totalAlerts = summaryData?.total || recentAlerts.length || 0;
+  const totalAlerts = summaryData?.total ?? (recentAlerts.length || 0);
   const criticalAlerts = bySev.CRITICAL || recentAlerts.filter(a => a.severity === 'CRITICAL').length || 0;
   const warningAlerts = bySev.HIGH || bySev.WARNING || recentAlerts.filter(a => a.severity === 'WARNING' || a.severity === 'HIGH').length || 0;
-  const anprMatches = byCat.ANPR_MATCH || 0;
-  const intrusions = byCat.VIRTUAL_FENCE_INTRUSION || 0;
-  const loitering = byCat.LOITERING || 0;
+  const anprMatches = summaryData?.anpr_count ?? (byCat.ANPR_MATCH || 0);
+  const intrusions = summaryData?.intrusion_count ?? (byCat.VIRTUAL_FENCE_INTRUSION || 0);
+  const loitering = summaryData?.loitering_count ?? (byCat.LOITERING || 0);
   const suspicious = byCat.SUSPICIOUS_ACTIVITY || byCat.SUSPICIOUS_POSTURE || 0;
-  const totalPersons = Math.max(Math.round(totalAlerts * 0.45), 18);
+  const totalPersons = summaryData?.person_count ?? Math.max(Math.round(totalAlerts * 0.45), 18);
   const authPersons = Math.round(totalPersons * 0.82);
-  const unauthPersons = totalPersons - authPersons;
+  const unauthPersons = Math.max(0, totalPersons - authPersons);
 
   return (
     <div className="analytics-page-container font-sans">
@@ -305,7 +305,7 @@ const AnalyticsPage = () => {
               <span className="legend-line line-blue"></span> Standard Events
             </span>
             <span className="legend-item">
-              <span className="legend-line line-red"></span> Alert Window (20:00-22:00)
+              <span className="legend-line line-red"></span> Peak Slot ({summaryData?.peak_hour ? `${summaryData.peak_hour}` : '20:00-22:00'})
             </span>
           </div>
         </div>
@@ -313,7 +313,7 @@ const AnalyticsPage = () => {
         {/* Recharts Timeline Area Chart Viewport */}
         <div className="timeline-chart-wrapper font-mono">
           <div className="chart-callout-badge font-mono">
-            21:00 • 38 alerts
+            {summaryData?.peak_hour ? `${summaryData.peak_hour} • ${summaryData.peak_count} events` : '21:00 • 38 alerts'}
           </div>
 
           <ResponsiveContainer width="100%" height={260}>
@@ -334,7 +334,7 @@ const AnalyticsPage = () => {
                 stroke="#64748b" 
                 tick={{ fontSize: 11, fill: '#64748b' }}
                 tickLine={false}
-                domain={[0, 40]}
+                domain={[0, 'auto']}
               />
               <Tooltip 
                 contentStyle={{ 
@@ -516,26 +516,34 @@ const AnalyticsPage = () => {
           </div>
 
           <div className="active-objects-list font-mono">
-            {recentAlerts.slice(0, 4).map((alert, idx) => {
-              const isCrit = alert.severity === 'CRITICAL';
+            {(summaryData?.top_targets && summaryData.top_targets.length > 0
+              ? summaryData.top_targets
+              : recentAlerts.slice(0, 5)
+            ).map((obj, idx) => {
+              const isCrit = (obj.severity || '').toUpperCase() === 'CRITICAL';
+              const targetId = obj.obj_id || obj.target_id || (obj.plate_text ? `V-${obj.plate_text}` : `P-${100 + idx}`);
+              const title = obj.title || obj.category;
+              const subText = `${obj.camera_id || 'CAM-01'} • ${obj.last_seen ? new Date(obj.last_seen).toLocaleTimeString() : 'Recent'}`;
+              const countText = obj.count !== undefined ? `${obj.count} events` : obj.severity;
+
               return (
-                <div key={alert.id || idx} className="active-object-row">
+                <div key={obj.id || obj.obj_id || idx} className="active-object-row">
                   <div className="obj-left font-mono">
                     <span className={`obj-tag-badge ${isCrit ? 'badge-red-tag' : 'badge-purple-tag'} font-mono font-bold`}>
-                      {alert.target_id || (alert.plate_text ? 'V-021' : `P-${100 + idx}`)}
+                      {targetId}
                     </span>
                     <div className="obj-text-group">
-                      <span className="obj-title-bold text-white">{alert.title || alert.category}</span>
-                      <span className="obj-sub-text text-muted">{alert.camera_id || 'BOP-01'} • {new Date(alert.timestamp).toLocaleTimeString()}</span>
+                      <span className="obj-title-bold text-white">{title}</span>
+                      <span className="obj-sub-text text-muted">{subText}</span>
                     </div>
                   </div>
                   <span className={`events-count-pill font-mono ${isCrit ? 'text-red' : 'text-cyan'}`}>
-                    {alert.severity}
+                    {countText}
                   </span>
                 </div>
               );
             })}
-            {recentAlerts.length === 0 && (
+            {(!summaryData?.top_targets?.length && recentAlerts.length === 0) && (
               <div className="text-muted text-xs p-3">No active objects in current telemetry buffer.</div>
             )}
           </div>
@@ -549,28 +557,39 @@ const AnalyticsPage = () => {
           <div className="card-header-simple font-mono">
             <div>
               <h4 className="card-title-text font-bold text-white">Active Cameras</h4>
-              <p className="card-subtitle-text">Registered surveillance feeds in SQLite database</p>
+              <p className="card-subtitle-text">Event volume breakdown by registered surveillance feed</p>
             </div>
             <span className="pill-badge pill-muted font-mono text-xs">DB CAMERAS</span>
           </div>
 
           <div className="top-cameras-list font-mono">
-            {cameras.slice(0, 5).map((cam, idx) => (
-              <div key={cam.id || idx} className="top-cam-item">
-                <div className="top-cam-label-row">
-                  <div className="cam-code-title">
-                    <span className={`cam-badge-code ${(cam.status || '').toLowerCase() === 'online' ? 'code-dark' : 'code-red'} font-mono`}>
-                      {cam.code || `C-0${idx + 1}`}
+            {(summaryData?.top_cameras && summaryData.top_cameras.length > 0
+              ? summaryData.top_cameras
+              : cameras.slice(0, 5)
+            ).map((cam, idx) => {
+              const maxCount = summaryData?.top_cameras?.[0]?.event_count || 100;
+              const evtCount = cam.event_count !== undefined ? cam.event_count : (80 - idx * 10);
+              const pct = cam.event_count !== undefined ? Math.min(100, Math.max(12, Math.round((evtCount / (maxCount || 1)) * 100))) : (80 - idx * 10);
+
+              return (
+                <div key={cam.camera_id || cam.id || idx} className="top-cam-item">
+                  <div className="top-cam-label-row">
+                    <div className="cam-code-title">
+                      <span className="cam-badge-code code-dark font-mono">
+                        {cam.code || `C-0${idx + 1}`}
+                      </span>
+                      <span className="cam-name-text text-white font-bold">{cam.name || cam.camera_id}</span>
+                    </div>
+                    <span className="cam-events-val font-bold text-cyan">
+                      {cam.event_count !== undefined ? `${cam.event_count} alerts` : `${cam.fps || 30} FPS • ${cam.resolution || '1080p'}`}
                     </span>
-                    <span className="cam-name-text text-white font-bold">{cam.name}</span>
                   </div>
-                  <span className="cam-events-val font-bold text-cyan">{cam.fps || 30} FPS • {cam.resolution || '1080p'}</span>
+                  <div className="progress-bg">
+                    <div className="progress-fill fill-blue" style={{ width: `${pct}%` }}></div>
+                  </div>
                 </div>
-                <div className="progress-bg">
-                  <div className="progress-fill fill-blue" style={{ width: `${80 - idx * 10}%` }}></div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -607,7 +626,7 @@ const AnalyticsPage = () => {
                 Multi-Class YOLOv8
               </div>
               <p className="insight-body-text text-muted">
-                {totalAlerts} classified events registered with Apple Silicon GPU acceleration.
+                {totalAlerts} classified events registered with hardware acceleration.
               </p>
             </div>
 
@@ -617,10 +636,10 @@ const AnalyticsPage = () => {
                 <span className="text-coral font-bold">PEAK ALERT PERIOD</span>
               </div>
               <div className="insight-main-title font-bold text-coral font-bold">
-                20:00 – 22:00
+                {summaryData?.peak_hour ? `${summaryData.peak_hour} Slot (${summaryData.peak_count} alerts)` : '20:00 – 22:00'}
               </div>
               <p className="insight-body-text text-muted">
-                Breach alerts and high-probability intrusion spikes concentrated near fence perimeter.
+                Threat alerts and anomaly telemetry concentrated during peak activity window.
               </p>
             </div>
           </div>

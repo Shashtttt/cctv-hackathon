@@ -250,12 +250,15 @@
 /* Table Wrapper Card */
 .table-wrapper-card {
   background: var(--bg-card);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-height: 440px;
+  min-height: 480px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 /* Table Header Row Bar */
@@ -264,29 +267,30 @@
   grid-template-columns: 110px 1.2fr 90px 140px 120px 1.2fr minmax(180px, 220px);
   align-items: center;
   gap: 14px;
-  background: #080d19;
+  background: rgba(8, 13, 25, 0.85);
   border-bottom: 1px solid var(--border-color);
   padding: 14px 20px;
-  font-size: 0.7rem;
-  font-weight: 700;
+  font-size: 0.72rem;
+  font-weight: 800;
   color: var(--text-muted);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 /* Table Body */
 .table-body {
   display: flex;
   flex-direction: column;
-  padding: 8px 12px;
-  gap: 6px;
+  padding: 10px 14px;
+  gap: 8px;
   flex: 1;
 }
 
 .no-events-state {
-  padding: 40px;
+  padding: 50px 20px;
   text-align: center;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 0.85rem;
 }
 
 .table-data-row {
@@ -294,16 +298,18 @@
   grid-template-columns: 110px 1.2fr 90px 140px 120px 1.2fr minmax(180px, 220px);
   align-items: center;
   gap: 14px;
-  background: #090e1a;
+  background: rgba(13, 20, 36, 0.6);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 12px 18px;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .table-data-row:hover {
-  border-color: var(--border-glow);
-  background: #0d1424;
+  background: rgba(22, 34, 60, 0.8);
+  border-color: rgba(0, 242, 254, 0.35);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  transform: translateX(2px);
 }
 
 /* Severity Solid Pill Badges */

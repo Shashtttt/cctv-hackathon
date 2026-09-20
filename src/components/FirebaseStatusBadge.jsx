@@ -1,9 +1,33 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Cloud, CloudOff, Flame } from 'lucide-react';
 import useFirebaseRealtime from '../services/useFirebaseRealtime';
+import { testFirestoreConnection } from '../services/firestoreService';
 
 export const FirebaseStatusBadge = () => {
-  const { connected, alerts } = useFirebaseRealtime({ limitAlerts: 1 });
+  const { connected: rtdbConnected, alerts } = useFirebaseRealtime({ limitAlerts: 1 });
+  const [firestoreConnected, setFirestoreConnected] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    const checkFs = async () => {
+      try {
+        const res = await testFirestoreConnection();
+        if (mounted) {
+          setFirestoreConnected(res.connected);
+        }
+      } catch {
+        if (mounted) setFirestoreConnected(false);
+      }
+    };
+    checkFs();
+    const interval = setInterval(checkFs, 30000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const connected = firestoreConnected || rtdbConnected;
 
   return (
     <div
@@ -12,7 +36,7 @@ export const FirebaseStatusBadge = () => {
           ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-400'
           : 'bg-amber-950/40 border-amber-500/30 text-amber-400'
       }`}
-      title={connected ? `Firebase Cloud Synced: ibvap-hackathon (${alerts.length} cloud alerts)` : 'Firebase Cloud Sync Standby'}
+      title={connected ? `Firebase Cloud Synced: ibvap-acbd6 (Cloud Firestore active)` : 'Firebase Cloud Sync Standby'}
       style={{
         display: 'inline-flex',
         alignItems: 'center',

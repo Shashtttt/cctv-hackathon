@@ -23,10 +23,10 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
-from .database.db import init_db
+from .database.db import init_db, load_blockchain_from_db
 from .database.models import AlertRecord
 from .pipeline.pipeline_manager import pipeline_manager
-from .routers import alerts, analytics, anpr, auth, cameras, frs, snapshots
+from .routers import alerts, analytics, anpr, auth, cameras, frs, snapshots, blockchain
 from .schemas import HealthResponse
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -114,6 +114,9 @@ async def lifespan(app: FastAPI):
     # Initialise database
     await init_db()
 
+    # Load cryptographic blockchain audit ledger
+    await load_blockchain_from_db()
+
     # Register WebSocket alert callback
     pipeline_manager.register_alert_callback(_on_alert)
 
@@ -126,10 +129,25 @@ async def lifespan(app: FastAPI):
     try:
         registered_cams = await get_all_cameras()
         for cam in registered_cams:
-            if cam.rtsp_url and (cam.rtsp_url.startswith("http://") or cam.rtsp_url.startswith("https://") or cam.rtsp_url.startswith("rtsp://")):
+            url = (cam.rtsp_url or "").strip().lower()
+            if url and not url.startswith("synthetic") and not url.startswith("mobile://"):
                 ip_camera_manager.start_camera(cam)
     except Exception as exc:
         log.warning("Could not auto-start IP cameras: %s", exc)
+
+    # Pre-warm DirectAIAnalyzer in background
+    async def _warmup_ai():
+        try:
+            from .ai.direct_analyzer import DirectAIAnalyzer
+            import numpy as np
+            analyzer = DirectAIAnalyzer.get_instance()
+            dummy = np.zeros((320, 320, 3), dtype=np.uint8)
+            await asyncio.to_thread(analyzer.process_frame, dummy, "cam-warmup", "WARMUP")
+            log.info("DirectAIAnalyzer neural engines pre-warmed.")
+        except Exception as w_err:
+            log.warning("AI warmup background task exception: %s", w_err)
+
+    asyncio.create_task(_warmup_ai())
 
     log.info("IBVAP platform ready. Listening for connections …")
     yield
@@ -190,13 +208,14 @@ async def api_key_middleware(request: Request, call_next):
 # ── REST Routers ──────────────────────────────────────────────────────────────
 
 prefix = settings.API_V1_STR
-app.include_router(auth.router,      prefix=prefix)
-app.include_router(cameras.router,   prefix=prefix)
-app.include_router(alerts.router,    prefix=prefix)
-app.include_router(frs.router,       prefix=prefix)
-app.include_router(anpr.router,      prefix=prefix)
-app.include_router(analytics.router, prefix=prefix)
-app.include_router(snapshots.router, prefix=prefix)
+app.include_router(auth.router,       prefix=prefix)
+app.include_router(cameras.router,    prefix=prefix)
+app.include_router(alerts.router,     prefix=prefix)
+app.include_router(frs.router,        prefix=prefix)
+app.include_router(anpr.router,       prefix=prefix)
+app.include_router(analytics.router,  prefix=prefix)
+app.include_router(snapshots.router,  prefix=prefix)
+app.include_router(blockchain.router, prefix=prefix)
 
 # Mount snapshots static folder for direct image access
 if settings.SNAPSHOT_DIR.exists():

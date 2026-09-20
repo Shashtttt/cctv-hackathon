@@ -39,11 +39,11 @@ export const DashboardKPIs = () => {
         const byCat = (summary && (summary.by_category || summary.category_breakdown)) || {};
         const bySev = (summary && (summary.by_severity || summary.severity_breakdown)) || {};
 
-        const loitering = byCat.LOITERING || 0;
+        const loitering = summary?.loitering_count ?? (byCat.LOITERING || 0);
         const suspicious = byCat.SUSPICIOUS_ACTIVITY || byCat.SUSPICIOUS_POSTURE || 0;
-        const intrusions = byCat.VIRTUAL_FENCE_INTRUSION || 0;
-        const unusual = byCat.UNUSUAL_ITEM || 0;
-        const totalPersons = (byCat.PERSON || byCat.HUMAN || (summary.total ? Math.round(summary.total * 0.4) : 0));
+        const intrusions = summary?.intrusion_count ?? (byCat.VIRTUAL_FENCE_INTRUSION || 0);
+        const unusual = summary?.weapon_count ?? (byCat.UNUSUAL_ITEM || 0);
+        const totalPersons = summary?.person_count ?? (byCat.PERSON || byCat.HUMAN || (summary?.total ? Math.round(summary.total * 0.4) : 0));
 
         setMetrics({
           totalCameras: totalCams,

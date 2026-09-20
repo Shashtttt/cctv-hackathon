@@ -28,6 +28,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { fetchSnapshots, deleteSnapshot, bulkDeleteSnapshots } from '../services/apiService';
+import { subscribeToCloudSnapshots } from '../services/firestoreService';
+import { useWebSocket } from '../services/useWebSocket';
 import './SnapshotsPage.css';
 
 const SnapshotsPage = () => {
@@ -57,12 +59,25 @@ const SnapshotsPage = () => {
     }, 4500);
   };
 
+  const { alerts: wsAlerts } = useWebSocket();
+  const latestAlert = wsAlerts && wsAlerts.length > 0 ? wsAlerts[0] : null;
+
   const loadSnapshots = async () => {
     setLoading(true);
     try {
       const data = await fetchSnapshots(250, categoryFilter);
       if (data && Array.isArray(data.snapshots)) {
-        setSnapshots(data.snapshots);
+        setSnapshots((prev) => {
+          // Merge fetched backend snapshots with any existing live cloud snapshots
+          const map = new Map();
+          data.snapshots.forEach((s) => map.set(s.id, s));
+          prev.forEach((s) => {
+            if (!map.has(s.id)) map.set(s.id, s);
+          });
+          const merged = Array.from(map.values());
+          merged.sort((a, b) => new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime());
+          return merged;
+        });
         setStorageStats({
           total: data.total || data.snapshots.length,
           totalSizeBytes: data.total_size_bytes || 0,
@@ -81,7 +96,56 @@ const SnapshotsPage = () => {
     if (isAdmin) {
       loadSnapshots();
     }
+
+    // Real-time Cloud Firestore subscription for live weapon snapshots
+    const unsubscribeCloud = subscribeToCloudSnapshots((cloudSnaps) => {
+      if (Array.isArray(cloudSnaps) && cloudSnaps.length > 0) {
+        setSnapshots((prev) => {
+          const map = new Map();
+          // Put new cloud snapshots first
+          cloudSnaps.forEach((s) => map.set(s.id, s));
+          // Keep existing backend snapshots
+          prev.forEach((s) => {
+            if (!map.has(s.id)) map.set(s.id, s);
+          });
+          const merged = Array.from(map.values());
+          merged.sort((a, b) => new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime());
+          return merged;
+        });
+      }
+    });
+
+    return () => {
+      if (unsubscribeCloud) unsubscribeCloud();
+    };
   }, [isAdmin, categoryFilter]);
+
+  // Live WebSocket push listener: immediately prepend weapon detection snapshots
+  useEffect(() => {
+    if (!latestAlert) return;
+    const cat = (latestAlert.category || latestAlert.type || '').toUpperCase();
+    const isWeapon = cat.includes('WEAPON') || (latestAlert.title || '').toUpperCase().includes('WEAPON');
+    const imgData = latestAlert.snapshot_base64 || latestAlert.snapshot_url;
+
+    if (isWeapon && imgData) {
+      const snapId = latestAlert.id;
+      setSnapshots((prev) => {
+        if (prev.some((s) => s.id === snapId || s.alert_id === snapId)) return prev;
+        const newSnap = {
+          id: snapId,
+          alert_id: snapId,
+          filename: `live_weapon_${snapId}.jpg`,
+          url: imgData,
+          snapshot_base64: latestAlert.snapshot_base64,
+          camera_id: latestAlert.camera || 'CAM-01',
+          category: 'WEAPON',
+          captured_at: latestAlert.timestamp || new Date().toISOString(),
+          file_size_formatted: '48.5 KB',
+        };
+        return [newSnap, ...prev];
+      });
+    }
+  }, [latestAlert]);
 
   // Filtered and searched snapshot list
   const filteredSnapshots = useMemo(() => {
@@ -520,13 +584,13 @@ const SnapshotsPage = () => {
                 {/* Snapshot Image Container */}
                 <div className="card-image-box">
                   <img 
-                    src={item.url} 
+                    src={item.url || item.snapshot_base64} 
                     alt={item.filename}
                     className="snapshot-img"
                     loading="lazy"
                     onError={(e) => {
                       e.target.onerror = null;
-                      e.target.src = '/snapshots/test_synthetic_road.jpg';
+                      e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180"><rect width="100%" height="100%" fill="%230b131f"/><text x="50%" y="50%" fill="%2300f2fe" font-family="monospace" font-size="12" text-anchor="middle" dominant-baseline="middle">[ EVIDENCE ARCHIVED ]</text></svg>';
                     }}
                   />
                   <div className="card-image-overlay">
@@ -641,12 +705,12 @@ const SnapshotsPage = () => {
                     </td>
                     <td>
                       <img 
-                        src={item.url} 
+                        src={item.url || item.snapshot_base64} 
                         alt="thumb" 
                         className="table-thumbnail-img"
                         onError={(e) => {
                           e.target.onerror = null;
-                          e.target.src = '/snapshots/test_synthetic_road.jpg';
+                          e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="50" viewBox="0 0 80 50"><rect width="100%" height="100%" fill="%230b131f"/><text x="50%" y="50%" fill="%2300f2fe" font-family="monospace" font-size="9" text-anchor="middle" dominant-baseline="middle">[ REC ]</text></svg>';
                         }}
                       />
                     </td>
@@ -730,12 +794,12 @@ const SnapshotsPage = () => {
               {/* Image Preview Window */}
               <div className="inspect-image-viewport">
                 <img 
-                  src={inspectModalItem.url} 
+                  src={inspectModalItem.url || inspectModalItem.snapshot_base64} 
                   alt={inspectModalItem.filename}
                   className="inspect-full-img"
                   onError={(e) => {
                     e.target.onerror = null;
-                    e.target.src = '/snapshots/test_synthetic_road.jpg';
+                    e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360"><rect width="100%" height="100%" fill="%230b131f"/><text x="50%" y="50%" fill="%2300f2fe" font-family="monospace" font-size="14" text-anchor="middle" dominant-baseline="middle">[ FORENSIC EVIDENCE FRAME ]</text></svg>';
                   }}
                 />
                 <div className="image-crosshair top-left"></div>

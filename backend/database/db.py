@@ -146,6 +146,22 @@ async def init_db() -> None:
                     last_login_at   TEXT
                 );
 
+                CREATE TABLE IF NOT EXISTS blockchain_blocks (
+                    block_index     INTEGER PRIMARY KEY,
+                    timestamp       TEXT NOT NULL,
+                    event_type      TEXT NOT NULL,
+                    camera_id       TEXT NOT NULL,
+                    alert_id        TEXT,
+                    payload_json    TEXT NOT NULL,
+                    data_hash       TEXT NOT NULL,
+                    previous_hash   TEXT NOT NULL,
+                    merkle_root     TEXT NOT NULL,
+                    block_hash      TEXT NOT NULL,
+                    validator_node  TEXT NOT NULL DEFAULT 'NODE-BSF-SECTOR4-ALPHA',
+                    signature       TEXT NOT NULL DEFAULT '',
+                    nonce           INTEGER NOT NULL DEFAULT 0
+                );
+
                 -- Performance indexes
                 CREATE INDEX IF NOT EXISTS idx_alerts_camera   ON alerts(camera_id);
                 CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity);
@@ -154,15 +170,21 @@ async def init_db() -> None:
                 CREATE INDEX IF NOT EXISTS idx_anpr_plate      ON anpr_watchlist(plate);
                 CREATE INDEX IF NOT EXISTS idx_track_target    ON track_history(target_id, camera_id);
                 CREATE INDEX IF NOT EXISTS idx_users_username  ON users(username);
+                CREATE INDEX IF NOT EXISTS idx_blockchain_hash ON blockchain_blocks(block_hash);
+                CREATE INDEX IF NOT EXISTS idx_blockchain_alert ON blockchain_blocks(alert_id);
             """)
             await db.commit()
 
-            # Ensure GPS columns exist on existing databases (safe migration)
+            # Ensure GPS and Tamper columns exist on existing databases (safe migration)
             for col, col_type in [
                 ("latitude", "REAL"),
                 ("longitude", "REAL"),
                 ("altitude", "REAL"),
                 ("gps_coords", "TEXT NOT NULL DEFAULT ''"),
+                ("tamper_status", "TEXT NOT NULL DEFAULT 'NORMAL'"),
+                ("focus_score", "REAL DEFAULT 100.0"),
+                ("occlusion_percent", "REAL DEFAULT 0.0"),
+                ("last_tamper_at", "TEXT"),
             ]:
                 try:
                     await db.execute(f"ALTER TABLE cameras ADD COLUMN {col} {col_type}")
@@ -191,76 +213,16 @@ async def init_db() -> None:
 # ── Initial Data Seeding ──────────────────────────────────────────────────────
 
 async def seed_initial_data_if_empty() -> None:
-    """Populates default border cameras and watchlists if tables are empty."""
+    """Populates default intelligence watchlists if tables are empty. Does not seed dummy cameras."""
     async with get_db() as db:
-        async with db.execute("SELECT COUNT(*) AS cnt FROM cameras") as cur:
+        async with db.execute("SELECT COUNT(*) AS cnt FROM frs_watchlist") as cur:
             row = await cur.fetchone()
             if row and row["cnt"] > 0:
                 return  # Database already seeded
 
-        log.info("Seeding initial border cameras and intelligence watchlists …")
+        log.info("Seeding intelligence watchlists …")
         now = datetime.datetime.utcnow().isoformat()
 
-        # 1. Cameras
-        cameras = [
-            (
-                "cam-01", "BOP-01", "North Ridge Perimeter",
-                "Noida Sector 28",
-                28.5708, 77.3271, 200.0, "28.5708° N, 77.3271° E",
-                "public/videos/mumbai_traffic.mp4",
-                "ONLINE", 30, "1080p FHD", "STANDARD",
-                json.dumps(["HUMAN", "VEHICLE", "FRS", "ANPR"]),
-                json.dumps([
-                    {"x": 0.15, "y": 0.35}, {"x": 0.85, "y": 0.35},
-                    {"x": 0.90, "y": 0.85}, {"x": 0.10, "y": 0.85},
-                ]),
-                5, now,
-            ),
-            (
-                "cam-02", "BOP-04", "Riverine Marshland IR",
-                "Gurgaon Cyber City",
-                28.4949, 77.0895, 220.0, "28.4949° N, 77.0895° E",
-                "public/videos/delhi_traffic.mp4",
-                "ONLINE", 25, "1080p FHD", "THERMAL",
-                json.dumps(["HUMAN", "VEHICLE", "FRS"]),
-                json.dumps([
-                    {"x": 0.20, "y": 0.40}, {"x": 0.80, "y": 0.40},
-                    {"x": 0.75, "y": 0.90}, {"x": 0.25, "y": 0.90},
-                ]),
-                5, now,
-            ),
-            (
-                "cam-03", "CHK-02", "Checkpoint Alpha Inspection",
-                "Gurgaon Sector 29",
-                28.4682, 77.0620, 215.0, "28.4682° N, 77.0620° E",
-                "public/videos/bangalore_traffic.mp4",
-                "ONLINE", 60, "4K Ultra HD", "ANPR_FOCUS",
-                json.dumps(["VEHICLE", "ANPR"]),
-                json.dumps([]),
-                5, now,
-            ),
-            (
-                "cam-04", "BOP-12", "South Gate FRS Scanner",
-                "Noida Sector 132 Expressway",
-                28.5085, 77.3774, 198.0, "28.5085° N, 77.3774° E",
-                "public/videos/goa_traffic.mp4",
-                "ONLINE", 30, "1080p FHD", "FRS_FOCUS",
-                json.dumps(["HUMAN", "FRS"]),
-                json.dumps([
-                    {"x": 0.30, "y": 0.20}, {"x": 0.70, "y": 0.20},
-                    {"x": 0.70, "y": 0.80}, {"x": 0.30, "y": 0.80},
-                ]),
-                5, now,
-            ),
-        ]
-        await db.executemany(
-            """INSERT INTO cameras
-               (id, code, name, location, latitude, longitude, altitude, gps_coords,
-                rtsp_url, status, fps, resolution,
-                mode, analytics_modes, fence_points, rtsp_reconnect_attempts, last_frame_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            cameras,
-        )
 
         # 2. FRS Watchlist
         subjects = [
@@ -502,6 +464,8 @@ async def save_alert(alert: AlertRecord) -> None:
             "target_id": alert.target_id,
             "status": alert.status,
             "snapshot_path": alert.snapshot_path,
+            "snapshot_url": getattr(alert, "snapshot_url", None) or (f"/api/v1/snapshots/{alert.id}" if alert.snapshot_path else None),
+            "snapshot_base64": getattr(alert, "snapshot_base64", None),
             "frs_match_name": alert.frs_match_name,
             "frs_match_score": alert.frs_match_score,
             "plate_text": alert.plate_text,
@@ -738,29 +702,197 @@ async def delete_snapshot_record(identifier: str) -> bool:
     return True
 
 async def get_alert_summary(hours: int = 24) -> dict:
-    """Return threat counts by severity and category for the last N hours."""
-    since = (datetime.datetime.utcnow() - datetime.timedelta(hours=hours)).isoformat()
+    """Return threat counts, trends, and aggregates for the last N hours from SQLite."""
+    since = (datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.timedelta(hours=hours)).isoformat()
     async with get_db() as db:
+        # 1. Severity breakdown
         async with db.execute(
             "SELECT severity, COUNT(*) AS cnt FROM alerts WHERE timestamp >= ? GROUP BY severity",
             (since,),
         ) as cur:
             severity_rows = await cur.fetchall()
+
+        # 2. Category breakdown
         async with db.execute(
             "SELECT category, COUNT(*) AS cnt FROM alerts WHERE timestamp >= ? GROUP BY category",
             (since,),
         ) as cur:
             category_rows = await cur.fetchall()
+
+        # 3. Total count
         async with db.execute(
             "SELECT COUNT(*) AS cnt FROM alerts WHERE timestamp >= ?", (since,)
         ) as cur:
-            total = (await cur.fetchone())["cnt"]
+            total_row = await cur.fetchone()
+            total = total_row["cnt"] if total_row else 0
+
+        # 4. Hourly trend
+        async with db.execute(
+            """
+            SELECT 
+                strftime('%H:00', timestamp) AS hour_slot,
+                COUNT(*) AS total,
+                SUM(CASE WHEN severity = 'CRITICAL' THEN 1 ELSE 0 END) AS critical
+            FROM alerts 
+            WHERE timestamp >= ?
+            GROUP BY hour_slot
+            ORDER BY hour_slot ASC
+            """,
+            (since,),
+        ) as cur:
+            hourly_rows = await cur.fetchall()
+
+        hourly_trend = [
+            {"hour": r["hour_slot"], "total": r["total"], "critical": r["critical"]}
+            for r in hourly_rows
+        ]
+
+        # 5. Peak hour & count
+        peak_hour = "12:00"
+        peak_count = 0
+        if hourly_trend:
+            peak_entry = max(hourly_trend, key=lambda x: x["total"])
+            peak_hour = peak_entry["hour"]
+            peak_count = peak_entry["total"]
+
+        # 6. Top cameras by volume
+        async with db.execute(
+            """
+            SELECT a.camera_id, COALESCE(c.name, a.camera_id) AS name, COALESCE(c.code, UPPER(a.camera_id)) AS code, COUNT(*) AS event_count
+            FROM alerts a
+            LEFT JOIN cameras c ON a.camera_id = c.id
+            WHERE a.timestamp >= ?
+            GROUP BY a.camera_id
+            ORDER BY event_count DESC
+            LIMIT 5
+            """,
+            (since,),
+        ) as cur:
+            cam_rows = await cur.fetchall()
+            top_cameras = [
+                {
+                    "camera_id": r["camera_id"],
+                    "name": r["name"],
+                    "code": r["code"],
+                    "event_count": r["event_count"],
+                }
+                for r in cam_rows
+            ]
+
+        # 7. Top targets / active tracked objects
+        async with db.execute(
+            """
+            SELECT 
+                COALESCE(NULLIF(target_id, ''), 'OBJ-' || substr(id, 1, 4)) AS obj_id,
+                category,
+                title,
+                severity,
+                camera_id,
+                MAX(timestamp) AS last_seen,
+                COUNT(*) AS count
+            FROM alerts
+            WHERE timestamp >= ?
+            GROUP BY obj_id, category
+            ORDER BY count DESC
+            LIMIT 5
+            """,
+            (since,),
+        ) as cur:
+            target_rows = await cur.fetchall()
+            top_targets = [
+                {
+                    "obj_id": r["obj_id"],
+                    "category": r["category"],
+                    "title": r["title"],
+                    "severity": r["severity"],
+                    "camera_id": r["camera_id"],
+                    "last_seen": r["last_seen"],
+                    "count": r["count"],
+                }
+                for r in target_rows
+            ]
+
+        # 8. Person, Intrusion, Loitering, Weapon, ANPR, FRS totals
+        async with db.execute(
+            """
+            SELECT COUNT(*) AS cnt FROM alerts 
+            WHERE timestamp >= ? AND (
+                category IN ('HUMAN', 'PERSON', 'LOITERING', 'SUSPICIOUS_POSTURE', 'UNAUTHORIZED_ENTRY')
+                OR (frs_match_name IS NOT NULL AND frs_match_name != '')
+            )
+            """,
+            (since,),
+        ) as cur:
+            r = await cur.fetchone()
+            person_count = r["cnt"] if r else 0
+
+        async with db.execute(
+            """
+            SELECT COUNT(*) AS cnt FROM alerts 
+            WHERE timestamp >= ? AND category IN ('VIRTUAL_FENCE_INTRUSION', 'INTRUSION', 'TRIPWIRE_CROSSING', 'UNAUTHORIZED_ENTRY')
+            """,
+            (since,),
+        ) as cur:
+            r = await cur.fetchone()
+            intrusion_count = r["cnt"] if r else 0
+
+        async with db.execute(
+            "SELECT COUNT(*) AS cnt FROM alerts WHERE timestamp >= ? AND category = 'LOITERING'",
+            (since,),
+        ) as cur:
+            r = await cur.fetchone()
+            loitering_count = r["cnt"] if r else 0
+
+        async with db.execute(
+            """
+            SELECT COUNT(*) AS cnt FROM alerts 
+            WHERE timestamp >= ? AND category IN ('WEAPON_DETECTED', 'WEAPON', 'UNUSUAL_ITEM')
+            """,
+            (since,),
+        ) as cur:
+            r = await cur.fetchone()
+            weapon_count = r["cnt"] if r else 0
+
+        async with db.execute(
+            """
+            SELECT COUNT(*) AS cnt FROM alerts 
+            WHERE timestamp >= ? AND (
+                (plate_text IS NOT NULL AND plate_text != '') OR category = 'ANPR_MATCH'
+            )
+            """,
+            (since,),
+        ) as cur:
+            r = await cur.fetchone()
+            anpr_count = r["cnt"] if r else 0
+
+        async with db.execute(
+            """
+            SELECT COUNT(*) AS cnt FROM alerts 
+            WHERE timestamp >= ? AND (
+                (frs_match_name IS NOT NULL AND frs_match_name != '') OR category = 'FRS_MATCH'
+            )
+            """,
+            (since,),
+        ) as cur:
+            r = await cur.fetchone()
+            frs_count = r["cnt"] if r else 0
 
     return {
         "total": total,
         "hours": hours,
         "by_severity": {r["severity"]: r["cnt"] for r in severity_rows},
         "by_category": {r["category"]: r["cnt"] for r in category_rows},
+        "hourly_trend": hourly_trend,
+        "peak_hour": peak_hour,
+        "peak_count": peak_count,
+        "person_count": person_count,
+        "intrusion_count": intrusion_count,
+        "loitering_count": loitering_count,
+        "weapon_count": weapon_count,
+        "anpr_count": anpr_count,
+        "frs_count": frs_count,
+        "top_cameras": top_cameras,
+        "top_targets": top_targets,
     }
 
 
@@ -808,5 +940,151 @@ async def update_user_last_login(user_id: str) -> None:
     async with get_db() as db:
         now = datetime.datetime.utcnow().isoformat()
         await db.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (now, user_id))
+        await db.commit()
+
+
+# ── Blockchain Audit Ledger CRUD ───────────────────────────────────────────────
+
+async def save_blockchain_block(block) -> None:
+    """Persists an AuditBlock to SQLite."""
+    async with get_db() as db:
+        payload_json = json.dumps(block.payload, sort_keys=True)
+        await db.execute(
+            """INSERT OR REPLACE INTO blockchain_blocks
+               (block_index, timestamp, event_type, camera_id, alert_id,
+                payload_json, data_hash, previous_hash, merkle_root,
+                block_hash, validator_node, signature, nonce)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                block.index,
+                block.timestamp,
+                block.event_type,
+                block.camera_id,
+                block.alert_id,
+                payload_json,
+                block.data_hash,
+                block.previous_hash,
+                block.merkle_root,
+                block.block_hash,
+                block.validator_node,
+                block.signature,
+                block.nonce,
+            ),
+        )
+        await db.commit()
+
+
+async def get_blockchain_blocks(limit: int = 100, offset: int = 0) -> List[dict]:
+    """Retrieves blocks ordered by index ascending."""
+    async with get_db() as db:
+        async with db.execute(
+            """SELECT block_index, timestamp, event_type, camera_id, alert_id,
+                      payload_json, data_hash, previous_hash, merkle_root,
+                      block_hash, validator_node, signature, nonce
+               FROM blockchain_blocks
+               ORDER BY block_index ASC
+               LIMIT ? OFFSET ?""",
+            (limit, offset),
+        ) as cur:
+            rows = await cur.fetchall()
+            results = []
+            for r in rows:
+                d = dict(r)
+                try:
+                    d["payload"] = json.loads(d["payload_json"])
+                except Exception:
+                    d["payload"] = {}
+                results.append(d)
+            return results
+
+
+async def get_blockchain_block_by_alert(alert_id: str) -> Optional[dict]:
+    """Retrieves a specific block associated with an alert."""
+    async with get_db() as db:
+        async with db.execute(
+            """SELECT block_index, timestamp, event_type, camera_id, alert_id,
+                      payload_json, data_hash, previous_hash, merkle_root,
+                      block_hash, validator_node, signature, nonce
+               FROM blockchain_blocks
+               WHERE alert_id = ?
+               LIMIT 1""",
+            (alert_id,),
+        ) as cur:
+            row = await cur.fetchone()
+            if not row:
+                return None
+            d = dict(row)
+            try:
+                d["payload"] = json.loads(d["payload_json"])
+            except Exception:
+                d["payload"] = {}
+            return d
+
+
+async def load_blockchain_from_db() -> int:
+    """Loads all persisted blocks from SQLite into the in-memory BlockchainLedger singleton."""
+    from ..core.blockchain import AuditBlock, blockchain_ledger
+    async with get_db() as db:
+        async with db.execute(
+            """SELECT block_index, timestamp, event_type, camera_id, alert_id,
+                      payload_json, data_hash, previous_hash, merkle_root,
+                      block_hash, validator_node, signature, nonce
+               FROM blockchain_blocks
+               ORDER BY block_index ASC"""
+        ) as cur:
+            rows = await cur.fetchall()
+            if not rows:
+                # Initialize genesis block and persist
+                genesis = blockchain_ledger.create_genesis_block()
+                blockchain_ledger.chain = [genesis]
+                await save_blockchain_block(genesis)
+                return 1
+
+            loaded_chain = []
+            for r in rows:
+                d = dict(r)
+                try:
+                    payload = json.loads(d["payload_json"])
+                except Exception:
+                    payload = {}
+                blk = AuditBlock(
+                    index=d["block_index"],
+                    timestamp=d["timestamp"],
+                    event_type=d["event_type"],
+                    camera_id=d["camera_id"],
+                    alert_id=d["alert_id"],
+                    payload=payload,
+                    data_hash=d["data_hash"],
+                    previous_hash=d["previous_hash"],
+                    merkle_root=d["merkle_root"],
+                    block_hash=d["block_hash"],
+                    validator_node=d["validator_node"],
+                    signature=d["signature"],
+                    nonce=d["nonce"],
+                )
+                loaded_chain.append(blk)
+                if blk.alert_id:
+                    blockchain_ledger._alert_index_map[blk.alert_id] = blk.index
+
+            blockchain_ledger.chain = loaded_chain
+            log.info("Loaded %d blockchain audit blocks from SQLite database.", len(loaded_chain))
+            return len(loaded_chain)
+
+
+async def update_camera_tamper_telemetry(
+    camera_id: str,
+    tamper_status: str,
+    focus_score: float,
+    occlusion_percent: float,
+) -> None:
+    """Updates real-time cyber tamper telemetry on camera record."""
+    async with get_db() as db:
+        now = datetime.datetime.utcnow().isoformat()
+        await db.execute(
+            """UPDATE cameras
+               SET tamper_status = ?, focus_score = ?, occlusion_percent = ?, last_tamper_at = ?
+               WHERE id = ?""",
+            (tamper_status, focus_score, occlusion_percent, now, camera_id),
+        )
         await db.commit()
 

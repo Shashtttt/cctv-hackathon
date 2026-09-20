@@ -16,6 +16,7 @@ export const useFirebaseRealtime = (options = { limitAlerts: 30 }) => {
 
   // Monitor connection status to Firebase RTDB (.info/connected)
   useEffect(() => {
+    if (!database) return;
     let connectedRef;
     try {
       connectedRef = ref(database, '.info/connected');
@@ -28,7 +29,7 @@ export const useFirebaseRealtime = (options = { limitAlerts: 30 }) => {
       });
       return () => unsubscribe();
     } catch (err) {
-      console.warn('Firebase connection check failed:', err?.message);
+      console.debug('Firebase RTDB connection check notice:', err?.message);
     }
   }, []);
 

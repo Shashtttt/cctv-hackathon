@@ -452,3 +452,232 @@
 .modal-action-btn:hover {
   background: rgba(0, 242, 254, 0.25);
 }
+
+.modal-action-btn.saved-btn {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #10b981;
+  color: #10b981;
+}
+
+/* Virtual Fence Controls in PTZ & Fence Tab */
+.fence-config-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 14px;
+  border-radius: 8px;
+  margin-top: 10px;
+}
+
+.fence-shape-selector {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.fence-preset-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.fence-preset-btn {
+  flex: 1;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(0, 242, 254, 0.2);
+  color: #00f2fe;
+  padding: 6px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.fence-preset-btn:hover {
+  background: rgba(0, 242, 254, 0.15);
+  border-color: #00f2fe;
+  box-shadow: 0 0 8px rgba(0, 242, 254, 0.3);
+}
+
+.fence-shape-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 6px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #94a3b8;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.fence-shape-btn:hover {
+  border-color: rgba(0, 242, 254, 0.5);
+  color: #ffffff;
+}
+
+.fence-shape-btn.active {
+  background: rgba(0, 242, 254, 0.18);
+  border-color: #00f2fe;
+  color: #00f2fe;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.25);
+}
+
+.fence-slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fence-slider-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.fence-slider-val {
+  font-weight: 700;
+  color: #00f2fe;
+  font-size: 11px;
+}
+
+.fence-range-slider {
+  width: 100%;
+  height: 5px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+}
+
+.fence-range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #00f2fe;
+  box-shadow: 0 0 8px #00f2fe;
+  cursor: pointer;
+  border: 2px solid #ffffff;
+}
+
+.fence-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.fence-status-badge.secure {
+  background: rgba(0, 242, 254, 0.1);
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  color: #00f2fe;
+}
+
+.fence-status-badge.breached {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid #ef4444;
+  color: #ef4444;
+  animation: pulseBreach 1s infinite alternate;
+}
+
+@keyframes pulseBreach {
+  from { box-shadow: 0 0 4px rgba(239, 68, 68, 0.3); }
+  to { box-shadow: 0 0 16px rgba(239, 68, 68, 0.8); }
+}
+
+/* Skeleton 17-Joint Coordinates Table */
+.skeleton-joints-accordion {
+  margin-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 10px;
+}
+
+.skeleton-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #00f2fe;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.skeleton-coords-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.joint-coord-item {
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 16, 28, 0.7);
+  border: 1px solid rgba(0, 242, 254, 0.15);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 10px;
+}
+
+.joint-name {
+  color: #94a3b8;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+}
+
+.joint-xy {
+  color: #00f2fe;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+/* In-Video HUD Nudge Buttons */
+.hud-nudge-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(8, 13, 22, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  padding: 2px 4px;
+}
+
+.hud-nudge-btn {
+  background: transparent;
+  border: none;
+  color: #00f2fe;
+  padding: 4px 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 4px;
+}
+
+.hud-nudge-btn:hover {
+  background: rgba(0, 242, 254, 0.2);
+}

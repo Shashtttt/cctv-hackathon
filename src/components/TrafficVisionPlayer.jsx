@@ -160,12 +160,8 @@ export const TrafficVisionPlayer = ({
           }));
 
           const hasWeapon = dets.some(
-            (d) => d.is_weapon || 
-                   (d.is_holding && d.held_item_type === 'WEAPON') ||
-                   ['knife', 'gun', 'pistol', 'rifle', 'shotgun', 'firearm', 'weapon', 'scissors', 'blade', 'dagger', 'machete', 'sword'].some(w => 
-                     (d.class_name || '').toLowerCase().includes(w) || 
-                     (d.held_item || '').toLowerCase().includes(w)
-                   )
+            (d) => !d.is_casual_object && d.held_item_type !== 'CASUAL_OBJECT' &&
+                   (d.is_weapon || (d.is_holding && d.held_item_type === 'WEAPON'))
           );
           if (hasWeapon) {
             soundController.triggerWeaponSiren(2000);
@@ -221,22 +217,22 @@ export const TrafficVisionPlayer = ({
               const objCenter = { x: ox1 + ow / 2, y: oy1 + oh / 2 };
               let startPt = { x: px1 + pw / 2, y: py1 + ph / 2 };
 
-              // Check if wrist keypoint is available
+              // Check if wrist keypoint is available with high confidence
               if (det.keypoints && det.keypoints.length >= 11) {
                 const lWrist = det.keypoints[9];
                 const rWrist = det.keypoints[10];
-                if (det.held_by_hand === 'LEFT_HAND' && lWrist && lWrist.conf > 0.2) {
+                if (det.held_by_hand === 'LEFT_HAND' && lWrist && lWrist.conf > 0.45) {
                   startPt = { x: lWrist.x * cw, y: lWrist.y * ch };
-                } else if (det.held_by_hand === 'RIGHT_HAND' && rWrist && rWrist.conf > 0.2) {
+                } else if (det.held_by_hand === 'RIGHT_HAND' && rWrist && rWrist.conf > 0.45) {
                   startPt = { x: rWrist.x * cw, y: rWrist.y * ch };
-                } else if (rWrist && rWrist.conf > 0.2) {
+                } else if (rWrist && rWrist.conf > 0.45) {
                   startPt = { x: rWrist.x * cw, y: rWrist.y * ch };
-                } else if (lWrist && lWrist.conf > 0.2) {
+                } else if (lWrist && lWrist.conf > 0.45) {
                   startPt = { x: lWrist.x * cw, y: lWrist.y * ch };
                 }
               }
 
-              const isWeaponHolding = det.held_item_type === 'WEAPON' || ['knife', 'gun', 'pistol', 'rifle', 'shotgun', 'firearm', 'weapon', 'scissors', 'blade', 'dagger', 'machete', 'sword'].some(w => (det.held_item || '').toLowerCase().includes(w));
+              const isWeaponHolding = det.held_item_type === 'WEAPON' && !det.is_casual_object;
               const tetherColor = isWeaponHolding ? '#FF0033' : '#10B981';
               ctx.save();
               ctx.strokeStyle = tetherColor;
@@ -253,7 +249,7 @@ export const TrafficVisionPlayer = ({
               ctx.setLineDash([]);
               ctx.fillStyle = tetherColor;
               ctx.beginPath();
-              ctx.arc(objCenter.x, objCenter.y, 4, 0, 2 * Math.PI);
+              ctx.arc(objCenter.x, objCenter.y, 4.5, 0, 2 * Math.PI);
               ctx.fill();
               ctx.restore();
             }
@@ -264,6 +260,10 @@ export const TrafficVisionPlayer = ({
         realDetections.forEach((det) => {
           if (!det.bbox) return;
 
+          const rawConf = det.bbox?.confidence ?? det.confidence;
+          // Filter out low-confidence noisy detections
+          if (rawConf !== undefined && rawConf !== null && rawConf < 0.42) return;
+
           const bx = det.bbox.x * cw;
           const by = det.bbox.y * ch;
           const bw = det.bbox.w * cw;
@@ -271,16 +271,21 @@ export const TrafficVisionPlayer = ({
 
           const cName = (det.class_name || '').toLowerCase();
           const heldItem = (det.held_item || '').toLowerCase();
-          const isWeaponItem = det.is_weapon || ['knife', 'gun', 'pistol', 'rifle', 'shotgun', 'firearm', 'weapon', 'scissors', 'blade', 'dagger', 'machete', 'sword'].some(w => cName.includes(w) || heldItem.includes(w));
-          const isArmed = det.is_holding && (det.held_item_type === 'WEAPON' || isWeaponItem);
-          const isHoldingCasual = det.is_holding && det.held_item_type === 'CASUAL_OBJECT' && !isWeaponItem;
-          const isPhone = cName.includes('phone') || cName.includes('cell') || heldItem.includes('phone');
+          const isCasual = Boolean(det.is_casual_object) || det.held_item_type === 'CASUAL_OBJECT';
+          const isWatch = cName === 'wristwatch' || heldItem === 'wristwatch' || heldItem === 'watch';
+          const isClock = !isWatch && (cName.includes('clock') || heldItem.includes('clock'));
+          const isUnknown = cName.includes('unknown') || heldItem.includes('unknown');
+          const isPhone = !isWatch && !isClock && (cName.includes('phone') || cName.includes('cell') || heldItem.includes('phone'));
+
+          const isWeaponItem = Boolean(det.is_weapon) && !isCasual && !isWatch && !isClock && !isUnknown;
+          const isArmed = det.is_holding && (det.held_item_type === 'WEAPON' || isWeaponItem) && !isCasual && !isWatch && !isClock && !isUnknown;
+          const isHoldingCasual = det.is_holding && !isArmed;
           const isUnattendedBag = ['backpack', 'suitcase', 'handbag'].includes(cName) && !det.is_held;
           const isUnusual = det.is_unusual || det.unusual_item;
           const isWeapon = isArmed || isWeaponItem;
 
-          // Strict User Rule: Red for weapons; Green for all casual objects, people, phones
-          const boxColor = isWeapon ? '#FF0033' : '#10B981';
+          // Strict User Rule: Red for weapons; Amber for watch/unknown; Green for casual objects, people, phones
+          const boxColor = isWeapon ? '#FF0033' : (isWatch || isUnknown) ? '#F59E0B' : '#10B981';
 
           ctx.save();
           ctx.strokeStyle = boxColor;
@@ -315,28 +320,39 @@ export const TrafficVisionPlayer = ({
 
           // Label
           ctx.save();
-          const confStr = `${((det.confidence || 0.9) * 100).toFixed(0)}%`;
+          const confStr = rawConf != null ? `${(rawConf * 100).toFixed(0)}%` : '';
           let text = '';
           if (isArmed) {
             text = `🚨 ARMED SUBJECT: HOLDING ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
           } else if (isHoldingCasual) {
-            const isHoldPhone = (det.held_item || '').toLowerCase().includes('phone') || (det.held_item || '').toLowerCase().includes('cell');
-            text = isHoldPhone
-              ? `📱 HOLDING PHONE (${(det.held_by_hand || 'HAND').replace('_', ' ')})`
-              : `📦 HOLDING: ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+            if (isWatch) {
+              text = `⌚ HOLDING WATCH (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+            } else if (isUnknown) {
+              text = `🔍 HOLDING UNKNOWN OBJECT (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+            } else if (isPhone) {
+              text = `📱 HOLDING PHONE (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+            } else {
+              text = `📦 HOLDING: ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+            }
           } else if (isWeapon) {
-            text = `🚨 WEAPON: ${(det.unusual_item || det.class_name).toUpperCase()} [${confStr}]`;
+            text = `🚨 WEAPON: ${(det.unusual_item || det.class_name).toUpperCase()}${confStr ? ` [${confStr}]` : ''}`;
+          } else if (isWatch) {
+            text = `⌚ WRISTWATCH${confStr ? ` [${confStr}]` : ''} ${det.is_held ? '• ON WRIST' : ''}`;
+          } else if (isClock) {
+            text = `⏰ CLOCK${confStr ? ` [${confStr}]` : ''}`;
+          } else if (isUnknown) {
+            text = `🔍 UNKNOWN OBJECT${confStr ? ` [${confStr}]` : ''} ${det.is_held ? '• HELD' : ''}`;
           } else if (isPhone) {
-            text = `📱 CELL PHONE [${confStr}] ${det.is_held ? '• IN HAND' : '• DETECTED'}`;
+            text = `📱 CELL PHONE${confStr ? ` [${confStr}]` : ''} ${det.is_held ? '• IN HAND' : '• DETECTED'}`;
           } else if (isUnattendedBag) {
-            text = `⚠️ UNATTENDED BAGGAGE: ${det.class_name.toUpperCase()} [${confStr}]`;
+            text = `⚠️ UNATTENDED BAGGAGE: ${det.class_name.toUpperCase()}${confStr ? ` [${confStr}]` : ''}`;
           } else if (isUnusual) {
-            text = `⚠️ UNUSUAL: ${(det.unusual_item || det.class_name).toUpperCase()} [${confStr}]`;
+            text = `⚠️ UNUSUAL: ${(det.unusual_item || det.class_name).toUpperCase()}${confStr ? ` [${confStr}]` : ''}`;
           } else if (det.class_id === 0) {
-            text = `👤 ${(det.class_name || 'PERSON').toUpperCase()} [${confStr}] ${det.pose_label ? `• ${det.pose_label}` : ''}`;
+            text = `👤 ${(det.class_name || 'PERSON').toUpperCase()}${confStr ? ` [${confStr}]` : ''} ${det.pose_label ? `• ${det.pose_label}` : ''}`;
           } else {
             const icon = cName.includes('bottle') ? '🍾 ' : cName.includes('laptop') ? '💻 ' : cName.includes('cup') ? '☕ ' : cName.includes('book') ? '📖 ' : cName.includes('car') || cName.includes('truck') || cName.includes('bus') ? '🚗 ' : '🎯 ';
-            text = `${icon}${det.class_name.toUpperCase()} [${confStr}] ${det.is_held ? '• HELD' : ''}`;
+            text = `${icon}${det.class_name.toUpperCase()}${confStr ? ` [${confStr}]` : ''} ${det.is_held ? '• HELD' : ''}`;
           }
 
           ctx.font = 'bold 11px JetBrains Mono, monospace';

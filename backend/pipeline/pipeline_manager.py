@@ -97,6 +97,12 @@ class PipelineManager:
         # Latest annotated JPEG frames per camera (cam_id -> bytes)
         self._latest_frames: Dict[str, bytes] = {}
 
+        # Last received frame timestamp per camera (cam_id -> epoch float)
+        self._last_frame_times: Dict[str, float] = {}
+
+        # Last categorized snapshot saved timestamp (key -> epoch float) to prevent disk thrashing
+        self._last_categorized_snap_ts: Dict[str, float] = {}
+
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     async def start(self) -> None:
@@ -164,7 +170,12 @@ class PipelineManager:
     # ── Camera hot-plug ───────────────────────────────────────────────────────
 
     async def add_camera(self, camera: CameraConfig) -> None:
-        """Hot-add a new camera and spawn its worker."""
+        """Hot-add a new camera and spawn its worker if pull-based worker mode is enabled."""
+        if not getattr(settings, "ENABLE_CAMERA_WORKERS", True):
+            return
+        url = (camera.rtsp_url or "").strip().lower()
+        if not url or url.startswith("mobile://") or url.startswith("synthetic://"):
+            return
         if camera.id in self._workers:
             log.warning("Camera %s already has a running worker.", camera.id)
             return
@@ -288,11 +299,37 @@ class PipelineManager:
 
     async def _persist_and_broadcast(self, result: FrameResult) -> None:
         """Save alerts + snapshots to DB and call all registered callbacks."""
+        import base64
         for alert in result.alerts:
-            # 1. Save snapshot JPEG if available before DB insert
+            # 1. Save snapshot JPEG to disk if available
             snap_path = self._save_snapshot(result, alert.id)
             if snap_path:
                 alert.snapshot_path = snap_path
+
+            # Populate snapshot URL & base64 image data for instant UI and Firebase sync
+            alert.snapshot_url = f"/api/v1/snapshots/{alert.id}"
+            if result.annotated_frame_jpg:
+                try:
+                    b64_str = base64.b64encode(result.annotated_frame_jpg).decode("utf-8")
+                    alert.snapshot_base64 = f"data:image/jpeg;base64,{b64_str}"
+                except Exception:
+                    pass
+            elif snap_path and os.path.exists(snap_path):
+                try:
+                    with open(snap_path, "rb") as f:
+                        b64_str = base64.b64encode(f.read()).decode("utf-8")
+                        alert.snapshot_base64 = f"data:image/jpeg;base64,{b64_str}"
+                except Exception:
+                    pass
+
+            # 2. Persist alert to DB FIRST (creates parent row so FK constraint succeeds)
+            try:
+                await save_alert(alert)
+            except Exception as exc:
+                log.error("Failed to save alert %s: %s", alert.id, exc)
+
+            # 3. Persist snapshot record to DB SECOND (now references existing alert.id)
+            if snap_path:
                 snap = SnapshotRecord(
                     alert_id=alert.id,
                     camera_id=result.camera_id,
@@ -306,13 +343,29 @@ class PipelineManager:
                 except Exception as exc:
                     log.error("Failed to save snapshot: %s", exc)
 
-            # 2. Persist to DB with snapshot_path populated
+            # 3b. Seal alert and evidence on Cryptographic Blockchain Ledger
             try:
-                await save_alert(alert)
-            except Exception as exc:
-                log.error("Failed to save alert %s: %s", alert.id, exc)
+                from ..core.blockchain import blockchain_ledger
+                from ..database.db import save_blockchain_block
+                b_block = blockchain_ledger.add_block(
+                    event_type=alert.category or "INTRUSION_ALERT",
+                    camera_id=result.camera_id,
+                    alert_id=alert.id,
+                    payload={
+                        "title": alert.title,
+                        "category": alert.category,
+                        "severity": alert.severity,
+                        "target_id": alert.target_id,
+                        "timestamp": alert.timestamp.isoformat(),
+                        "gps_coords": getattr(alert, "gps_coords", ""),
+                    },
+                    snapshot_bytes=result.annotated_frame_jpg,
+                )
+                await save_blockchain_block(b_block)
+            except Exception as b_exc:
+                log.warning("Could not append block to blockchain for alert %s: %s", alert.id, b_exc)
 
-            # 3. Fire all async alert callbacks (WebSocket broadcasters)
+            # 4. Fire all async alert callbacks (WebSocket broadcasters)
             for cb in self._alert_callbacks:
                 try:
                     if asyncio.iscoroutinefunction(cb):
@@ -345,29 +398,27 @@ class PipelineManager:
     def _save_categorized_snapshots(self, result: FrameResult, frame_bytes: bytes, alert_id: Optional[str] = None) -> None:
         """
         Save copies of captured images into dedicated folders:
-        - snapshots/vehicle_captured
         - snapshots/weapon_captured
+        - snapshots/vehicle_captured
         - snapshots/person_captured
+        Strictly throttled to prevent disk thrashing and executed in background daemon thread.
         """
-        try:
-            timestamp_str = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")[:19]
-            prefix = f"{result.camera_id}_{timestamp_str}"
-            if alert_id:
-                prefix += f"_{alert_id}"
+        if not frame_bytes:
+            return
 
+        try:
             # 1. Inspect detections
             has_weapon = any(
-                getattr(d, "is_weapon", False) or
-                (getattr(d, "is_holding", False) and getattr(d, "held_item_type", "") == "WEAPON") or
-                any(w in (d.class_name or "").lower() for w in ("knife", "pistol", "gun", "rifle", "shotgun", "firearm", "weapon", "blade", "dagger", "sword"))
+                (getattr(d, "is_weapon", False) and not getattr(d, "is_casual_object", False)) or
+                (getattr(d, "is_holding", False) and getattr(d, "held_item_type", "") == "WEAPON")
                 for d in result.detections
             )
             has_vehicle = any(
-                d.class_id in (2, 3, 5, 7) or bool(d.plate_text) or any(v in (d.class_name or "").lower() for v in ("car", "truck", "bus", "motorcycle", "vehicle"))
+                d.class_id in (2, 3, 5, 7) or bool(getattr(d, "plate_text", None))
                 for d in result.detections
             )
             has_person = any(
-                d.class_id == 0 or bool(d.frs_match_name)
+                bool(getattr(d, "frs_match_name", None))
                 for d in result.detections
             )
 
@@ -382,37 +433,106 @@ class PipelineManager:
                 if "PERSON" in cat or "FRS" in cat or "POSTURE" in cat or "INTRUSION" in cat:
                     has_person = True
 
+            # If no actual threat / categorized target or alert, skip entirely!
+            if not (has_weapon or has_vehicle or has_person):
+                return
+
+            now = time.time()
+            cam_id = result.camera_id
+
+            def _write_file_safe(p: Path, data: bytes):
+                try:
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_bytes(data)
+                except Exception as w_err:
+                    log.debug("Snapshot write error: %s", w_err)
+
+            timestamp_str = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")[:19]
+            prefix = f"{cam_id}_{timestamp_str}"
+            if alert_id:
+                prefix += f"_{alert_id}"
+
+            # Weapon snapshot (throttled to 4s)
             if has_weapon:
-                w_dir = settings.SNAPSHOT_DIR / "weapon_captured"
-                w_dir.mkdir(parents=True, exist_ok=True)
-                (w_dir / f"{prefix}_weapon.jpg").write_bytes(frame_bytes)
+                key_w = f"{cam_id}:weapon"
+                if now - self._last_categorized_snap_ts.get(key_w, 0.0) >= 4.0:
+                    self._last_categorized_snap_ts[key_w] = now
+                    w_file = settings.SNAPSHOT_DIR / "weapon_captured" / f"{prefix}_weapon.jpg"
+                    threading.Thread(target=_write_file_safe, args=(w_file, frame_bytes), daemon=True).start()
 
+            # Vehicle snapshot (throttled to 10s)
             if has_vehicle:
-                v_dir = settings.SNAPSHOT_DIR / "vehicle_captured"
-                v_dir.mkdir(parents=True, exist_ok=True)
-                (v_dir / f"{prefix}_vehicle.jpg").write_bytes(frame_bytes)
+                key_v = f"{cam_id}:vehicle"
+                if now - self._last_categorized_snap_ts.get(key_v, 0.0) >= 10.0:
+                    self._last_categorized_snap_ts[key_v] = now
+                    v_file = settings.SNAPSHOT_DIR / "vehicle_captured" / f"{prefix}_vehicle.jpg"
+                    threading.Thread(target=_write_file_safe, args=(v_file, frame_bytes), daemon=True).start()
 
+            # Person threat snapshot (throttled to 10s and only on alert/FRS/intrusion)
             if has_person:
-                p_dir = settings.SNAPSHOT_DIR / "person_captured"
-                p_dir.mkdir(parents=True, exist_ok=True)
-                (p_dir / f"{prefix}_person.jpg").write_bytes(frame_bytes)
+                key_p = f"{cam_id}:person"
+                if now - self._last_categorized_snap_ts.get(key_p, 0.0) >= 10.0:
+                    self._last_categorized_snap_ts[key_p] = now
+                    p_file = settings.SNAPSHOT_DIR / "person_captured" / f"{prefix}_person.jpg"
+                    threading.Thread(target=_write_file_safe, args=(p_file, frame_bytes), daemon=True).start()
+
         except Exception as exc:
             log.error("Categorized snapshot save error: %s", exc)
 
     # ── Status API ────────────────────────────────────────────────────────────
-
     def update_latest_frame(self, cam_id: str, frame_bytes: bytes) -> None:
         """Manually update the latest frame for a camera."""
         self._latest_frames[cam_id] = frame_bytes
+        self._last_frame_times[cam_id] = time.time()
 
     async def ingest_frame_result(self, result: FrameResult) -> None:
         """Handle externally processed frame result (e.g. from direct webcam ingest)."""
         if result.annotated_frame_jpg:
             self._latest_frames[result.camera_id] = result.annotated_frame_jpg
-            if result.detections or result.alerts:
+            self._last_frame_times[result.camera_id] = time.time()
+            if result.alerts:
                 self._save_categorized_snapshots(result, result.annotated_frame_jpg)
         if result.alerts:
             await self._persist_and_broadcast(result)
+
+    def get_latest_frame(self, cam_id: str) -> Optional[bytes]:
+        """Return the latest JPEG bytes for a camera (case-insensitive)."""
+        if not cam_id:
+            return None
+        if cam_id in self._latest_frames:
+            return self._latest_frames[cam_id]
+        cid_lower = cam_id.lower()
+        if cid_lower in self._latest_frames:
+            return self._latest_frames[cid_lower]
+        cid_upper = cam_id.upper()
+        if cid_upper in self._latest_frames:
+            return self._latest_frames[cid_upper]
+        for k, v in self._latest_frames.items():
+            if k.lower() == cid_lower:
+                return v
+        return None
+
+    def get_last_frame_time(self, cam_id: str) -> float:
+        """Return the epoch timestamp when the last frame was received for cam_id (case-insensitive)."""
+        if not cam_id:
+            return 0.0
+        if cam_id in self._last_frame_times:
+            return self._last_frame_times[cam_id]
+        cid_lower = cam_id.lower()
+        if cid_lower in self._last_frame_times:
+            return self._last_frame_times[cid_lower]
+        cid_upper = cam_id.upper()
+        if cid_upper in self._last_frame_times:
+            return self._last_frame_times[cid_upper]
+        for k, v in self._last_frame_times.items():
+            if k.lower() == cid_lower:
+                return v
+        return 0.0
+
+    def is_camera_active(self, cam_id: str, max_age_seconds: float = 30.0) -> bool:
+        """Return True if frames have been actively ingested for cam_id within max_age_seconds."""
+        t = self.get_last_frame_time(cam_id)
+        return (time.time() - t) < max_age_seconds if t > 0 else False
 
     def get_worker_statuses(self) -> Dict[str, dict]:
         """Return liveness status of all worker processes."""

@@ -63,6 +63,15 @@ export const useWebSocket = () => {
                 timestamp: p.timestamp || new Date().toISOString(),
                 severity: p.severity || 'HIGH',
                 level: (p.severity || 'info').toLowerCase() === 'critical' ? 'crit' : (p.severity || 'info').toLowerCase() === 'warning' || (p.severity || '').toLowerCase() === 'high' ? 'warn' : 'info',
+                snapshot_path: p.snapshot_path || p.snapshotPath || null,
+                snapshot_url: p.snapshot_url || p.snapshotUrl || (p.snapshot_path ? `/api/v1/snapshots/${p.id}` : null),
+                snapshot_base64: p.snapshot_base64 || p.snapshotBase64 || null,
+                frs_match_name: p.frs_match_name || p.frsMatchName || null,
+                frs_match_score: p.frs_match_score || p.frsMatchScore || null,
+                plate_text: p.plate_text || p.plateText || null,
+                latitude: p.latitude || null,
+                longitude: p.longitude || null,
+                gps_coords: p.gps_coords || p.gpsCoords || null,
               };
 
               // Trigger weapon siren for weapons or armed subjects received from server broadcast

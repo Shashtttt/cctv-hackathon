@@ -1,0 +1,341 @@
+/* Camera Map Panel */
+.camera-map-panel {
+  background: #0b1326;
+  border: 1px solid #1c2742;
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.camera-map-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.map-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.camera-map-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.map-gps-live-tag {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: help;
+}
+
+.live-gps-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+}
+
+.live-gps-text {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #10b981;
+  letter-spacing: 0.04em;
+}
+
+.map-location-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Map Viewport Area */
+.camera-map-viewport {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  min-height: 240px;
+  background: #060a14;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #1c2742;
+}
+
+.leaflet-map-target {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: #080d1a;
+}
+
+/* Custom Leaflet Div Icons */
+.custom-leaflet-div-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Live Device GPS Pin Marker */
+.live-device-gps-marker {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.device-center-dot {
+  width: 10px;
+  height: 10px;
+  background: #00f2fe;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #00f2fe;
+  z-index: 2;
+}
+
+.device-pulse-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid #00f2fe;
+  animation: gps-pulse 2s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+
+@keyframes gps-pulse {
+  0% { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+/* Camera Markers */
+.camera-leaflet-marker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(11, 23, 48, 0.92);
+  border: 1px solid #10b981;
+  border-radius: 12px;
+  padding: 2px 7px 2px 4px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.camera-leaflet-marker:hover {
+  transform: scale(1.08);
+  border-color: #34d399;
+}
+
+.cam-marker-alert {
+  border-color: #ef4444;
+  background: rgba(45, 15, 20, 0.92);
+}
+
+.cam-marker-icon-box {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #10b981;
+  color: #064e3b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cam-marker-alert .cam-marker-icon-box {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+.cam-marker-text {
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.02em;
+}
+
+/* Alert Symbol Ping */
+.alert-radar-pulse-icon {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.alert-warn-triangle {
+  color: #ef4444;
+  font-size: 13px;
+  line-height: 1;
+  filter: drop-shadow(0 0 6px #ef4444);
+  z-index: 3;
+}
+
+.radar-ping-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 1.5px solid #ef4444;
+  animation: gps-pulse 2s infinite ease-out;
+}
+
+/* Quick Info Bubble */
+.map-cam-detail-bubble {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 20;
+  background: rgba(11, 19, 38, 0.95);
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  min-width: 170px;
+}
+
+.bubble-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bubble-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.bubble-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.bubble-coords {
+  font-size: 0.68rem;
+  color: #94a3b8;
+  font-family: monospace;
+  margin: 3px 0;
+}
+
+.bubble-status {
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.status-alert {
+  color: #ef4444;
+}
+
+.status-ok {
+  color: #10b981;
+}
+
+/* Controls */
+.map-controls-top-right {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 20;
+}
+
+.map-controls-bottom-right {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 20;
+}
+
+.map-ctrl-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  background: #0f192d;
+  border: 1px solid #1e293b;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.map-ctrl-btn:hover {
+  background: #1e293b;
+  color: #ffffff;
+}
+
+/* Bottom Legend */
+.camera-map-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 4px;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.legend-dot-cam {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #10b981;
+}
+
+.legend-triangle-alert {
+  color: #ef4444;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.legend-line-border {
+  width: 14px;
+  height: 2px;
+  border-top: 2px dashed #ef4444;
+}
+
+.text-cyan {
+  color: #00f2fe;
+}

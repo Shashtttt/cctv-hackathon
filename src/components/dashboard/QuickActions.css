@@ -1,0 +1,79 @@
+/* Quick Actions Card */
+.quick-actions-card {
+  background: #0b1326;
+  border: 1px solid #1c2742;
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.quick-actions-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+/* 4 Buttons in horizontal row */
+.actions-button-group {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 14px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+/* Start Recording button (Solid Royal Blue) */
+.btn-recording {
+  background: #2563eb;
+  border: 1px solid #3b82f6;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+}
+
+.btn-recording:hover {
+  background: #1d4ed8;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.5);
+}
+
+.btn-recording.is-active-recording {
+  background: #dc2626;
+  border-color: #ef4444;
+  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.4);
+}
+
+/* Standard Dark Buttons */
+.btn-standard {
+  background: #0e172e;
+  border: 1px solid #1c2742;
+  color: #cbd5e1;
+}
+
+.btn-standard:hover {
+  background: #131e3d;
+  border-color: #2e3e6b;
+  color: #ffffff;
+  transform: translateY(-2px);
+}
+
+.text-green {
+  color: #10b981;
+}

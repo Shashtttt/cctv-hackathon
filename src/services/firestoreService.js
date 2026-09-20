@@ -22,7 +22,7 @@ import {
   onSnapshot,
   serverTimestamp
 } from "firebase/firestore";
-import { db } from "../firebase";
+import { db } from "../firebase.js";
 
 // ── 1. Connection & Diagnostics ─────────────────────────────────────────────
 
@@ -56,16 +56,47 @@ export const testFirestoreConnection = async () => {
   }
 };
 
+// ── Rate Limiting & Concurrency Guard ──────────────────────────────────────
+const _recentSyncCache = new Map();
+let _activeWrites = 0;
+const MAX_CONCURRENT_WRITES = 4;
+const DEDUP_WINDOW_MS = 3500;
+
+// Clean stale dedup cache entries every 30s
+if (typeof window !== "undefined") {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, timestamp] of _recentSyncCache.entries()) {
+      if (now - timestamp > DEDUP_WINDOW_MS * 2) {
+        _recentSyncCache.delete(key);
+      }
+    }
+  }, 30000);
+}
+
 // ── 2. Alerts & Threat Synchronization ──────────────────────────────────────
 
 /**
  * Persist or update an alert in Cloud Firestore.
- * Automatically de-duplicates by alert ID.
+ * Automatically de-duplicates by alert ID and throttles burst writes.
  */
 export const syncAlertToFirestore = async (alert) => {
   if (!alert) return null;
+  const alertId = String(alert.id || `ALERT-${Date.now()}`);
+  
+  // Prevent flooding Firestore write stream
+  const now = Date.now();
+  if (_recentSyncCache.has(alertId) && (now - _recentSyncCache.get(alertId) < DEDUP_WINDOW_MS)) {
+    return { success: true, id: alertId, skipped: true };
+  }
+  if (_activeWrites >= MAX_CONCURRENT_WRITES) {
+    return { success: false, reason: "throttled" };
+  }
+
+  _recentSyncCache.set(alertId, now);
+  _activeWrites++;
+
   try {
-    const alertId = String(alert.id || `ALERT-${Date.now()}`);
     const alertRef = doc(db, "alerts", alertId);
 
     const payload = {
@@ -85,17 +116,93 @@ export const syncAlertToFirestore = async (alert) => {
       resolved: Boolean(alert.resolved || false),
       threat_level: alert.threat_level || alert.severity || "HIGH",
       target_id: alert.target_id || alert.targetId || null,
-      snapshot_path: alert.snapshot_path || null,
+      snapshot_path: alert.snapshot_path || alert.snapshotPath || null,
+      snapshot_url: alert.snapshot_url || alert.snapshotUrl || (alert.snapshot_path ? `/api/v1/snapshots/${alertId}` : null),
+      snapshot_base64: alert.snapshot_base64 || alert.snapshotBase64 || null,
+      frs_match_name: alert.frs_match_name || alert.frsMatchName || null,
+      plate_text: alert.plate_text || alert.plateText || null,
+      latitude: alert.latitude || null,
+      longitude: alert.longitude || null,
       updatedAt: serverTimestamp(),
       createdAt: alert.createdAt || serverTimestamp(),
       source: alert.source || "IBVAP-Edge-AI",
     };
 
     await setDoc(alertRef, payload, { merge: true });
+
+    // Also persist snapshot record in dedicated 'snapshots' collection for cloud archival
+    if (payload.snapshot_base64 || payload.snapshot_url || payload.snapshot_path) {
+      try {
+        const snapRef = doc(db, "snapshots", alertId);
+        await setDoc(snapRef, {
+          id: alertId,
+          alert_id: alertId,
+          camera_id: payload.camera_id,
+          category: payload.category,
+          severity: payload.severity,
+          title: payload.title,
+          snapshot_url: payload.snapshot_url,
+          snapshot_base64: payload.snapshot_base64,
+          snapshot_path: payload.snapshot_path,
+          captured_at: alert.timestamp || new Date().toISOString(),
+          createdAt: serverTimestamp(),
+          source: payload.source,
+        }, { merge: true });
+      } catch (snapErr) {
+        console.debug("Firestore snapshot collection sync notice:", snapErr.message);
+      }
+    }
+
     return { success: true, id: alertId };
   } catch (error) {
     console.debug("Firestore alert sync notice:", error.message);
     return { success: false, error: error.message };
+  } finally {
+    _activeWrites = Math.max(0, _activeWrites - 1);
+  }
+};
+
+/**
+ * Persist a standalone snapshot record into Cloud Firestore with write protection.
+ */
+export const syncSnapshotToFirestore = async (snapshot) => {
+  if (!snapshot) return null;
+  const snapId = String(snapshot.id || snapshot.alert_id || `SNAP-${Date.now()}`);
+  
+  const now = Date.now();
+  if (_recentSyncCache.has(snapId) && (now - _recentSyncCache.get(snapId) < DEDUP_WINDOW_MS)) {
+    return { success: true, id: snapId, skipped: true };
+  }
+  if (_activeWrites >= MAX_CONCURRENT_WRITES) {
+    return { success: false, reason: "throttled" };
+  }
+
+  _recentSyncCache.set(snapId, now);
+  _activeWrites++;
+
+  try {
+    const snapRef = doc(db, "snapshots", snapId);
+    await setDoc(snapRef, {
+      id: snapId,
+      alert_id: snapshot.alert_id || snapId,
+      camera_id: snapshot.camera_id || snapshot.cameraId || "CAM-01",
+      category: snapshot.category || "WEAPON",
+      severity: snapshot.severity || "CRITICAL",
+      title: snapshot.title || "Weapon Evidence Snapshot",
+      snapshot_url: snapshot.url || snapshot.snapshot_url || `/api/v1/snapshots/${snapId}`,
+      snapshot_base64: snapshot.snapshot_base64 || snapshot.base64 || null,
+      snapshot_path: snapshot.relative_path || snapshot.snapshot_path || null,
+      captured_at: snapshot.captured_at || new Date().toISOString(),
+      file_size_bytes: snapshot.file_size_bytes || (snapshot.snapshot_base64 ? Math.round(snapshot.snapshot_base64.length * 0.75) : 40960),
+      createdAt: serverTimestamp(),
+      source: snapshot.source || "IBVAP-Defense-Matrix",
+    }, { merge: true });
+    return { success: true, id: snapId };
+  } catch (error) {
+    console.debug("Firestore snapshot sync error:", error.message);
+    return { success: false, error: error.message };
+  } finally {
+    _activeWrites = Math.max(0, _activeWrites - 1);
   }
 };
 
@@ -132,6 +239,75 @@ export const subscribeToCloudAlerts = (onUpdate, onError) => {
     );
   } catch (err) {
     console.debug("Firestore subscribe init notice:", err.message);
+    return () => {};
+  }
+};
+
+/**
+ * Real-time subscription to surveillance snapshots from Cloud Firestore.
+ * Automatically pushes weapon and threat captures to forensic gallery.
+ */
+export const subscribeToCloudSnapshots = (onUpdate, onError) => {
+  try {
+    const q = query(
+      collection(db, "snapshots"),
+      orderBy("captured_at", "desc"),
+      limit(100)
+    );
+
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const items = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          const imgUrl = data.snapshot_base64 || data.snapshot_url || (data.snapshot_path ? `/api/v1/snapshots/${docSnap.id}` : null);
+          items.push({
+            ...data,
+            id: docSnap.id,
+            filename: `${docSnap.id}.jpg`,
+            url: imgUrl,
+            category: (data.category || 'WEAPON').toUpperCase(),
+            camera_id: data.camera_id || 'CAM-01',
+            captured_at: data.captured_at || (data.createdAt?.toDate?.() ? data.createdAt.toDate().toISOString() : new Date().toISOString()),
+            file_size_formatted: data.file_size_bytes ? `${(data.file_size_bytes / 1024).toFixed(1)} KB` : '42.5 KB',
+            alert_id: data.alert_id || docSnap.id,
+          });
+        });
+        if (onUpdate) onUpdate(items);
+      },
+      (error) => {
+        // Fallback without orderBy in case compound indexing is building
+        try {
+          const fallbackQ = query(collection(db, "snapshots"), limit(100));
+          return onSnapshot(fallbackQ, (snapshot) => {
+            const items = [];
+            snapshot.forEach((docSnap) => {
+              const data = docSnap.data();
+              const imgUrl = data.snapshot_base64 || data.snapshot_url || null;
+              items.push({
+                ...data,
+                id: docSnap.id,
+                filename: `${docSnap.id}.jpg`,
+                url: imgUrl,
+                category: (data.category || 'WEAPON').toUpperCase(),
+                camera_id: data.camera_id || 'CAM-01',
+                captured_at: data.captured_at || new Date().toISOString(),
+                file_size_formatted: '42.5 KB',
+                alert_id: data.alert_id || docSnap.id,
+              });
+            });
+            items.sort((a, b) => new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime());
+            if (onUpdate) onUpdate(items);
+          });
+        } catch (fbErr) {
+          console.debug("Firestore snapshot fallback subscription notice:", fbErr.message);
+        }
+        if (onError) onError(error);
+      }
+    );
+  } catch (err) {
+    console.debug("Firestore snapshot subscribe init notice:", err.message);
     return () => {};
   }
 };

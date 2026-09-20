@@ -1050,7 +1050,7 @@
 .strip-details {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   flex: 1;
   min-width: 0;
 }
@@ -1062,35 +1062,36 @@
 }
 
 .strip-id {
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   font-weight: 800;
   color: #ffffff;
 }
 
 .cam-code {
   color: var(--text-muted);
-  font-size: 0.62rem;
+  font-size: 0.65rem;
   margin-left: 4px;
 }
 
 .strip-conf {
-  font-size: 0.7rem;
-  font-weight: 700;
+  font-size: 0.74rem;
+  font-weight: 800;
   color: var(--cyan-primary);
 }
 
 .strip-title {
-  font-size: 0.78rem;
+  font-size: 0.84rem;
   font-weight: 700;
   color: var(--text-main);
+  letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .strip-sub {
-  font-size: 0.66rem;
-  color: var(--text-muted);
+  font-size: 0.7rem;
+  color: var(--text-sub);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1099,41 +1100,51 @@
 /* Telemetry Cards Grid */
 .telemetry-cards-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1100px) {
   .telemetry-cards-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
 .telemetry-log-card {
-  background: #090e1a;
+  background: rgba(13, 20, 36, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
-  padding: 10px;
+  border-radius: 9px;
+  padding: 12px 14px;
   display: flex;
   align-items: stretch;
-  gap: 10px;
+  gap: 12px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.telemetry-log-card:hover {
+  border-color: var(--cyan-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
 }
 
 .log-icon-block {
   width: 4px;
-  border-radius: 2px;
+  border-radius: 3px;
   flex-shrink: 0;
 }
 
-.bg-red { background-color: var(--red-alert); box-shadow: 0 0 8px var(--red-alert); }
-.bg-purple { background-color: var(--purple-node); box-shadow: 0 0 8px var(--purple-node); }
-.bg-blue { background-color: var(--cyan-primary); box-shadow: 0 0 8px var(--cyan-primary); }
-.bg-green { background-color: var(--green-online); box-shadow: 0 0 8px var(--green-online); }
+.bg-red { background-color: var(--red-alert); box-shadow: 0 0 10px var(--red-alert); }
+.bg-purple { background-color: var(--purple-node); box-shadow: 0 0 10px var(--purple-node); }
+.bg-blue { background-color: var(--cyan-primary); box-shadow: 0 0 10px var(--cyan-primary); }
+.bg-green { background-color: var(--green-online); box-shadow: 0 0 10px var(--green-online); }
 
 .log-content {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   flex: 1;
   min-width: 0;
 }
@@ -1141,8 +1152,8 @@
 .log-top-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.64rem;
+  gap: 8px;
+  font-size: 0.68rem;
 }
 
 .log-time { color: var(--text-muted); }
@@ -1151,23 +1162,26 @@
 
 .log-action-badge {
   margin-left: auto;
-  font-size: 0.58rem;
+  font-size: 0.6rem;
   font-weight: 800;
-  padding: 1px 5px;
-  border-radius: 3px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
-.action-dispatch { background: var(--red-alert); color: #ffffff; }
-.action-flagged { background: var(--purple-node); color: #ffffff; }
-.action-logged { background: var(--cyan-primary); color: #000000; }
-.action-active { background: var(--green-online); color: #000000; }
+.action-dispatch { background: var(--red-alert); color: #ffffff; box-shadow: 0 0 8px var(--red-glow); }
+.action-flagged { background: var(--purple-node); color: #ffffff; box-shadow: 0 0 8px var(--purple-glow); }
+.action-logged { background: var(--cyan-primary); color: #050811; box-shadow: 0 0 8px var(--cyan-glow); }
+.action-active { background: var(--green-online); color: #050811; box-shadow: 0 0 8px var(--green-glow); }
 
 .log-main-msg {
-  font-size: 0.74rem;
+  font-size: 0.8rem;
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  letter-spacing: -0.01em;
 }
 
 .log-meta {
@@ -1747,14 +1761,15 @@
 
 .hero-camera-viewport {
   width: 100%;
-  height: 520px;
-  min-height: 440px;
-  background: #040812;
+  height: clamp(520px, 62vh, 840px);
+  min-height: 480px;
+  background: #03060f;
   position: relative;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.9);
 }
 
 .hero-standby-overlay {
@@ -1928,5 +1943,43 @@
   }
 }
 
+/* ── In-Video HUD Toolbar & AI Toggles ────────────────────────── */
+.in-video-hud-toolbar {
+  position: absolute;
+  bottom: 50px;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 20;
+}
 
+.hud-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(8, 13, 22, 0.88);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #94a3b8;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
 
+.hud-toggle-btn:hover {
+  background: rgba(0, 242, 254, 0.15);
+  border-color: rgba(0, 242, 254, 0.5);
+  color: #00f2fe;
+}
+
+.hud-toggle-btn.active {
+  background: rgba(0, 242, 254, 0.22);
+  border-color: #00f2fe;
+  color: #00f2fe;
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.35);
+}

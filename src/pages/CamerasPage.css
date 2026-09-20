@@ -281,20 +281,15 @@
   color: var(--cyan-primary);
 }
 
-/* 3x2 Cameras Grid */
+/* Responsive Responsive Cameras Grid */
 .cameras-grid-container {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: clamp(16px, 1.6vw, 24px);
+  width: 100%;
 }
 
-@media (max-width: 1100px) {
-  .cameras-grid-container {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 768px) {
+@media (max-width: 640px) {
   .cameras-grid-container {
     grid-template-columns: 1fr;
   }
@@ -302,21 +297,31 @@
 
 .camera-manage-card {
   background: var(--bg-card);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  position: relative;
+}
+
+.camera-manage-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(0, 242, 254, 0.45);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5), 0 0 16px rgba(0, 242, 254, 0.12);
 }
 
 .camera-manage-card.card-type-warning {
-  border: 1px solid #4f46e5;
-  box-shadow: 0 0 20px rgba(79, 70, 229, 0.25);
+  border: 1px solid rgba(168, 85, 247, 0.5);
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.2);
 }
 
 .camera-manage-card.card-type-offline {
-  border-color: rgba(255, 59, 59, 0.3);
+  border-color: rgba(255, 59, 59, 0.35);
 }
 
 .camera-manage-card:hover {
@@ -975,4 +980,3 @@
   border-color: rgba(239, 68, 68, 0.6);
   box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
 }
-

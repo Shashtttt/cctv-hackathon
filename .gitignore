@@ -40,6 +40,9 @@ ibvap_surveillance.db
 models/*.pt
 models/*.onnx
 !models/.gitkeep
+weights/
+*.pt
+scratch_*.py
 snapshots/
 *.jpg
 *.jpeg

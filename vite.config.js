@@ -19,7 +19,21 @@ export default defineConfig({
     port: frontendPort,
     strictPort: false,
     watch: {
-      ignored: ['**/backend/**', '**/models/**', '**/snapshots/**', '**/*.db', '**/*.pt', '**/*.onnx'],
+      ignored: [
+        '**/backend/**',
+        '**/models/**',
+        '**/snapshots/**',
+        '**/snapshots - Copy/**',
+        '**/snapshots*/**',
+        '**/*.db*',
+        '**/*.pt',
+        '**/*.onnx',
+        '**/*.jpg',
+        '**/*.jpeg',
+        '**/*.png',
+        '**/*.mp4',
+        '**/*.avi',
+      ],
     },
     proxy: {
       '/api': {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Video, 
   Filter, 
@@ -24,7 +24,9 @@ import {
   Shield,
   Cpu,
   Smartphone,
-  MapPin
+  MapPin,
+  Sparkles,
+  Crosshair
 } from 'lucide-react';
 import { fetchCameras, fetchAlerts, acknowledgeAlert, getCameraStreamUrl } from '../services/apiService';
 import { useWebcamBridge } from '../services/useWebcamBridge';
@@ -41,138 +43,7 @@ const SKELETON_LIMBS = [
   [11, 13], [13, 15], [12, 14], [14, 16],   // Legs
 ];
 
-// 8 Sector High-Definition Surveillance Cameras Matrix
-const SECTOR_CAMERAS_CATALOG = [
-  {
-    id: 'cam-01',
-    code: 'C-01',
-    name: 'North Gate Perimeter',
-    location: 'Noida Sector 28',
-    gps_coords: '28.5708° N, 77.3271° E',
-    mode: 'OPT-4K AI',
-    isLocalDevice: true,
-    status: 'online',
-    fps: 30,
-    persons: 1,
-    vehicles: 0,
-    weapons: 0,
-    streamImg: '/assets/cam1.png',
-    tags: ['PERSON', 'FRS', 'LOCAL_DEVICE'],
-    description: 'Hardware Accelerated Real-Time Edge Analytics'
-  },
-  {
-    id: 'cam-02',
-    code: 'C-02',
-    name: 'Riverine Border Road',
-    location: 'Gurgaon Cyber City',
-    gps_coords: '28.4949° N, 77.0895° E',
-    mode: 'IR THERMAL',
-    status: 'online',
-    fps: 30,
-    persons: 1,
-    vehicles: 2,
-    weapons: 0,
-    streamImg: '/assets/cam2.png',
-    tags: ['VEHICLE', 'ANPR', 'THERMAL'],
-    description: 'Infrared Vehicle Tracking & ANPR Plate Recognition'
-  },
-  {
-    id: 'cam-03',
-    code: 'C-03',
-    name: 'South Fence Intrusion Zone',
-    location: 'Gurgaon Sector 29',
-    gps_coords: '28.4682° N, 77.0620° E',
-    mode: 'ANOMALY ALERT',
-    status: 'warning',
-    fps: 18,
-    persons: 2,
-    vehicles: 0,
-    weapons: 1,
-    streamImg: '/assets/cam3.png',
-    tags: ['PERSON', 'BREACH', 'INTRUSION'],
-    description: 'Perimeter Breach & Unauthorized Loitering Detection'
-  },
-  {
-    id: 'cam-04',
-    code: 'C-04',
-    name: 'BOP Entry Guard Post',
-    location: 'Noida Sector 132 Expressway',
-    gps_coords: '28.5085° N, 77.3774° E',
-    mode: 'NIGHT VISION',
-    status: 'online',
-    fps: 30,
-    persons: 1,
-    vehicles: 1,
-    weapons: 0,
-    streamImg: '/assets/cam4.png',
-    tags: ['PERSON', 'SENTRY', 'NIGHT_VISION'],
-    description: 'Sentry Facial Scan & Authorized Personnel Access'
-  },
-  {
-    id: 'cam-05',
-    code: 'C-05',
-    name: 'Watch Tower North Ridge',
-    location: 'Delhi NCR Outer Ring',
-    gps_coords: '28.6139° N, 77.2090° E',
-    mode: 'AERIAL RECON',
-    status: 'online',
-    fps: 30,
-    persons: 3,
-    vehicles: 5,
-    weapons: 0,
-    streamImg: '/assets/cam5.png',
-    tags: ['VEHICLE', 'TRAFFIC_FLOW', 'AERIAL'],
-    description: 'High-Elevation Optical Reconnaissance & Vehicle Flow'
-  },
-  {
-    id: 'cam-06',
-    code: 'C-06',
-    name: 'Forward Patrol Post East',
-    location: 'Faridabad Sector 15',
-    gps_coords: '28.4089° N, 77.3178° E',
-    mode: 'PERIMETER IR',
-    status: 'online',
-    fps: 25,
-    persons: 2,
-    vehicles: 1,
-    weapons: 0,
-    streamImg: '/assets/cam2.png',
-    tags: ['PERSON', 'PATROL'],
-    description: 'Eastern Sector Patrol Route & Perimeter Sentry'
-  },
-  {
-    id: 'cam-07',
-    code: 'C-07',
-    name: 'Riverine Checkpoint Charlie',
-    location: 'Yamuna Riverbank Sector',
-    gps_coords: '28.5355° N, 77.3910° E',
-    mode: 'RIVER PATROL',
-    status: 'online',
-    fps: 28,
-    persons: 1,
-    vehicles: 1,
-    weapons: 0,
-    streamImg: '/assets/cam3.png',
-    tags: ['PERSON', 'WATER_CROSSING'],
-    description: 'Riverine Border Waterway & Patrol Vessel Monitor'
-  },
-  {
-    id: 'cam-08',
-    code: 'C-08',
-    name: 'Tactical Escarpment Station',
-    location: 'Aravali Ridge Outpost',
-    gps_coords: '28.4200° N, 77.0500° E',
-    mode: 'LONG-RANGE PTZ',
-    status: 'online',
-    fps: 30,
-    persons: 0,
-    vehicles: 2,
-    weapons: 0,
-    streamImg: '/assets/cam4.png',
-    tags: ['VEHICLE', 'RADAR_LINK'],
-    description: 'Long-Range Electro-Optical PTZ Scanner'
-  }
-];
+
 
 const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
   const [viewMode, setViewMode] = useState('webcam'); // 'webcam' (Hero Device Cam) | 'matrix' (Dynamic Grid)
@@ -189,8 +60,13 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
     setStreamErrorFlags((prev) => ({ ...prev, [camId]: true }));
   };
 
-  const webcamVideoRef = useRef(null);
-  const overlayCanvasRef = useRef(null);
+  const heroVideoRef = useRef(null);
+  const heroCanvasRef = useRef(null);
+  const matrixVideoRef = useRef(null);
+  const matrixCanvasRef = useRef(null);
+
+  const [showAiOverlay, setShowAiOverlay] = useState(true);
+  const [showVirtualFence, setShowVirtualFence] = useState(true);
 
   // Dynamic Device & Physical Camera AI bridge
   const {
@@ -213,303 +89,410 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
     resolvedLocation,
     setLocationOverride,
     popularLocations,
-  } = useWebcamBridge('cam-01', 25, webcamVideoRef);
+  } = useWebcamBridge('cam-01', 25, heroVideoRef);
 
-  // Dynamic Camera Count & Grid Calculation
-  // Auto detects: if device reports 2 cameras, default to 2; otherwise default to 8
-  const autoDetectedCount = (availableCameras && availableCameras.length === 2) ? 2 : 8;
-  const effectiveGridCount = selectedGridCount === 'auto' ? autoDetectedCount : Number(selectedGridCount);
-
-  // Merge backend cameras with default catalog
-  const mergedCameras = SECTOR_CAMERAS_CATALOG.map((catCam, idx) => {
-    const backendCam = cameras[idx];
-    if (backendCam) {
-      return {
-        ...catCam,
-        name: backendCam.name || catCam.name,
-        location: backendCam.location || catCam.location,
-        gps_coords: backendCam.gps_coords || catCam.gps_coords,
-        mode: backendCam.mode || catCam.mode,
-      };
+  // Load real registered cameras dynamically from backend
+  const loadBackendCameras = useCallback(async () => {
+    try {
+      const data = await fetchCameras(true);
+      if (Array.isArray(data)) {
+        // Exclude synthetic placeholder feeds and non-running cameras
+        const real = data.filter(c => 
+          c.id !== 'cam-01' && 
+          (!c.rtsp_url || !c.rtsp_url.startsWith('synthetic://')) &&
+          (c.is_running || c.is_active || c.status === 'online')
+        );
+        setCameras(real);
+      }
+    } catch (e) {
+      console.debug('Failed to fetch backend cameras:', e);
     }
-    return catCam;
-  });
+  }, []);
 
-  const displayedCameras = mergedCameras.slice(0, effectiveGridCount);
+  useEffect(() => {
+    loadBackendCameras();
+    const interval = setInterval(loadBackendCameras, 4000);
+    return () => clearInterval(interval);
+  }, [loadBackendCameras]);
+
+  // Primary Device Hardware Camera
+  const primaryCam = {
+    id: 'cam-01',
+    code: 'C-01',
+    name: activeCameraLabel || 'Primary Optical Sensor',
+    location: resolvedLocation || 'Sector 04 Perimeter',
+    gps_coords: geoPosition?.formatted || '28.4949° N, 77.0895° E',
+    mode: 'ACTIVE SENSOR',
+    status: isWebcamActive ? 'online' : 'offline',
+    fps: webcamTelemetry?.fps || 25,
+    persons: liveDetections?.filter(d => d.class_name === 'person').length || 0,
+    vehicles: liveDetections?.filter(d => ['car', 'truck', 'bus', 'motorcycle'].includes(d.class_name)).length || 0,
+    weapons: liveDetections?.filter(d => d.is_weapon).length || 0,
+    streamImg: '/assets/cam1.png',
+    tags: ['PRIMARY', 'AI_LIVE'],
+    isDeviceHardware: true,
+  };
+
+  // Additional Hardware Optical Sensors (if multi-wbcam or mobile front/rear)
+  const secondaryHardwareCams = (availableCameras || [])
+    .filter((_, idx) => idx > 0)
+    .map((d, idx) => ({
+      id: d.id || `dev-cam-${idx + 2}`,
+      code: d.isBack ? 'DEV-REAR-01' : `DEV-OPTICAL-0${idx + 2}`,
+      name: d.name || d.label || `Hardware Lens ${idx + 2}`,
+      location: resolvedLocation || 'Local Optical Sensor',
+      gps_coords: geoPosition?.formatted || 'Active Device Sensor',
+      mode: 'HARDWARE SENSOR',
+      status: 'online',
+      fps: 40,
+      persons: 0,
+      vehicles: 0,
+      weapons: 0,
+      streamImg: '/assets/cam1.png',
+      tags: ['HARDWARE', 'OPTICAL'],
+      isDeviceHardware: true,
+    }));
+
+  // External real IP & Mobile cameras from backend (strictly running / streaming)
+  const externalIpCameras = cameras
+    .filter(c => c.id !== 'cam-01' && (!c.rtsp_url || !c.rtsp_url.startsWith('synthetic://')) && (c.is_running || c.is_active || c.status === 'online' || c.status === 'connecting'))
+    .map((c, idx) => {
+      const isOnline = c.status === 'online' || c.is_active;
+      const isConnecting = c.status === 'connecting';
+      const isMobile = Boolean(c.rtsp_url && c.rtsp_url.startsWith('mobile://'));
+      const currentStatus = isOnline ? 'online' : (isConnecting ? 'connecting' : (isMobile ? 'standby' : 'offline'));
+
+      return {
+        id: c.id,
+        code: c.code || `IP-0${idx + 1}`,
+        name: c.name || `IP Camera ${idx + 1}`,
+        location: c.location || 'Network Perimeter',
+        gps_coords: c.gps_coords || '28.4949° N, 77.0895° E',
+        mode: isMobile ? 'MOBILE PAIRED' : (c.mode || 'IP SURVEILLANCE'),
+        status: currentStatus,
+        fps: c.fps || 25,
+        persons: 0,
+        vehicles: 0,
+        weapons: 0,
+        streamImg: '/assets/cam2.png',
+        streamUrl: c.stream_url || getCameraStreamUrl(c.id),
+        tags: [isMobile ? 'MOBILE' : 'IP_FEED', 'AI_STREAM'],
+        isIpCamera: true,
+        isMobile,
+      };
+    });
+
+  const allDynamicCameras = [primaryCam, ...secondaryHardwareCams, ...externalIpCameras];
+
+  // Dynamic Camera Count & Grid Calculation: strictly matches real connected cameras!
+  const autoDetectedCount = Math.max(1, allDynamicCameras.length);
+  const effectiveGridCount = selectedGridCount === 'auto' ? autoDetectedCount : Number(selectedGridCount);
+  const displayedCameras = allDynamicCameras.slice(0, effectiveGridCount);
+
 
   // Auto-start detected device camera on mount
   useEffect(() => {
     startWebcam().catch(() => {});
   }, []);
 
-  // Attach local media stream directly to video element for 60 FPS zero-lag playback
+  // Attach local media stream directly to both video elements for 60 FPS zero-lag playback
   useEffect(() => {
-    if (webcamVideoRef.current && localStream) {
-      webcamVideoRef.current.srcObject = localStream;
-      webcamVideoRef.current.play().catch((err) => console.debug('Video play error:', err));
+    if (heroVideoRef.current && localStream) {
+      if (heroVideoRef.current.srcObject !== localStream) {
+        heroVideoRef.current.srcObject = localStream;
+      }
+      heroVideoRef.current.play().catch((err) => console.debug('Hero video play error:', err));
+    }
+    if (matrixVideoRef.current && localStream) {
+      if (matrixVideoRef.current.srcObject !== localStream) {
+        matrixVideoRef.current.srcObject = localStream;
+      }
+      matrixVideoRef.current.play().catch((err) => console.debug('Matrix video play error:', err));
     }
   }, [localStream, isWebcamActive, viewMode]);
 
   // High-Speed 60 FPS Hardware-Accelerated Canvas Overlay Loop
   useEffect(() => {
-    if (!isWebcamActive || !overlayCanvasRef.current || !webcamVideoRef.current) return;
+    if (!isWebcamActive) return;
 
     let animId;
-    const canvas = overlayCanvasRef.current;
-    const video = webcamVideoRef.current;
 
     const renderOverlay = () => {
-      if (canvas && video && video.videoWidth > 0) {
-        const cw = canvas.clientWidth || video.videoWidth || 640;
-        const ch = canvas.clientHeight || video.videoHeight || 360;
-        if (canvas.width !== cw || canvas.height !== ch) {
-          canvas.width = cw;
-          canvas.height = ch;
+      const targetCanvas = viewMode === 'webcam' ? heroCanvasRef.current : matrixCanvasRef.current;
+      const targetVideo = viewMode === 'webcam' ? heroVideoRef.current : matrixVideoRef.current;
+
+      if (targetCanvas && targetVideo && targetVideo.videoWidth > 0) {
+        const cw = targetCanvas.clientWidth || targetVideo.videoWidth || 640;
+        const ch = targetCanvas.clientHeight || targetVideo.videoHeight || 360;
+        if (targetCanvas.width !== cw || targetCanvas.height !== ch) {
+          targetCanvas.width = cw;
+          targetCanvas.height = ch;
         }
 
-        const ctx = canvas.getContext('2d');
+        const ctx = targetCanvas.getContext('2d');
         ctx.clearRect(0, 0, cw, ch);
 
-        const dets = liveDetections || [];
-
-        // 1. Draw Tether Lines between persons and held items
-        dets.forEach((det) => {
-          if (det.is_holding && det.held_item) {
-            const heldObj = dets.find((o) => o.held_by_target_id === det.target_id && o.bbox);
-            if (heldObj && det.bbox) {
-              const px1 = det.bbox.x * cw;
-              const py1 = det.bbox.y * ch;
-              const pw = det.bbox.w * cw;
-              const ph = det.bbox.h * ch;
-
-              const ox1 = heldObj.bbox.x * cw;
-              const oy1 = heldObj.bbox.y * ch;
-              const ow = heldObj.bbox.w * cw;
-              const oh = heldObj.bbox.h * ch;
-
-              const objCenter = { x: ox1 + ow / 2, y: oy1 + oh / 2 };
-              let startPt = { x: px1 + pw / 2, y: py1 + ph / 2 };
-
-              if (det.keypoints && det.keypoints.length >= 11) {
-                const lWrist = det.keypoints[9];
-                const rWrist = det.keypoints[10];
-                if (det.held_by_hand === 'LEFT_HAND' && lWrist && lWrist.conf > 0.2) {
-                  startPt = { x: lWrist.x * cw, y: lWrist.y * ch };
-                } else if (det.held_by_hand === 'RIGHT_HAND' && rWrist && rWrist.conf > 0.2) {
-                  startPt = { x: rWrist.x * cw, y: rWrist.y * ch };
-                } else if (rWrist && rWrist.conf > 0.2) {
-                  startPt = { x: rWrist.x * cw, y: rWrist.y * ch };
-                } else if (lWrist && lWrist.conf > 0.2) {
-                  startPt = { x: lWrist.x * cw, y: lWrist.y * ch };
-                }
-              }
-
-              const tetherColor = det.held_item_type === 'WEAPON' ? '#FF0033' : '#10B981';
-              ctx.save();
-              ctx.strokeStyle = tetherColor;
-              ctx.lineWidth = det.held_item_type === 'WEAPON' ? 2.5 : 1.5;
-              ctx.setLineDash([4, 3]);
-              ctx.shadowColor = tetherColor;
-              ctx.shadowBlur = 8;
-              ctx.beginPath();
-              ctx.moveTo(startPt.x, startPt.y);
-              ctx.lineTo(objCenter.x, objCenter.y);
-              ctx.stroke();
-
-              ctx.setLineDash([]);
-              ctx.fillStyle = tetherColor;
-              ctx.beginPath();
-              ctx.arc(objCenter.x, objCenter.y, 4, 0, 2 * Math.PI);
-              ctx.fill();
-              ctx.restore();
-            }
-          }
-        });
-
-        // 2. Draw each detected target
-        dets.forEach((det) => {
-          if (!det.bbox) return;
-
-          const bx = det.bbox.x * cw;
-          const by = det.bbox.y * ch;
-          const bw = det.bbox.w * cw;
-          const bh = det.bbox.h * ch;
-
-          const cName = (det.class_name || '').toLowerCase();
-          const heldName = (det.held_item || '').toLowerCase();
-          const unusualName = (det.unusual_item || '').toLowerCase();
-
-          // Strict weapon detection check (knife, pistol, gun, weapon, firearm, rifle, etc.)
-          const isWeaponClass = ['knife', 'gun', 'pistol', 'rifle', 'shotgun', 'firearm', 'weapon', 'dagger', 'blade', 'machete', 'sword'].some(
-            (w) => cName.includes(w) || heldName.includes(w) || unusualName.includes(w)
-          );
-          const isArmed = det.is_holding && det.held_item_type === 'WEAPON';
-          const isWeapon = Boolean(det.is_weapon || isWeaponClass || isArmed);
-
-          // Vehicle detection check (car, truck, bus, motorcycle, bicycle, van, etc.)
-          const isVehicle = [1, 2, 3, 5, 7].includes(det.class_id) || ['car', 'truck', 'bus', 'motorcycle', 'bicycle', 'vehicle', 'van', 'suv', 'auto', 'pickup'].some((v) => cName.includes(v));
-
-          // Person detection check
-          const isPerson = det.class_id === 0 || cName === 'person' || Boolean(det.pose_label) || Boolean(det.keypoints && det.keypoints.length > 0);
-
-          // Dedicated Color Palette: Red for Weapon, Cyan for Vehicle, Emerald for Person
-          const boxColor = isWeapon ? '#FF0033' : isVehicle ? '#00F2FE' : '#10B981';
-
-          // 1. Draw Bounding Box with Cyber Glow
-          ctx.save();
-          ctx.strokeStyle = boxColor;
-          ctx.lineWidth = isWeapon ? 3.5 : 2;
-          ctx.shadowColor = boxColor;
-          ctx.shadowBlur = isWeapon ? 18 : isVehicle ? 10 : 8;
-          ctx.strokeRect(bx, by, bw, bh);
-
-          // 2. Corner Bracket Reticles
-          const cornerSize = Math.min(18, Math.max(6, bw / 4));
-          ctx.lineWidth = isWeapon ? 4 : 2.5;
-          ctx.beginPath();
-          ctx.moveTo(bx, by + cornerSize); ctx.lineTo(bx, by); ctx.lineTo(bx + cornerSize, by);
-          ctx.moveTo(bx + bw - cornerSize, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + cornerSize);
-          ctx.moveTo(bx, by + bh - cornerSize); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + cornerSize, by + bh);
-          ctx.moveTo(bx + bw - cornerSize, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - cornerSize);
-          ctx.stroke();
-
-          // Crosshair ONLY on weapons or armed targets
-          if (isWeapon) {
-            const cx = bx + bw / 2;
-            const cy = by + bh / 2;
-            ctx.lineWidth = 1;
-            ctx.setLineDash([2, 2]);
-            ctx.beginPath();
-            ctx.moveTo(cx - 12, cy); ctx.lineTo(cx + 12, cy);
-            ctx.moveTo(cx, cy - 12); ctx.lineTo(cx + 12, cy);
-            ctx.stroke();
-            ctx.setLineDash([]);
-          }
-          ctx.restore();
-
-          // 3. Draw 17-Keypoint Pose Skeleton for Humans
-          if (det.keypoints && det.keypoints.length > 0) {
-            const kps = det.keypoints;
+        if (showAiOverlay) {
+          // 1. Draw Virtual Perimeter Tripwire (Matching Expanded Inspection Modal)
+          if (showVirtualFence) {
             ctx.save();
-            ctx.lineWidth = 2.5;
-
-            // Draw limbs
-            SKELETON_LIMBS.forEach(([i1, i2]) => {
-              if (i1 < kps.length && i2 < kps.length) {
-                const kp1 = kps[i1];
-                const kp2 = kps[i2];
-                if (kp1.conf > 0.35 && kp2.conf > 0.35) {
-                  ctx.strokeStyle = isWeapon ? '#FF0033' : '#10B981';
-                  ctx.beginPath();
-                  ctx.moveTo(kp1.x * cw, kp1.y * ch);
-                  ctx.lineTo(kp2.x * cw, kp2.y * ch);
-                  ctx.stroke();
-                }
-              }
-            });
-
-            // Draw joints
-            kps.forEach((kp) => {
-              if (kp.conf > 0.35) {
-                ctx.fillStyle = isWeapon ? '#FF0033' : '#10B981';
-                ctx.beginPath();
-                ctx.arc(kp.x * cw, kp.y * ch, 3.5, 0, 2 * Math.PI);
-                ctx.fill();
-              }
-            });
+            ctx.strokeStyle = 'rgba(0, 242, 254, 0.45)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([8, 6]);
+            ctx.strokeRect(cw * 0.08, ch * 0.12, cw * 0.84, ch * 0.78);
+            ctx.fillStyle = 'rgba(0, 242, 254, 0.85)';
+            ctx.font = 'bold 11px JetBrains Mono, monospace';
+            ctx.fillText('⚡ VIRTUAL PERIMETER TRIPWIRE ACTIVE', cw * 0.08 + 8, ch * 0.12 + 16);
             ctx.restore();
           }
 
-          // 4. Tactical Floating Label Tag
-          const confStr = `${((det.confidence || 0.85) * 100).toFixed(0)}%`;
-          let labelText = '';
-          if (isArmed) {
-            labelText = `🚨 ARMED SUBJECT: HOLDING ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
-          } else if (isWeapon) {
-            labelText = `🚨 WEAPON: ${(det.unusual_item || det.class_name).toUpperCase()} [${confStr}]`;
-          } else if (isVehicle) {
-            const vehType = cName.includes('truck') ? 'TRUCK' : cName.includes('bus') ? 'BUS' : cName.includes('motorcycle') ? 'MOTORCYCLE' : cName.includes('bicycle') ? 'BICYCLE' : 'CAR';
-            labelText = `🚗 VEHICLE: ${vehType} [${confStr}]`;
-          } else if (det.is_holding) {
-            const isHoldPhone = (det.held_item || '').toLowerCase().includes('phone') || (det.held_item || '').toLowerCase().includes('cell');
-            labelText = isHoldPhone
-              ? `📱 HOLDING PHONE (${(det.held_by_hand || 'HAND').replace('_', ' ')})`
-              : `📦 HOLDING: ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
-          } else if (cName.includes('phone') || cName.includes('cell')) {
-            labelText = `📱 CELL PHONE [${confStr}] ${det.is_held ? '• IN HAND' : '• DETECTED'}`;
-          } else if (isPerson) {
-            labelText = `👤 PERSON [${confStr}] • ${det.pose_label || 'NORMAL'}${det.loiter_seconds > 2 ? ` • ${Math.round(det.loiter_seconds)}s` : ''}`;
-          } else {
-            const icon = cName.includes('bottle') ? '🍾 ' : cName.includes('laptop') ? '💻 ' : cName.includes('cup') ? '☕ ' : cName.includes('book') ? '📖 ' : '🎯 ';
-            labelText = `${icon}${det.class_name.toUpperCase()} [${confStr}] ${det.is_held ? '• HELD' : ''}`;
-          }
-
-          ctx.font = 'bold 11px JetBrains Mono, monospace';
-          const textWidth = ctx.measureText(labelText).width;
-          const tagY = Math.max(by - 20, 2);
-
-          // Color coded background per classification
-          ctx.fillStyle = isWeapon 
-            ? 'rgba(45, 5, 15, 0.94)' 
-            : isVehicle 
-              ? 'rgba(4, 25, 42, 0.94)' 
-              : 'rgba(5, 30, 20, 0.92)';
-          ctx.fillRect(bx, tagY, textWidth + 12, 18);
-          ctx.strokeStyle = boxColor;
+          // 2. Draw Crosshair Center Sight
+          ctx.save();
+          ctx.strokeStyle = 'rgba(0, 242, 254, 0.25)';
           ctx.lineWidth = 1;
-          ctx.strokeRect(bx, tagY, textWidth + 12, 18);
+          const cx = cw / 2;
+          const cy = ch / 2;
+          ctx.beginPath();
+          ctx.moveTo(cx - 24, cy); ctx.lineTo(cx + 24, cy);
+          ctx.moveTo(cx, cy - 24); ctx.lineTo(cx, cy + 24);
+          ctx.arc(cx, cy, 36, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
 
-          ctx.fillStyle = boxColor;
-          ctx.fillText(labelText, bx + 6, tagY + 13);
-        });
+          const dets = liveDetections || [];
 
-        // 5. HUD Top Status Overlay
-        const armedCnt = dets.filter((d) => d.is_holding && d.held_item_type === 'WEAPON').length;
-        const weaponCnt = dets.filter((d) => {
-          const name = (d.class_name || '').toLowerCase();
-          const unusual = (d.unusual_item || '').toLowerCase();
-          const held = (d.held_item || '').toLowerCase();
-          return d.is_weapon || ['knife', 'gun', 'pistol', 'rifle', 'shotgun', 'firearm', 'weapon', 'dagger', 'blade', 'sword'].some(
-            (w) => name.includes(w) || unusual.includes(w) || held.includes(w)
+          // 3. Draw Tether Lines between persons and held items
+          dets.forEach((det) => {
+            if (det.is_holding && det.held_item) {
+              const heldObj = dets.find((o) => o.held_by_target_id === det.target_id && o.bbox);
+              if (heldObj && det.bbox) {
+                const px1 = det.bbox.x * cw;
+                const py1 = det.bbox.y * ch;
+                const pw = det.bbox.w * cw;
+                const ph = det.bbox.h * ch;
+
+                const ox1 = heldObj.bbox.x * cw;
+                const oy1 = heldObj.bbox.y * ch;
+                const ow = heldObj.bbox.w * cw;
+                const oh = heldObj.bbox.h * ch;
+
+                const objCenter = { x: ox1 + ow / 2, y: oy1 + oh / 2 };
+                let startPt = { x: px1 + pw / 2, y: py1 + ph / 2 };
+
+                if (det.keypoints && det.keypoints.length >= 11) {
+                  const lWrist = det.keypoints[9];
+                  const rWrist = det.keypoints[10];
+                  if (det.held_by_hand === 'LEFT_HAND' && lWrist && lWrist.conf > 0.2) {
+                    startPt = { x: lWrist.x * cw, y: lWrist.y * ch };
+                  } else if (det.held_by_hand === 'RIGHT_HAND' && rWrist && rWrist.conf > 0.2) {
+                    startPt = { x: rWrist.x * cw, y: rWrist.y * ch };
+                  } else if (rWrist && rWrist.conf > 0.2) {
+                    startPt = { x: rWrist.x * cw, y: rWrist.y * ch };
+                  } else if (lWrist && lWrist.conf > 0.2) {
+                    startPt = { x: lWrist.x * cw, y: lWrist.y * ch };
+                  }
+                }
+
+                const tetherColor = det.held_item_type === 'WEAPON' ? '#FF0033' : '#10B981';
+                ctx.save();
+                ctx.strokeStyle = tetherColor;
+                ctx.lineWidth = det.held_item_type === 'WEAPON' ? 2.5 : 1.5;
+                ctx.setLineDash([4, 3]);
+                ctx.shadowColor = tetherColor;
+                ctx.shadowBlur = 8;
+                ctx.beginPath();
+                ctx.moveTo(startPt.x, startPt.y);
+                ctx.lineTo(objCenter.x, objCenter.y);
+                ctx.stroke();
+
+                ctx.setLineDash([]);
+                ctx.fillStyle = tetherColor;
+                ctx.beginPath();
+                ctx.arc(objCenter.x, objCenter.y, 4, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.restore();
+              }
+            }
+          });
+
+          // 4. Draw each detected target (with corner brackets, labels matching Image 2, and pose skeleton)
+          dets.forEach((det) => {
+            if (!det.bbox) return;
+
+            const rawConf = det.bbox?.confidence ?? det.confidence;
+            // Filter out low-confidence noisy detections
+            if (rawConf !== undefined && rawConf !== null && rawConf < 0.42) return;
+
+            const bx = det.bbox.x * cw;
+            const by = det.bbox.y * ch;
+            const bw = det.bbox.w * cw;
+            const bh = det.bbox.h * ch;
+            const cName = (det.class_name || '').toLowerCase();
+            const heldItem = (det.held_item || '').toLowerCase();
+            const unusualName = (det.unusual_item || '').toLowerCase();
+            const isCasual = Boolean(det.is_casual_object) || det.held_item_type === 'CASUAL_OBJECT';
+            const isWatch = cName === 'wristwatch' || heldItem === 'wristwatch' || heldItem === 'watch' || unusualName === 'wristwatch';
+            const isClock = !isWatch && (cName.includes('clock') || heldItem.includes('clock'));
+            const isUnknown = cName.includes('unknown') || heldItem.includes('unknown') || unusualName.includes('unknown');
+            const isPhone = !isWatch && !isClock && (cName.includes('phone') || cName.includes('cell') || heldItem.includes('phone'));
+
+            const isWeaponItem = Boolean(det.is_weapon) && !isCasual && !isWatch && !isClock && !isUnknown;
+            const isArmed = det.is_holding && (det.held_item_type === 'WEAPON' || isWeaponItem) && !isCasual && !isWatch && !isClock && !isUnknown;
+            const isHoldingCasual = det.is_holding && !isArmed;
+            const isUnattendedBag = ['backpack', 'suitcase', 'handbag'].includes(cName) && !det.is_held;
+            const isVehicle = [1, 2, 3, 5, 7].includes(det.class_id) || ['car', 'truck', 'bus', 'motorcycle', 'bicycle', 'vehicle', 'van', 'suv', 'auto', 'pickup'].some((v) => cName.includes(v));
+            const isPerson = det.class_id === 0 || cName === 'person' || Boolean(det.pose_label) || Boolean(det.keypoints && det.keypoints.length > 0);
+            const isWeapon = isArmed || isWeaponItem;
+
+            // Strict Color Scheme: Red for Weapon/Armed, Amber for watch/unknown/casual, Cyan for Vehicle, Emerald for Person/Normal
+            const boxColor = isWeapon ? '#FF0033' : isVehicle ? '#00F2FE' : (isWatch || isUnknown) ? '#F59E0B' : '#10B981';
+
+            // 1. Draw Bounding Box with Cyber Glow
+            ctx.save();
+            ctx.strokeStyle = boxColor;
+            ctx.lineWidth = isWeapon ? 3.5 : 2;
+            ctx.shadowColor = boxColor;
+            ctx.shadowBlur = isWeapon ? 18 : isVehicle ? 10 : 8;
+            ctx.strokeRect(bx, by, bw, bh);
+
+            // 2. High-Tech Corner Reticle Brackets
+            const cornerLen = Math.min(18, bw / 3);
+            ctx.lineWidth = isWeapon ? 4 : 2.5;
+            ctx.beginPath();
+            ctx.moveTo(bx, by + cornerLen); ctx.lineTo(bx, by); ctx.lineTo(bx + cornerLen, by);
+            ctx.moveTo(bx + bw - cornerLen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + cornerLen);
+            ctx.moveTo(bx, by + bh - cornerLen); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + cornerLen, by + bh);
+            ctx.moveTo(bx + bw - cornerLen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + cornerLen);
+            ctx.stroke();
+
+            // 3. Pose Keypoint Skeleton Overlay (When Present)
+            if (det.keypoints && det.keypoints.length > 0) {
+              const kps = det.keypoints;
+              ctx.save();
+              ctx.fillStyle = '#10B981';
+              kps.forEach((kp) => {
+                if (kp.conf >= 0.48) {
+                  ctx.fillStyle = isWeapon ? '#FF0033' : '#10B981';
+                  ctx.beginPath();
+                  ctx.arc(kp.x * cw, kp.y * ch, 3.5, 0, 2 * Math.PI);
+                  ctx.fill();
+                }
+              });
+              ctx.restore();
+            }
+
+            // 4. Tactical Floating Label Tag
+            ctx.save();
+            const confStr = rawConf != null ? `${(rawConf * 100).toFixed(0)}%` : '';
+            let labelText = '';
+            if (isArmed) {
+              labelText = `🚨 ARMED SUBJECT: HOLDING ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+            } else if (isHoldingCasual) {
+              if (isWatch) {
+                labelText = `⌚ HOLDING WATCH (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+              } else if (isUnknown) {
+                labelText = `🔍 HOLDING UNKNOWN OBJECT (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+              } else if (isPhone) {
+                labelText = `📱 HOLDING PHONE (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+              } else {
+                labelText = `📦 HOLDING: ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+              }
+            } else if (isWeapon) {
+              labelText = `🚨 WEAPON: ${(det.unusual_item || det.class_name).toUpperCase()}${confStr ? ` [${confStr}]` : ''}`;
+            } else if (isWatch) {
+              labelText = `⌚ WRISTWATCH${confStr ? ` [${confStr}]` : ''} ${det.is_held ? '• ON WRIST' : ''}`;
+            } else if (isClock) {
+              labelText = `⏰ CLOCK${confStr ? ` [${confStr}]` : ''}`;
+            } else if (isUnknown) {
+              labelText = `🔍 UNKNOWN OBJECT${confStr ? ` [${confStr}]` : ''} ${det.is_held ? '• HELD' : ''}`;
+            } else if (isVehicle) {
+              const vehType = cName.includes('truck') ? 'TRUCK' : cName.includes('bus') ? 'BUS' : cName.includes('motorcycle') ? 'MOTORCYCLE' : cName.includes('bicycle') ? 'BICYCLE' : 'CAR';
+              labelText = `🚗 VEHICLE: ${vehType}${confStr ? ` [${confStr}]` : ''}`;
+            } else if (isPhone) {
+              labelText = `📱 CELL PHONE${confStr ? ` [${confStr}]` : ''} ${det.is_held ? '• IN HAND' : '• DETECTED'}`;
+            } else if (isUnattendedBag) {
+              labelText = `⚠️ UNATTENDED BAGGAGE: ${det.class_name.toUpperCase()}${confStr ? ` [${confStr}]` : ''}`;
+            } else if (det.is_unusual && det.class_id !== 0) {
+              labelText = `⚠️ MONITORED: ${(det.unusual_item || det.class_name).toUpperCase()}${confStr ? ` [${confStr}]` : ''}`;
+            } else if (isPerson) {
+              labelText = `👤 ${det.target_id || 'PERSON'} [${det.pose_label || 'ACTIVE'}]`;
+            } else {
+              const icon = cName.includes('bottle') ? '🍾 ' : cName.includes('laptop') ? '💻 ' : cName.includes('cup') ? '☕ ' : cName.includes('book') ? '📖 ' : '🎯 ';
+              labelText = `${icon}${det.class_name.toUpperCase()}${confStr ? ` [${confStr}]` : ''} ${det.is_held ? '• HELD' : ''}`;
+            }
+
+            ctx.font = 'bold 12px JetBrains Mono, monospace';
+            const textWidth = ctx.measureText(labelText).width;
+            const tagY = Math.max(by - 24, 4);
+
+            ctx.fillStyle = isWeapon 
+              ? 'rgba(255, 0, 51, 0.94)' 
+              : isVehicle 
+                ? 'rgba(4, 25, 42, 0.94)' 
+                : (isWatch || isUnknown)
+                  ? 'rgba(40, 25, 5, 0.92)'
+                  : 'rgba(5, 30, 20, 0.92)';
+            ctx.fillRect(bx, tagY, textWidth + 14, 20);
+            ctx.strokeStyle = boxColor;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(bx, tagY, textWidth + 14, 20);
+
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillText(labelText, bx + 7, tagY + 14);
+            ctx.restore();
+          });
+
+          // 5. HUD Top Status Overlay
+          const armedCnt = dets.filter((d) => d.is_holding && d.held_item_type === 'WEAPON' && !d.is_casual_object).length;
+          const weaponCnt = dets.filter((d) => {
+            if (d.is_casual_object || d.held_item_type === 'CASUAL_OBJECT') return false;
+            const name = (d.class_name || '').toLowerCase();
+            const unusual = (d.unusual_item || '').toLowerCase();
+            const held = (d.held_item || '').toLowerCase();
+            if (name.includes('watch') || held.includes('watch') || unusual.includes('watch') ||
+                name.includes('unknown') || held.includes('unknown') || unusual.includes('unknown')) {
+              return false;
+            }
+            return Boolean(d.is_weapon);
+          }).length;
+          const phoneCnt = dets.filter((d) => (d.class_name || '').toLowerCase().includes('phone') || (d.held_item || '').toLowerCase().includes('phone')).length;
+          const pplCnt = dets.filter((d) => d.class_id === 0 || (d.class_name || '').toLowerCase() === 'person' || d.pose_label).length;
+          const vehCnt = dets.filter((d) => [1, 2, 3, 5, 7].includes(d.class_id) || ['car', 'truck', 'bus', 'motorcycle', 'bicycle', 'vehicle', 'van', 'suv', 'auto', 'pickup'].some((v) => (d.class_name || '').toLowerCase().includes(v))).length;
+
+          const hasWeaponThreat = armedCnt > 0 || weaponCnt > 0;
+          const hudW = Math.min(560, cw - 20);
+          ctx.fillStyle = 'rgba(10, 16, 28, 0.90)';
+          ctx.fillRect(10, 10, hudW, 24);
+          ctx.strokeStyle = hasWeaponThreat ? 'rgba(255, 0, 51, 0.85)' : 'rgba(16, 185, 129, 0.6)';
+          ctx.strokeRect(10, 10, hudW, 24);
+          ctx.font = 'bold 10px JetBrains Mono, monospace';
+          ctx.fillStyle = hasWeaponThreat ? '#FF0033' : '#10B981';
+          ctx.fillText(
+            `C-01 AI • ${webcamTelemetry.actualFps || 30} FPS • ${webcamTelemetry.lastLatencyMs || 10}ms • 👤 PERSONS:${pplCnt} • 🚗 VEHICLES:${vehCnt} • 🚨 WEAPONS:${weaponCnt} • 📱 PHONES:${phoneCnt}`,
+            16,
+            26
           );
-        }).length;
-        const phoneCnt = dets.filter((d) => (d.class_name || '').toLowerCase().includes('phone') || (d.held_item || '').toLowerCase().includes('phone')).length;
-        const pplCnt = dets.filter((d) => d.class_id === 0 || (d.class_name || '').toLowerCase() === 'person' || d.pose_label).length;
-        const vehCnt = dets.filter((d) => [1, 2, 3, 5, 7].includes(d.class_id) || ['car', 'truck', 'bus', 'motorcycle', 'bicycle', 'vehicle', 'van', 'suv', 'auto', 'pickup'].some((v) => (d.class_name || '').toLowerCase().includes(v))).length;
 
-        const hasWeaponThreat = armedCnt > 0 || weaponCnt > 0;
-        const hudW = 560;
-        ctx.fillStyle = 'rgba(10, 16, 28, 0.90)';
-        ctx.fillRect(10, 10, hudW, 24);
-        ctx.strokeStyle = hasWeaponThreat ? 'rgba(255, 0, 51, 0.85)' : 'rgba(16, 185, 129, 0.6)';
-        ctx.strokeRect(10, 10, hudW, 24);
-        ctx.font = 'bold 10px JetBrains Mono, monospace';
-        ctx.fillStyle = hasWeaponThreat ? '#FF0033' : '#10B981';
-        ctx.fillText(
-          `C-01 AI • ${webcamTelemetry.actualFps || 30} FPS • ${webcamTelemetry.lastLatencyMs || 10}ms • 👤 PERSONS:${pplCnt} • 🚗 VEHICLES:${vehCnt} • 🚨 WEAPONS:${weaponCnt} • 📱 PHONES:${phoneCnt}`,
-          16,
-          26
-        );
-
-        // 6. Bottom GPS Location HUD
-        const currentGps = (isWebcamActive && geoPosition?.formatted)
-          ? `LIVE GPS: ${geoPosition.formatted} (±${geoPosition.accuracy}m)`
-          : (cameras[0]?.gps_coords ? `SECTOR GPS: ${cameras[0].gps_coords}` : 'SECTOR GPS: 34.1524° N, 74.8211° E');
-        ctx.fillStyle = 'rgba(10, 16, 28, 0.88)';
-        ctx.fillRect(10, canvas.height - 28, 380, 20);
-        ctx.strokeStyle = '#00f2fe';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(10, canvas.height - 28, 380, 20);
-        ctx.font = 'bold 9.5px JetBrains Mono, monospace';
-        ctx.fillStyle = '#00f2fe';
-        ctx.fillText(`📍 ${currentGps} • REC ACTIVE`, 16, canvas.height - 14);
+          // 6. Bottom GPS Location HUD
+          const currentGps = (isWebcamActive && geoPosition?.formatted)
+            ? `LIVE GPS: ${geoPosition.formatted} (±${geoPosition.accuracy}m)`
+            : (cameras[0]?.gps_coords ? `SECTOR GPS: ${cameras[0].gps_coords}` : 'SECTOR GPS: 34.1524° N, 74.8211° E');
+          ctx.fillStyle = 'rgba(10, 16, 28, 0.88)';
+          ctx.fillRect(10, targetCanvas.height - 28, Math.min(380, cw - 20), 20);
+          ctx.strokeStyle = '#00f2fe';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(10, targetCanvas.height - 28, Math.min(380, cw - 20), 20);
+          ctx.font = 'bold 9.5px JetBrains Mono, monospace';
+          ctx.fillStyle = '#00f2fe';
+          ctx.fillText(`📍 ${currentGps} • REC ACTIVE`, 16, targetCanvas.height - 14);
+        }
       }
       animId = requestAnimationFrame(renderOverlay);
     };
 
     animId = requestAnimationFrame(renderOverlay);
     return () => cancelAnimationFrame(animId);
-  }, [isWebcamActive, liveDetections, webcamTelemetry, geoPosition, cameras]);
+  }, [isWebcamActive, liveDetections, viewMode, showAiOverlay, showVirtualFence, webcamTelemetry, geoPosition, cameras]);
 
   const loadData = async () => {
     try {
@@ -538,24 +521,25 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
   const hasUnusualThreat = webcamTelemetry.unusualCount > 0;
 
   const handleQuickFeedSnapshot = () => {
-    const video = webcamVideoRef.current;
-    if (!video || !isWebcamActive) {
+    const activeVid = viewMode === 'webcam' ? heroVideoRef.current : matrixVideoRef.current;
+    const activeCanvas = viewMode === 'webcam' ? heroCanvasRef.current : matrixCanvasRef.current;
+    if (!activeVid || !isWebcamActive) {
       setExpandedModalCamera(cameras[0] || { id: 'cam-01', code: 'C-01', name: 'North Gate', location: 'Noida Sector 28' });
       return;
     }
-    const cw = video.videoWidth || 1280;
-    const ch = video.videoHeight || 720;
+    const cw = activeVid.videoWidth || 1280;
+    const ch = activeVid.videoHeight || 720;
     const canvas = document.createElement('canvas');
     canvas.width = cw;
     canvas.height = ch;
     const ctx = canvas.getContext('2d');
 
     // 1. Draw raw video frame
-    ctx.drawImage(video, 0, 0, cw, ch);
+    ctx.drawImage(activeVid, 0, 0, cw, ch);
 
     // 2. Draw AI detections overlay layer
-    if (overlayCanvasRef.current) {
-      ctx.drawImage(overlayCanvasRef.current, 0, 0, cw, ch);
+    if (activeCanvas) {
+      ctx.drawImage(activeCanvas, 0, 0, cw, ch);
     }
 
     // 3. Draw Tactical Telemetry Banner on captured image
@@ -753,7 +737,7 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
             {/* Viewport */}
             <div className="hero-camera-viewport scanlines">
               <video
-                ref={webcamVideoRef}
+                ref={heroVideoRef}
                 autoPlay
                 playsInline
                 muted
@@ -761,10 +745,33 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
                 style={{ display: isWebcamActive ? 'block' : 'none' }}
               />
               <canvas
-                ref={overlayCanvasRef}
+                ref={heroCanvasRef}
                 className="camera-hud-canvas-overlay"
                 style={{ display: isWebcamActive ? 'block' : 'none' }}
               />
+
+              {/* In-Video HUD Overlay Toolbar (Matching Inspection Modal) */}
+              {isWebcamActive && (
+                <div className="in-video-hud-toolbar font-mono">
+                  <button
+                    className={`hud-toggle-btn ${showAiOverlay ? 'active' : ''}`}
+                    onClick={() => setShowAiOverlay(!showAiOverlay)}
+                    title="Toggle AI Target Bounding Boxes & Tracking"
+                  >
+                    <Sparkles size={13} />
+                    <span>AI OVERLAY</span>
+                  </button>
+
+                  <button
+                    className={`hud-toggle-btn ${showVirtualFence ? 'active' : ''}`}
+                    onClick={() => setShowVirtualFence(!showVirtualFence)}
+                    title="Toggle Virtual Perimeter Tripwire"
+                  >
+                    <Crosshair size={13} />
+                    <span>VIRTUAL FENCE</span>
+                  </button>
+                </div>
+              )}
 
               {!isWebcamActive && (
                 <div className="hero-standby-overlay font-mono">
@@ -1031,14 +1038,14 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
                   {isWebcamActive ? (
                     <>
                       <video
-                        ref={webcamVideoRef}
+                        ref={matrixVideoRef}
                         autoPlay
                         playsInline
                         muted
                         className="hardware-accelerated-video"
                       />
                       <canvas
-                        ref={overlayCanvasRef}
+                        ref={matrixCanvasRef}
                         className="camera-hud-canvas-overlay"
                       />
                     </>
@@ -1189,10 +1196,21 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
                 </div>
               </div>
 
-              <div className={`feed-viewport scanlines ${isAlert ? 'alert-tint' : cam.mode.includes('IR') ? 'thermal-tint' : ''}`}>
+              <div 
+                className={`feed-viewport scanlines ${isAlert ? 'alert-tint' : cam.mode.includes('IR') ? 'thermal-tint' : ''}`}
+                onClick={() => setExpandedModalCamera(cam)}
+                style={{ cursor: 'pointer' }}
+                title="Click to view full screen"
+              >
                 <img 
-                  src={streamErrorFlags[cam.id] ? cam.streamImg : (getCameraStreamUrl(cam.id) || cam.streamImg)} 
-                  onError={() => handleStreamError(cam.id)}
+                  src={cam.streamUrl || getCameraStreamUrl(cam.id)} 
+                  onError={(e) => {
+                    setTimeout(() => {
+                      if (e.target) {
+                        e.target.src = `${cam.frameUrl || `/api/v1/cameras/${cam.id}/frame`}?t=${Date.now()}`;
+                      }
+                    }, 800);
+                  }}
                   alt={`${cam.code} Feed`} 
                   className="camera-img-bg" 
                 />
@@ -1361,57 +1379,57 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
         <div className="detections-strip-grid">
           <div className="detection-strip-card card-red">
             <div className="strip-avatar avatar-red">
-              <AlertTriangle size={14} />
+              <AlertTriangle size={15} />
             </div>
             <div className="strip-details">
               <div className="strip-header">
                 <span className="strip-id font-mono">P-102 <span className="cam-code font-mono">C-03</span></span>
-                <span className="strip-conf font-mono">94%</span>
+                <span className="strip-conf font-mono text-red">94%</span>
               </div>
-              <div className="strip-title">Unauth...</div>
-              <div className="strip-sub">Fence Breach • Unre...</div>
+              <div className="strip-title font-semibold">Unauthorized Intrusion</div>
+              <div className="strip-sub">Perimeter Sector Breach</div>
             </div>
           </div>
 
           <div className="detection-strip-card card-purple">
             <div className="strip-avatar avatar-purple">
-              <Eye size={14} />
+              <Eye size={15} />
             </div>
             <div className="strip-details">
               <div className="strip-header">
                 <span className="strip-id font-mono">P-308 <span className="cam-code font-mono">C-07</span></span>
-                <span className="strip-status-text font-mono text-purple">Alert</span>
+                <span className="strip-status-text font-mono text-purple">Flagged</span>
               </div>
-              <div className="strip-title">Loite...</div>
-              <div className="strip-sub">Duration: 04:52</div>
+              <div className="strip-title font-semibold">Loitering Subject</div>
+              <div className="strip-sub">Dwell Time: 04m 52s</div>
             </div>
           </div>
 
           <div className="detection-strip-card card-blue">
             <div className="strip-avatar avatar-blue">
-              <Truck size={14} />
+              <Truck size={15} />
             </div>
             <div className="strip-details">
               <div className="strip-header">
                 <span className="strip-id font-mono">V-021 <span className="cam-code font-mono">C-02</span></span>
-                <span className="strip-conf font-mono">93%</span>
+                <span className="strip-conf font-mono text-cyan">93%</span>
               </div>
-              <div className="strip-title">Vehi...</div>
-              <div className="strip-sub">Plate: HR26AB1234</div>
+              <div className="strip-title font-semibold">Motorized Vehicle</div>
+              <div className="strip-sub">Plate: HR-26-AB-1234</div>
             </div>
           </div>
 
           <div className="detection-strip-card card-green">
             <div className="strip-avatar avatar-green">
-              <UserCheck size={14} />
+              <UserCheck size={15} />
             </div>
             <div className="strip-details">
               <div className="strip-header">
                 <span className="strip-id font-mono">P-115 <span className="cam-code font-mono">C-01</span></span>
-                <span className="strip-conf font-mono">97%</span>
+                <span className="strip-conf font-mono text-green">97%</span>
               </div>
-              <div className="strip-title">Author...</div>
-              <div className="strip-sub">Security Officer</div>
+              <div className="strip-title font-semibold">Authorized Personnel</div>
+              <div className="strip-sub">Duty Patrol Officer</div>
             </div>
           </div>
         </div>
@@ -1445,8 +1463,8 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
                 <span className="log-id">ID: P-102</span>
                 <span className="log-action-badge action-dispatch">Dispatch</span>
               </div>
-              <div className="log-main-msg text-red">● Unauth...</div>
-              <div className="log-meta font-mono">Face Match: --</div>
+              <div className="log-main-msg text-red">● Unauthorized Breach</div>
+              <div className="log-meta font-mono">Target: Unknown Male</div>
             </div>
           </div>
 
@@ -1459,8 +1477,8 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
                 <span className="log-id">ID: P-308</span>
                 <span className="log-action-badge action-flagged">Flagged</span>
               </div>
-              <div className="log-main-msg text-purple">● Loitering ...</div>
-              <div className="log-meta font-mono">Activity: Loit...</div>
+              <div className="log-main-msg text-purple">● Loitering Anomaly</div>
+              <div className="log-meta font-mono">Status: High Persistence</div>
             </div>
           </div>
 
@@ -1473,8 +1491,8 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
                 <span className="log-id">ID: V-021</span>
                 <span className="log-action-badge action-logged">Logged</span>
               </div>
-              <div className="log-main-msg text-cyan">● Vehicle De...</div>
-              <div className="log-meta font-mono">HR26AB1234 • 93...</div>
+              <div className="log-main-msg text-cyan">● Vehicle Inbound</div>
+              <div className="log-meta font-mono">ANPR: HR26AB1234 (93%)</div>
             </div>
           </div>
 
@@ -1487,8 +1505,8 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
                 <span className="log-id">ID: P-115</span>
                 <span className="log-action-badge action-active">Active</span>
               </div>
-              <div className="log-main-msg text-green">● Authorized...</div>
-              <div className="log-meta font-mono">Security Office...</div>
+              <div className="log-main-msg text-green">● Security Officer</div>
+              <div className="log-meta font-mono">FRS: Clearance Alpha</div>
             </div>
           </div>
         </div>
@@ -1497,11 +1515,11 @@ const LiveSurveillancePage = ({ onNavigateToAlerts }) => {
       {/* Expanded Big Camera Inspection Modal */}
       {expandedModalCamera && (
         <CameraDetailModal
-          camera={expandedModalCamera.isWebcam ? null : expandedModalCamera}
-          isWebcam={expandedModalCamera.isWebcam}
+          camera={expandedModalCamera}
+          isWebcam={Boolean(expandedModalCamera.isWebcam || expandedModalCamera.isDeviceHardware || expandedModalCamera.id === 'cam-01')}
           webcamStream={localStream}
           webcamTelemetry={webcamTelemetry}
-          liveDetections={expandedModalCamera.isWebcam ? liveDetections : (expandedModalCamera.liveDetections || [])}
+          liveDetections={liveDetections}
           onClose={() => setExpandedModalCamera(null)}
         />
       )}

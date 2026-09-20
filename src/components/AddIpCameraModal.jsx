@@ -97,7 +97,7 @@ const ANALYTICS_OPTIONS = [
   { id: 'ANPR', label: 'ANPR Automatic License Plate Recognition', icon: Video, defaultChecked: false },
 ];
 
-export const AddIpCameraModal = ({ isOpen, onClose, onCameraAdded }) => {
+export const AddIpCameraModal = ({ isOpen = true, onClose, onCameraAdded }) => {
   const [activeTab, setActiveTab] = useState('network'); // 'network' | 'webpair'
   
   // Network stream form state

@@ -1,0 +1,77 @@
+/* Event Trend Card */
+.event-trend-card {
+  background: #0b1326;
+  border: 1px solid #1c2742;
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* Header */
+.trend-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.trend-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+/* Series Legends */
+.trend-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.legend-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.dot-human {
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
+}
+
+.dot-vehicle {
+  background: #3b82f6;
+  box-shadow: 0 0 6px #3b82f6;
+}
+
+.dot-face {
+  background: #a855f7;
+  box-shadow: 0 0 6px #a855f7;
+}
+
+.dot-anpr {
+  background: #f59e0b;
+  box-shadow: 0 0 6px #f59e0b;
+}
+
+.legend-name {
+  font-size: 0.72rem;
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+/* Chart Canvas */
+.trend-chart-container {
+  width: 100%;
+  height: 140px;
+}

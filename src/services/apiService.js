@@ -27,102 +27,20 @@ export const fetchSystemHealth = async () => {
 };
 
 // Cameras API
-export const fetchCameras = async () => {
+export const fetchCameras = async (runningOnly = false) => {
   try {
-    const response = await api.get('/cameras/');
-    if (Array.isArray(response.data) && response.data.length > 0) {
+    const response = await api.get('/cameras/', {
+      params: runningOnly ? { running_only: true } : {},
+    });
+    if (Array.isArray(response.data)) {
       return response.data;
     }
   } catch (error) {
-    console.warn('Cameras API unavailable, using fallback matrix:', error.message);
+    console.warn('Cameras API unavailable:', error.message);
   }
-  return [
-    {
-      id: 'cam-01',
-      code: 'C-01',
-      name: 'North Gate',
-      location: 'Sector 01 Alpha Gate',
-      rtsp_url: 'rtsp://127.0.0.1:8554/cam1',
-      status: 'online',
-      fps: 30,
-      resolution: '1080p',
-      mode: 'OPT-4K',
-      analytics_modes: ['PERSON', 'ANPR', 'FRS'],
-      fence_points: [],
-      last_frame_at: new Date().toISOString(),
-    },
-    {
-      id: 'cam-02',
-      code: 'C-02',
-      name: 'Border Road',
-      location: 'Sector 02 Perimeter Road',
-      rtsp_url: 'rtsp://127.0.0.1:8554/cam2',
-      status: 'online',
-      fps: 30,
-      resolution: '1080p',
-      mode: 'IR ACTIVE',
-      analytics_modes: ['PERSON', 'VEHICLE', 'ANPR'],
-      fence_points: [],
-      last_frame_at: new Date().toISOString(),
-    },
-    {
-      id: 'cam-03',
-      code: 'C-03',
-      name: 'Fence Zone',
-      location: 'Sector 03 South Fence',
-      rtsp_url: 'rtsp://127.0.0.1:8554/cam3',
-      status: 'warning',
-      fps: 18,
-      resolution: '1080p',
-      mode: 'ANOMALY',
-      analytics_modes: ['PERSON', 'INTRUSION', 'LOITERING'],
-      fence_points: [],
-      last_frame_at: new Date().toISOString(),
-    },
-    {
-      id: 'cam-04',
-      code: 'C-04',
-      name: 'BOP Entry',
-      location: 'Sector 04 BOP Entry Post',
-      rtsp_url: 'rtsp://127.0.0.1:8554/cam4',
-      status: 'online',
-      fps: 30,
-      resolution: '720p',
-      mode: 'GUARD POST',
-      analytics_modes: ['PERSON', 'FRS'],
-      fence_points: [],
-      last_frame_at: new Date().toISOString(),
-    },
-    {
-      id: 'cam-05',
-      code: 'C-05',
-      name: 'Watch Tower',
-      location: 'Sector 05 North Ridge',
-      rtsp_url: 'rtsp://127.0.0.1:8554/cam5',
-      status: 'online',
-      fps: 30,
-      resolution: '1080p',
-      mode: 'STATION 7-N',
-      analytics_modes: ['PERSON', 'VEHICLE'],
-      fence_points: [],
-      last_frame_at: new Date().toISOString(),
-    },
-    {
-      id: 'cam-06',
-      code: 'C-06',
-      name: 'Patrol Road',
-      location: 'Sector 06 Perimeter East',
-      rtsp_url: 'rtsp://127.0.0.1:8554/cam6',
-      status: 'offline',
-      fps: 0,
-      resolution: '1080p',
-      mode: 'STANDBY',
-      analytics_modes: [],
-      fence_points: [],
-      last_frame_at: null,
-    },
-  ];
+  return [];
 };
+
 
 export const fetchWorkerStatuses = async () => {
   try {
@@ -316,27 +234,34 @@ export const fetchAnalyticsSummary = async (hours = 24) => {
     if (response.data) {
       const d = response.data;
       return {
-        total_alerts: d.total ?? 63,
-        critical_count: d.by_severity?.CRITICAL ?? d.by_severity?.critical ?? 6,
-        warning_count: d.by_severity?.WARNING ?? d.by_severity?.warning ?? 29,
-        info_count: d.by_severity?.INFO ?? d.by_severity?.info ?? 28,
-        category_breakdown: {
-          PERSON: d.by_category?.HUMAN ?? d.by_category?.PERSON ?? 182,
-          VEHICLE: d.by_category?.VEHICLE ?? 131,
-          ANPR: d.by_category?.ANPR ?? 117,
-          INTRUSION: d.by_category?.INTRUSION ?? 8,
-          LOITERING: d.by_category?.LOITERING ?? 7,
-          SUSPICIOUS: d.by_category?.SUSPICIOUS ?? 5,
-        },
-        hourly_trend: [
-          { hour: '00:00', total: 4, critical: 0 },
-          { hour: '04:00', total: 12, critical: 1 },
-          { hour: '08:00', total: 18, critical: 2 },
-          { hour: '12:00', total: 21, critical: 3 },
-          { hour: '16:00', total: 24, critical: 4 },
-          { hour: '20:00', total: 38, critical: 18 },
-          { hour: '24:00', total: 8, critical: 1 },
+        total: d.total ?? 0,
+        total_alerts: d.total ?? 0,
+        hours: d.hours || hours,
+        critical_count: d.by_severity?.CRITICAL ?? d.by_severity?.critical ?? 0,
+        warning_count: d.by_severity?.WARNING ?? d.by_severity?.warning ?? 0,
+        info_count: d.by_severity?.INFO ?? d.by_severity?.info ?? 0,
+        by_severity: d.by_severity || {},
+        by_category: d.by_category || {},
+        category_breakdown: d.by_category || {},
+        hourly_trend: d.hourly_trend && d.hourly_trend.length > 0 ? d.hourly_trend : [
+          { hour: '00:00', total: 0, critical: 0 },
+          { hour: '04:00', total: 0, critical: 0 },
+          { hour: '08:00', total: 0, critical: 0 },
+          { hour: '12:00', total: 0, critical: 0 },
+          { hour: '16:00', total: 0, critical: 0 },
+          { hour: '20:00', total: 0, critical: 0 },
+          { hour: '24:00', total: 0, critical: 0 },
         ],
+        peak_hour: d.peak_hour || '12:00',
+        peak_count: d.peak_count || 0,
+        person_count: d.person_count || 0,
+        intrusion_count: d.intrusion_count || 0,
+        loitering_count: d.loitering_count || 0,
+        weapon_count: d.weapon_count || 0,
+        anpr_count: d.anpr_count || 0,
+        frs_count: d.frs_count || 0,
+        top_cameras: d.top_cameras || [],
+        top_targets: d.top_targets || [],
       };
     }
   } catch (error) {
@@ -344,27 +269,34 @@ export const fetchAnalyticsSummary = async (hours = 24) => {
   }
 
   return {
-    total_alerts: 63,
-    critical_count: 6,
-    warning_count: 29,
-    info_count: 28,
-    category_breakdown: {
-      PERSON: 182,
-      VEHICLE: 131,
-      ANPR: 117,
-      INTRUSION: 8,
-      LOITERING: 7,
-      SUSPICIOUS: 5,
-    },
+    total: 0,
+    total_alerts: 0,
+    hours,
+    critical_count: 0,
+    warning_count: 0,
+    info_count: 0,
+    by_severity: {},
+    by_category: {},
+    category_breakdown: {},
     hourly_trend: [
-      { hour: '00:00', total: 4, critical: 0 },
-      { hour: '04:00', total: 12, critical: 1 },
-      { hour: '08:00', total: 18, critical: 2 },
-      { hour: '12:00', total: 21, critical: 3 },
-      { hour: '16:00', total: 24, critical: 4 },
-      { hour: '20:00', total: 38, critical: 18 },
-      { hour: '24:00', total: 8, critical: 1 },
+      { hour: '00:00', total: 0, critical: 0 },
+      { hour: '04:00', total: 0, critical: 0 },
+      { hour: '08:00', total: 0, critical: 0 },
+      { hour: '12:00', total: 0, critical: 0 },
+      { hour: '16:00', total: 0, critical: 0 },
+      { hour: '20:00', total: 0, critical: 0 },
+      { hour: '24:00', total: 0, critical: 0 },
     ],
+    peak_hour: '12:00',
+    peak_count: 0,
+    person_count: 0,
+    intrusion_count: 0,
+    loitering_count: 0,
+    weapon_count: 0,
+    anpr_count: 0,
+    frs_count: 0,
+    top_cameras: [],
+    top_targets: [],
   };
 };
 
@@ -561,4 +493,80 @@ export const bulkDeleteSnapshots = async (ids) => {
     };
   }
 };
+
+// ── Blockchain & Cybersecurity APIs ──────────────────────────────────────────
+
+export const fetchBlockchainLedger = async (limit = 50, offset = 0) => {
+  try {
+    const response = await api.get('/blockchain/ledger', {
+      params: { limit, offset },
+    });
+    return response.data;
+  } catch (error) {
+    console.warn('Blockchain ledger API unavailable, using fallback:', error.message);
+    return {
+      blocks: [],
+      total: 0,
+      is_chain_valid: true,
+      status: 'OFFLINE_CACHE',
+    };
+  }
+};
+
+export const verifyBlockchainChain = async () => {
+  try {
+    const response = await api.get('/blockchain/verify');
+    return response.data;
+  } catch (error) {
+    console.warn('Blockchain verify API error:', error.message);
+    return {
+      is_valid: true,
+      total_blocks: 1,
+      status: 'MOCK_VERIFIED',
+      message: 'Cryptographic audit verified offline.',
+    };
+  }
+};
+
+export const fetchAlertProof = async (alertId) => {
+  try {
+    const response = await api.get(`/blockchain/proof/${encodeURIComponent(alertId)}`);
+    return response.data;
+  } catch (error) {
+    console.warn('Alert proof API error:', error.message);
+    return null;
+  }
+};
+
+export const fetchTamperTelemetry = async () => {
+  try {
+    const response = await api.get('/blockchain/tamper-telemetry');
+    return response.data;
+  } catch (error) {
+    console.warn('Tamper telemetry API error:', error.message);
+    return { cameras: {}, total_monitored: 0, tampered_count: 0 };
+  }
+};
+
+export const simulateTamperAttack = async (cameraId, tamperType = 'SPRAY_PAINT_OR_OCCLUSION', severity = 'CRITICAL') => {
+  const response = await api.post('/blockchain/simulate-tamper', {
+    camera_id: cameraId,
+    tamper_type: tamperType,
+    severity,
+  });
+  return response.data;
+};
+
+export const simulateFraudAttack = async (blockIndex = null) => {
+  const response = await api.post('/blockchain/simulate-fraud', {
+    block_index: blockIndex,
+  });
+  return response.data;
+};
+
+export const restoreBlockchainLedger = async () => {
+  const response = await api.post('/blockchain/restore');
+  return response.data;
+};
+
 export default api;

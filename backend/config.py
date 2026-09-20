@@ -43,18 +43,23 @@ class Settings(BaseSettings):
     YOLO_POSE_MODEL: Path = MODELS_DIR / "yolov8n-pose.pt"
     YOLO_OBJECT_MODEL: Path = MODELS_DIR / "yolov8n.pt"
     YOLO_WEAPON_MODEL: Path = MODELS_DIR / "weapon_yolov8n.pt"
+    YOLO_WORLD_MODEL: Path = (MODELS_DIR / "yolov8s-worldv2-configured.pt") if (MODELS_DIR / "yolov8s-worldv2-configured.pt").exists() else (MODELS_DIR / "yolov8s-worldv2.pt")
     YOLO_LP_MODEL: Path = MODELS_DIR / "yolov8n-lp.pt"         # License plate detector
     YUNET_FACE_MODEL: Path = MODELS_DIR / "face_detection_yunet_2023mar.onnx"
     SFACE_FACE_MODEL: Path = MODELS_DIR / "face_recognition_sface_2021dec.onnx"
 
     # ── AI Thresholds ─────────────────────────────────────────────────────────
-    YOLO_CONFIDENCE_THRESHOLD: float = 0.35
-    YOLO_WEAPON_CONFIDENCE_THRESHOLD: float = 0.45       # Stricter threshold to eliminate pen/clip false weapon alarms
-    YOLO_OBJECT_CONFIDENCE_THRESHOLD: float = 0.30       # Calibrated to eliminate remote/phone ambiguities
-    MIN_WEAPON_AREA_RATIO: float = 0.012                 # Minimum bbox area ratio vs person to qualify as weapon (rejects pens/pensil)
+    USE_YOLO_WORLD: bool = True
+    YOLO_CONFIDENCE_THRESHOLD: float = 0.40
+    YOLO_WORLD_CONFIDENCE_THRESHOLD: float = 0.20        # High-recall open vocabulary threshold
+    YOLO_WEAPON_CONFIDENCE_THRESHOLD: float = 0.75       # Strict calibrated threshold (0.75+) for confirmed weapon alerts
+    YOLO_WEAPON_UNCERTAIN_FLOOR: float = 0.55            # Uncertainty floor: detections below 0.55 are rejected as background noise
+    YOLO_OBJECT_CONFIDENCE_THRESHOLD: float = 0.25       # Calibrated threshold for casual items
+    MIN_WEAPON_AREA_RATIO: float = 0.010                 # Minimum bbox area ratio vs person to qualify as weapon
     FRS_SIMILARITY_THRESHOLD: float = 0.40               # SFace cosine similarity
     ANPR_OCR_CONFIDENCE: float = 0.60
     ANPR_FUZZY_DISTANCE: int = 2                         # Levenshtein edit distance tolerance
+
 
 
     # ── Surveillance Behaviour ────────────────────────────────────────────────

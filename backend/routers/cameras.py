@@ -19,9 +19,12 @@ router = APIRouter(prefix="/cameras", tags=["Cameras"])
 # ── Static routes (MUST be defined before /{cam_id}) ──────────────────────────
 
 @router.get("/", response_model=List[CameraResponse])
-async def list_cameras():
+async def list_cameras(running_only: bool = False):
     cameras = await db.get_all_cameras()
-    return [_to_response(c) for c in cameras]
+    responses = [_to_response(c) for c in cameras]
+    if running_only:
+        responses = [r for r in responses if r.get("is_running") or r.get("is_active")]
+    return responses
 
 
 @router.post("/sync-geo")
@@ -209,6 +212,14 @@ def _generate_standby_frame(camera_code: str = "CAM-01") -> bytes:
     _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
     return buf.tobytes()
 
+_STANDBY_FRAME_CACHE = {}
+
+def _get_standby_frame(camera_code: str = "CAM-01") -> bytes:
+    """Retrieve or generate cached standby frame for camera code."""
+    if camera_code not in _STANDBY_FRAME_CACHE:
+        _STANDBY_FRAME_CACHE[camera_code] = _generate_standby_frame(camera_code)
+    return _STANDBY_FRAME_CACHE[camera_code]
+
 
 @router.get("/{cam_id}/frame")
 async def get_latest_frame(cam_id: str):
@@ -217,8 +228,16 @@ async def get_latest_frame(cam_id: str):
     if not frame_bytes:
         cam = await db.get_camera(cam_id)
         code = cam.code if cam else cam_id.upper()
-        frame_bytes = _generate_standby_frame(code)
-    return Response(content=frame_bytes, media_type="image/jpeg")
+        frame_bytes = _get_standby_frame(code)
+    return Response(
+        content=frame_bytes,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 @router.get("/{cam_id}/stream")
@@ -228,26 +247,34 @@ async def mjpeg_stream(cam_id: str):
     Can be used directly in <img> tags: <img src="/api/v1/cameras/cam-01/stream" />
     """
     cam = await db.get_camera(cam_id)
-    if not cam:
-        raise HTTPException(status_code=404, detail=f"Camera {cam_id} not found.")
+    code = cam.code if cam else cam_id.upper()
 
     async def _frame_generator():
-        while True:
-            frame_bytes = ip_camera_manager.get_latest_frame(cam_id) or pipeline_manager.get_latest_frame(cam_id)
-            if not frame_bytes:
-                frame_bytes = _generate_standby_frame(cam.code)
-            
-            yield (
-                b"--frame\r\n"
-                b"Content-Type: image/jpeg\r\n"
-                b"Content-Length: " + str(len(frame_bytes)).encode() + b"\r\n\r\n"
-                + frame_bytes + b"\r\n"
-            )
-            await asyncio.sleep(0.05)  # ~20 fps stream
+        try:
+            while True:
+                frame_bytes = ip_camera_manager.get_latest_frame(cam_id) or pipeline_manager.get_latest_frame(cam_id)
+                if not frame_bytes:
+                    frame_bytes = _get_standby_frame(code)
+                
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n"
+                    b"Content-Length: " + str(len(frame_bytes)).encode() + b"\r\n\r\n"
+                    + frame_bytes + b"\r\n"
+                )
+                await asyncio.sleep(0.05)  # ~20 fps stream
+        except (asyncio.CancelledError, GeneratorExit):
+            pass
 
     return StreamingResponse(
         _frame_generator(),
         media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "Connection": "close",
+        },
     )
 
 
@@ -339,7 +366,8 @@ async def ingest_camera_frame(cam_id: str, request: Request):
     gps_full_label = f"{loc_name} | GPS: {gps_str}" if (loc_name and gps_str) else (gps_str or loc_name)
 
     analyzer = DirectAIAnalyzer.get_instance()
-    result = analyzer.process_frame(
+    result = await asyncio.to_thread(
+        analyzer.process_frame,
         frame_bgr=frame_bgr,
         camera_id=cam.id,
         camera_code=cam.code,
@@ -409,6 +437,25 @@ def _to_response(cam: CameraConfig) -> dict:
     if not gps and lat is not None and lng is not None:
         gps = f"{abs(lat):.4f}° {'N' if lat >= 0 else 'S'}, {abs(lng):.4f}° {'E' if lng >= 0 else 'W'}"
 
+    # Determine dynamic running state
+    stream_active = ip_camera_manager.is_stream_active(cam.id) or ip_camera_manager.is_stream_active(cam.id.lower())
+    pipeline_active = pipeline_manager.is_camera_active(cam.id) or pipeline_manager.is_camera_active(cam.id.lower())
+    streamer = ip_camera_manager.get_streamer(cam.id) or ip_camera_manager.get_streamer(cam.id.lower())
+
+    is_online = stream_active or pipeline_active
+    is_connecting = streamer is not None and streamer.is_running and not is_online
+
+    if is_online:
+        status = "online"
+    elif is_connecting:
+        status = "connecting"
+    elif cam.rtsp_url and cam.rtsp_url.startswith("mobile://"):
+        status = "standby"
+    else:
+        status = "offline"
+
+    is_running = is_online or is_connecting
+
     return {
         "id": cam.id, "code": cam.code, "name": cam.name,
         "location": cam.location,
@@ -417,7 +464,12 @@ def _to_response(cam: CameraConfig) -> dict:
         "altitude": getattr(cam, "altitude", None),
         "gps_coords": gps or "",
         "rtsp_url": cam.rtsp_url,
-        "status": cam.status, "fps": cam.fps, "resolution": cam.resolution,
+        "status": status,
+        "fps": cam.fps, "resolution": cam.resolution,
         "mode": cam.mode, "analytics_modes": cam.analytics_modes,
         "fence_points": cam.fence_points, "last_frame_at": cam.last_frame_at,
+        "is_running": is_running,
+        "is_active": is_online,
+        "stream_url": f"/api/v1/cameras/{cam.id}/stream",
+        "frame_url": f"/api/v1/cameras/{cam.id}/frame",
     }

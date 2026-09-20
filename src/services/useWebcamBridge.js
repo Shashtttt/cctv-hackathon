@@ -3,6 +3,7 @@ import axios from 'axios';
 import { getDevicePlatform, enumerateDeviceCameras } from '../utils/deviceDetector';
 import { soundController } from '../utils/audioAlert';
 import { reverseGeocodeCoords, POPULAR_LOCATIONS } from '../utils/geoLocator';
+import { syncSnapshotToFirestore, syncAlertToFirestore } from './firestoreService';
 
 export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVideoRef = null) => {
   const [isWebcamActive, setIsWebcamActive] = useState(false);
@@ -55,6 +56,7 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
   const isIngestingRef = useRef(false);
   const frameCountRef = useRef(0);
   const fpsTimerRef = useRef(Date.now());
+  const lastWeaponSnapshotTimeRef = useRef(0);
 
   // Enumerate hardware cameras on mount
   useEffect(() => {
@@ -82,10 +84,13 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
   }, []);
 
   const getVideoElement = () => {
-    if (externalVideoRef && externalVideoRef.current) {
+    if (externalVideoRef && externalVideoRef.current && externalVideoRef.current.videoWidth > 0 && externalVideoRef.current.readyState >= 2) {
       return externalVideoRef.current;
     }
-    return internalVideoRef.current;
+    if (internalVideoRef.current && internalVideoRef.current.videoWidth > 0) {
+      return internalVideoRef.current;
+    }
+    return externalVideoRef?.current || internalVideoRef.current;
   };
 
   const startGeolocation = useCallback(() => {
@@ -207,8 +212,8 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
       const canvas = offscreenCanvasRef.current;
       const vw = video.videoWidth || 1280;
       const vh = video.videoHeight || 720;
-      // High-speed frame ingestion (preserving aspect ratio, max 640 width for rapid inference)
-      const scale = Math.min(1.0, 640 / Math.max(vw, 1));
+      // High-speed frame ingestion (preserving aspect ratio, max 480 width for rapid CPU inference)
+      const scale = Math.min(1.0, 480 / Math.max(vw, 1));
       const targetW = Math.round(vw * scale);
       const targetH = Math.round(vh * scale);
       canvas.width = targetW;
@@ -217,7 +222,7 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
       const ctx = canvas.getContext('2d', { alpha: false });
       ctx.drawImage(video, 0, 0, targetW, targetH);
 
-      const b64 = canvas.toDataURL('image/jpeg', 0.75);
+      const b64 = canvas.toDataURL('image/jpeg', 0.65);
       const t0 = performance.now();
 
       axios.post(`/api/v1/cameras/${cameraId}/ingest`, {
@@ -226,7 +231,7 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
         location: resolvedLocationRef.current || telemetry.location || 'Noida Sector 28',
       }, {
         headers: { 'Content-Type': 'application/json' },
-        timeout: 8000,
+        timeout: 3500,
       }).then((res) => {
         const dt = performance.now() - t0;
         frameCountRef.current += 1;
@@ -242,14 +247,16 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
         if (res.data && res.data.success) {
           const dets = res.data.detections || [];
           const isWeaponItem = (d) => {
+            if (d.is_casual_object || d.held_item_type === 'CASUAL_OBJECT') return false;
             const name = (d.class_name || '').toLowerCase();
             const held = (d.held_item || '').toLowerCase();
             const unusual = (d.unusual_item || '').toLowerCase();
-            const isNamed = ['knife', 'gun', 'pistol', 'rifle', 'shotgun', 'firearm', 'weapon', 'dagger', 'blade', 'machete', 'sword'].some(
-              (w) => name.includes(w) || held.includes(w) || unusual.includes(w)
-            );
+            if (name.includes('watch') || held.includes('watch') || unusual.includes('watch') ||
+                name.includes('unknown') || held.includes('unknown') || unusual.includes('unknown')) {
+              return false;
+            }
             const isArmed = d.is_holding && d.held_item_type === 'WEAPON';
-            return Boolean(d.is_weapon || isNamed || isArmed);
+            return Boolean(d.is_weapon || isArmed);
           };
 
           const isVehicle = (d) => {
@@ -265,11 +272,47 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
           const holdingCount = dets.filter((d) => d.is_holding).length;
           const casualCount = dets.filter((d) => !isWeaponItem(d) && !isVehicle(d) && d.class_id !== 0).length;
           const phoneCount = dets.filter((d) => (d.class_name || '').toLowerCase().includes('phone') || (d.held_item || '').toLowerCase().includes('phone')).length;
+          const watchCount = dets.filter((d) => {
+            const name = (d.class_name || '').toLowerCase();
+            const held = (d.held_item || '').toLowerCase();
+            return name === 'wristwatch' || held === 'wristwatch' || held === 'watch';
+          }).length;
           const objectsCount = dets.filter((d) => d.class_id !== 0 && !isWeaponItem(d)).length;
 
           // PLAY SIREN ONLY WHEN WEAPON DETECTED (knife, pistol, gun, firearm, weapon, etc.)
           if (weaponsCount > 0 || armedCount > 0) {
             soundController.triggerWeaponSiren(2000);
+
+            // SAVE WEAPON DETECTED SNAPSHOT LIVE TO FIREBASE (Debounced by 4s to prevent flooding)
+            const nowTime = Date.now();
+            if (nowTime - lastWeaponSnapshotTimeRef.current > 4000 && res.data.annotated_frame) {
+              lastWeaponSnapshotTimeRef.current = nowTime;
+              const snapId = `WEAPON-${(cameraId || 'CAM-01').toUpperCase()}-${nowTime}`;
+              const weaponDets = dets.filter(isWeaponItem);
+              const weaponNames = weaponDets.map((d) => d.class_name || d.held_item || 'Weapon').join(', ') || 'Firearm / Blade';
+              const snapPayload = {
+                id: snapId,
+                alert_id: snapId,
+                camera_id: (cameraId || 'CAM-01').toUpperCase(),
+                category: 'WEAPON',
+                severity: 'CRITICAL',
+                title: `CRITICAL WEAPON DETECTED: ${weaponNames.toUpperCase()}`,
+                description: `Live weapon identified (${weaponNames}) at ${resolvedLocationRef.current || telemetry.location || 'Border Sector 04'}`,
+                snapshot_base64: res.data.annotated_frame,
+                snapshot_url: res.data.annotated_frame,
+                captured_at: new Date().toISOString(),
+                location: resolvedLocationRef.current || telemetry.location || 'Border Sector 04 Perimeter',
+                gps: geoPositionRef.current?.formatted || telemetry.gpsCoords || '34.1524° N, 74.8211° E',
+                source: 'Webcam-Edge-AI',
+              };
+
+              syncSnapshotToFirestore(snapPayload).catch((err) => {
+                console.debug('Firestore weapon snapshot sync notice:', err?.message);
+              });
+              syncAlertToFirestore(snapPayload).catch((err) => {
+                console.debug('Firestore weapon alert sync notice:', err?.message);
+              });
+            }
           }
 
           setLiveDetections(dets);
@@ -287,6 +330,7 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
             holdingCount,
             casualCount,
             phoneCount,
+            watchCount,
             objectsCount,
             alertsCount: res.data.alerts_count || 0,
             detections: dets,
@@ -299,11 +343,12 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
         // Continue on single-frame drop
       }).finally(() => {
         isIngestingRef.current = false;
+        if (isRunningRef.current) {
+          setTimeout(sendFrame, Math.max(80, 1000 / targetFps));
+        }
       });
-    }
-
-    if (isRunningRef.current) {
-      setTimeout(sendFrame, Math.max(15, 1000 / targetFps));
+    } else if (isRunningRef.current) {
+      setTimeout(sendFrame, 100);
     }
   }, [cameraId, targetFps, externalVideoRef, deviceInfo]);
 

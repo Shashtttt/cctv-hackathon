@@ -1,35 +1,29 @@
 import React, { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
-import DashboardHeader from './components/DashboardHeader';
-import SurveillanceMap from './components/SurveillanceMap';
-import ActiveDetections from './components/ActiveDetections';
-import DetectionActivity from './components/DetectionActivity';
-import CameraHealth from './components/CameraHealth';
-import RightAlertsPanel from './components/RightAlertsPanel';
-import DashboardKPIs from './components/DashboardKPIs';
+import MainDashboardView from './pages/MainDashboardView';
 import LiveSurveillancePage from './pages/LiveSurveillancePage';
 import AlertsEventsPage from './pages/AlertsEventsPage';
 import CamerasPage from './pages/CamerasPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import SettingsPage from './pages/SettingsPage';
 import SnapshotsPage from './pages/SnapshotsPage';
+import BlockchainPage from './pages/BlockchainPage';
 import LoginPage from './pages/LoginPage';
 import { RemoteCameraPage } from './pages/RemoteCameraPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { LocationProvider } from './context/LocationContext';
-import { useWebSocket } from './services/useWebSocket';
+import { SentinelCameraProvider } from './context/SentinelCameraContext';
 import './App.css';
 
 function MainAppLayout() {
-  const [activeTab, setActiveTab] = useState('surveillance');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const { isAuthenticated, loading } = useAuth();
-  const { isConnected, latency, lastPing, alerts } = useWebSocket();
 
   if (loading) {
     return (
-      <div className="app-loading-screen font-mono">
+      <div className="app-loading-screen">
         <div className="loading-spinner"></div>
         <div className="loading-text">INITIALIZING DEFENSE NETWORK...</div>
       </div>
@@ -41,68 +35,36 @@ function MainAppLayout() {
   }
 
   return (
-    <div className="app-container">
-      {/* Left Sidebar */}
-      <Sidebar activeTab={activeTab} onSelectTab={setActiveTab} />
+    <div className="app-root-wrapper">
+      {/* Full-width Top Header matching reference image */}
+      <Header onSelectTab={setActiveTab} />
 
-      {/* Main Content Area */}
-      <main className="main-layout">
-        {/* Top Header */}
-        <Header onSelectTab={setActiveTab} />
+      {/* Main Body with Sidebar on left and Content on right */}
+      <div className="app-body-container">
+        {/* Left Sidebar */}
+        <Sidebar activeTab={activeTab} onSelectTab={setActiveTab} />
 
-        {/* Inner Content Wrapper */}
-        <div className="content-wrapper">
-          {activeTab === 'surveillance' && (
-            <LiveSurveillancePage onNavigateToAlerts={setActiveTab} />
-          )}
-          
-          {activeTab === 'alerts' && <AlertsEventsPage />}
+        {/* Main Content Viewport */}
+        <main className="main-layout">
+          <div className="content-wrapper">
+            {(activeTab === 'dashboard' || activeTab === 'surveillance') && (
+              <MainDashboardView onNavigateTab={setActiveTab} />
+            )}
 
-          {activeTab === 'cameras' && <CamerasPage />}
+            {activeTab === 'alerts' && <AlertsEventsPage />}
 
-          {activeTab === 'analytics' && <AnalyticsPage />}
+            {activeTab === 'blockchain' && <BlockchainPage />}
 
-          {activeTab === 'snapshots' && <SnapshotsPage />}
+            {activeTab === 'cameras' && <CamerasPage />}
 
-          {activeTab === 'settings' && <SettingsPage />}
+            {activeTab === 'analytics' && <AnalyticsPage />}
 
-          {activeTab === 'dashboard' && (
-            <>
-              {/* Dashboard Title & Meta Row */}
-              <DashboardHeader />
+            {activeTab === 'snapshots' && <SnapshotsPage />}
 
-              {/* Top 4 KPI Summary Cards */}
-              <DashboardKPIs />
-
-              {/* Upper / Middle 2-Column Dashboard Grid */}
-              <div className="dashboard-grid">
-                {/* Left Main Column */}
-                <div className="left-column">
-                  <SurveillanceMap lastPing={lastPing} latency={latency} />
-                  <ActiveDetections />
-                </div>
-
-                {/* Right Column Feed Panel */}
-                <div className="right-column">
-                  <RightAlertsPanel alerts={alerts} onNavigateToAlerts={setActiveTab} />
-                </div>
-              </div>
-
-              {/* Bottom Row Grid */}
-              <div className="bottom-row-grid">
-                <DetectionActivity />
-                <CameraHealth />
-              </div>
-            </>
-          )}
-
-          {activeTab !== 'dashboard' && activeTab !== 'surveillance' && activeTab !== 'alerts' && activeTab !== 'cameras' && activeTab !== 'analytics' && activeTab !== 'snapshots' && activeTab !== 'settings' && (
-            <div className="tactical-card font-mono" style={{ padding: '40px', textAlign: 'center' }}>
-              Module '{activeTab}' is currently active in L3 Ops Mode.
-            </div>
-          )}
-        </div>
-      </main>
+            {activeTab === 'settings' && <SettingsPage />}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
@@ -119,7 +81,9 @@ function App() {
     <ThemeProvider>
       <LocationProvider>
         <AuthProvider>
-          <MainAppLayout />
+          <SentinelCameraProvider>
+            <MainAppLayout />
+          </SentinelCameraProvider>
         </AuthProvider>
       </LocationProvider>
     </ThemeProvider>

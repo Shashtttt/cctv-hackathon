@@ -1,47 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Sliders, User, ShieldCheck, LogOut, Award, ChevronDown, Volume2, VolumeX, AlertTriangle, Images, Sun, Moon } from 'lucide-react';
+import { Settings, User, ChevronDown, Award, LogOut, Volume2, VolumeX, Video, VideoOff, Eye } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
+import { useSentinelCamera } from '../context/SentinelCameraContext';
 import { soundController } from '../utils/audioAlert';
-import FirebaseStatusBadge from './FirebaseStatusBadge';
 import './Header.css';
 
-const Header = ({ onSelectTab }) => {
-  const { user, logout, isAdmin } = useAuth();
-  const { theme, toggleTheme } = useTheme();
-  const [timeStr, setTimeStr] = useState('14:28:09 UTC');
+export default function Header({ onSelectTab }) {
+  const { user, logout } = useAuth();
+  const { isSentinelActive, toggleSentinel, telemetry } = useSentinelCamera();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [currentDateTime, setCurrentDateTime] = useState('13 Sep 2026  14:32:17');
   const [isSirenActive, setIsSirenActive] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
 
   useEffect(() => {
-    const updateZuluTime = () => {
-      const now = new Date();
-      const hours = String(now.getUTCHours()).padStart(2, '0');
-      const minutes = String(now.getUTCMinutes()).padStart(2, '0');
-      const seconds = String(now.getUTCSeconds()).padStart(2, '0');
-      setTimeStr(`${hours}:${minutes}:${seconds} UTC`);
-    };
-
-    updateZuluTime();
-    const timer = setInterval(updateZuluTime, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // Subscribe to real-time tactical siren state
-  useEffect(() => {
-    const unsubscribe = soundController.subscribe((active, muted) => {
+    const unsub = soundController.subscribe((active) => {
       setIsSirenActive(active);
-      setIsMuted(muted);
     });
-    return unsubscribe;
+    return unsub;
   }, []);
 
-  const handleToggleMute = () => {
-    soundController.toggleMute();
-  };
-
-  const handleTestSiren = () => {
+  const handleToggleSiren = () => {
     if (isSirenActive) {
       soundController.silence();
     } else {
@@ -49,150 +27,158 @@ const Header = ({ onSelectTab }) => {
     }
   };
 
+  useEffect(() => {
+    const updateDateTime = () => {
+      const now = new Date();
+      const day = String(now.getDate()).padStart(2, '0');
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const month = months[now.getMonth()];
+      const year = now.getFullYear();
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      setCurrentDateTime(`${day} ${month} ${year}  ${hours}:${minutes}:${seconds}`);
+    };
+
+    updateDateTime();
+    const timer = setInterval(updateDateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
-    <header className="top-header">
-      {/* Left Operational Cluster Tag or Active Weapon Siren Banner */}
-      <div className="flex items-center gap-3">
-        <div className="cluster-status-pill font-mono">
-          <ShieldCheck size={14} className="cluster-icon text-cyan" />
-          <span className="dot-green status-dot pulse-ring"></span>
-          <span className="cluster-text">SECTOR 4 - DEFENSE MATRIX CLUSTER: ARMED & OPERATIONAL</span>
+    <header className="ibvap-header">
+      {/* Left Branding Group */}
+      <div className="header-brand-group">
+        <div className="header-logo-container">
+          <svg width="34" height="34" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M18 3L5 8V17C5 25.5 10.5 32.5 18 35C25.5 32.5 31 25.5 31 17V8L18 3Z"
+              fill="#172554"
+              stroke="#2563eb"
+              strokeWidth="2.2"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M9.5 18C9.5 18 13 12.5 18 12.5C23 12.5 26.5 18 26.5 18C26.5 18 23 23.5 18 23.5C13 23.5 9.5 18 9.5 18Z"
+              fill="#0b1329"
+              stroke="#38bdf8"
+              strokeWidth="1.8"
+            />
+            <circle cx="18" cy="18" r="3.2" fill="#38bdf8" />
+            <circle cx="19" cy="17" r="1.1" fill="#ffffff" />
+          </svg>
         </div>
 
-        <FirebaseStatusBadge />
-
-        {isSirenActive && (
-          <div className="siren-active-banner font-mono">
-            <AlertTriangle size={14} className="text-red-500 animate-bounce" />
-            <span className="siren-text">🚨 DEFCON 1: WEAPON DETECTED — TACTICAL SIREN SOUNDING</span>
-            <button
-              className="siren-silence-btn"
-              onClick={() => soundController.silence()}
-              title="Silence Siren"
-            >
-              SILENCE
-            </button>
+        <div className="header-title-text-group">
+          <h1 className="header-brand-title">IBVAP</h1>
+          <div className="header-subtitles">
+            <span className="subtitle-line-1">AI-Based Intelligent Video Analytics Platform</span>
+            <span className="subtitle-line-2">for Border Surveillance</span>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Right Controls, Operator Badge & Clock */}
-      <div className="header-right-actions">
-        {/* Test Siren Button */}
+      {/* Right Controls & Status Group */}
+      <div className="header-right-meta">
+        {/* Persistent Sentinel Camera Background Toggle */}
         <button
-          className={`siren-test-pill font-mono ${isSirenActive ? 'active' : ''}`}
-          onClick={handleTestSiren}
-          title={isSirenActive ? "Stop active siren noise" : "Test tactical weapon siren noise"}
+          className={`header-sentinel-btn ${isSentinelActive ? 'sentinel-active' : 'sentinel-inactive'}`}
+          onClick={toggleSentinel}
+          title={isSentinelActive ? `Camera is running in background & identifying. Status: ${telemetry.lastIdentified}. Click to turn OFF.` : "Camera is OFF. Click to start persistent background identification."}
         >
-          <span>{isSirenActive ? 'STOP SIREN' : 'TEST SIREN'}</span>
-        </button>
-
-        {/* Audio Mute / Unmute Button */}
-        <button
-          className={`header-icon-btn sound-toggle-btn ${isMuted ? 'muted' : ''} ${isSirenActive ? 'siren-pulsing' : ''}`}
-          onClick={handleToggleMute}
-          title={isMuted ? "Unmute Weapon Siren Alarms" : "Mute Weapon Siren Alarms"}
-        >
-          {isMuted ? (
-            <VolumeX size={16} className="text-red-400" />
-          ) : (
-            <Volume2 size={16} className={isSirenActive ? "text-red-400 animate-pulse" : "text-cyan"} />
-          )}
-        </button>
-
-        {/* Theme Mode Toggle Button */}
-        <button
-          className="theme-mode-toggle font-mono"
-          onClick={toggleTheme}
-          title={theme === 'dark' ? "Switch to Daylight Mode" : "Switch to Tactical Night Mode"}
-        >
-          {theme === 'dark' ? (
-            <>
-              <Sun size={14} className="text-amber-400 theme-sun-icon" />
-              <span className="theme-toggle-text">LIGHT</span>
-            </>
-          ) : (
-            <>
-              <Moon size={14} className="text-indigo-400 theme-moon-icon" />
-              <span className="theme-toggle-text">DARK</span>
-            </>
-          )}
-        </button>
-
-        <div className="zulu-clock-container font-mono">
-          <span className="zulu-label text-cyan">ZULU:</span>
-          <span className="zulu-time">{timeStr}</span>
-        </div>
-
-        {/* Authenticated Operator Profile Badge */}
-        {user && (
-          <div className="operator-profile-wrapper">
-            <button 
-              className="operator-header-pill font-mono"
-              onClick={() => setShowUserMenu(!showUserMenu)}
-              title="Click to view credentials or switch operator"
-            >
-              <div className="operator-avatar-circle">
-                <User size={13} className="text-cyan" />
-              </div>
-              <div className="operator-info-text">
-                <span className="operator-name">{user.full_name || user.username}</span>
-                <span className="operator-role-tag">{user.role} • {user.clearance_level}</span>
-              </div>
-              <ChevronDown size={12} className="text-sub" />
-            </button>
-
-            {showUserMenu && (
-              <div className="operator-dropdown-menu font-mono">
-                <div className="dropdown-header">
-                  <div className="dropdown-badge-row">
-                    <Award size={13} className="text-cyan" />
-                    <span>BADGE: {user.badge_number || 'SEC-8821'}</span>
-                  </div>
-                  <div className="dropdown-dept-text">{user.department || 'Sector-4 Command'}</div>
-                  <div className="dropdown-email-text">{user.email || `${user.username}@ibvap.mil`}</div>
-                </div>
-
-                <div className="dropdown-divider"></div>
-
-                {isAdmin && (
-                  <button 
-                    onClick={() => {
-                      setShowUserMenu(false);
-                      if (onSelectTab) onSelectTab('snapshots');
-                    }}
-                    className="dropdown-logout-btn font-mono"
-                    style={{ color: '#f59e0b', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}
-                    title="Open Evidence Snapshots Vault"
-                  >
-                    <Images size={13} className="text-yellow" />
-                    <span>SNAPSHOTS VAULT (ADMIN)</span>
-                  </button>
-                )}
-
-                <button 
-                  onClick={logout}
-                  className="dropdown-logout-btn font-mono"
-                >
-                  <LogOut size={13} className="text-red" />
-                  <span>DISENGAGE / SIGN OUT</span>
-                </button>
-              </div>
+          <span className={`sentinel-beacon-dot ${isSentinelActive ? 'beacon-pulse' : ''}`} />
+          {isSentinelActive ? <Video size={15} /> : <VideoOff size={15} />}
+          <div className="sentinel-btn-content">
+            <span className="sentinel-main-label">
+              {isSentinelActive ? 'SENTINEL CAM: ON' : 'SENTINEL CAM: OFF'}
+            </span>
+            {isSentinelActive && (
+              <span className="sentinel-telemetry-tag">
+                {telemetry.fps > 0 ? `${telemetry.fps} FPS` : 'RUNNING'} • {telemetry.personsCount > 0 ? `${telemetry.personsCount} Pers` : 'Clear'}
+              </span>
             )}
           </div>
-        )}
-
-        <button className="header-icon-btn" title="Alert Notifications">
-          <Bell size={16} />
-          <span className="notification-dot"></span>
+          <span className="sentinel-action-badge">
+            {isSentinelActive ? 'TURN OFF' : 'TURN ON'}
+          </span>
         </button>
 
-        <button className="header-icon-btn" title="Dashboard Controls">
-          <Sliders size={16} />
+        {/* Tactical Siren Trigger */}
+        <button
+          className={`header-siren-btn ${isSirenActive ? 'siren-pulsing' : ''}`}
+          onClick={handleToggleSiren}
+          title={isSirenActive ? "Silence Alarm Siren" : "Test Defense Warning Siren"}
+        >
+          {isSirenActive ? <VolumeX size={15} /> : <Volume2 size={15} />}
+          <span>{isSirenActive ? 'SILENCE' : 'SIREN'}</span>
         </button>
+
+        {/* System Online Badge */}
+        <div className="header-system-status">
+          <span className="system-status-dot"></span>
+          <span className="system-status-text">System Online</span>
+        </div>
+
+        {/* Date and Time */}
+        <div className="header-clock-display">
+          <span>{currentDateTime}</span>
+        </div>
+
+        {/* Settings Gear Button */}
+        <button
+          className="header-settings-btn"
+          onClick={() => onSelectTab && onSelectTab('settings')}
+          title="System Settings"
+        >
+          <Settings size={18} />
+        </button>
+
+        {/* Operator Profile Menu */}
+        <div className="header-operator-wrapper">
+          <button
+            className="operator-pill-btn"
+            onClick={() => setShowUserMenu(!showUserMenu)}
+          >
+            <div className="operator-icon-wrap">
+              <User size={15} />
+            </div>
+            <span className="operator-display-name">
+              Operator 1
+            </span>
+            <ChevronDown size={14} className="operator-arrow" />
+          </button>
+
+          {showUserMenu && (
+            <div className="operator-dropdown-card">
+              <div className="dropdown-user-header">
+                <div className="dropdown-row">
+                  <Award size={13} className="text-blue-400" />
+                  <span className="dropdown-badge-num">BADGE: SEC-8821</span>
+                </div>
+                <div className="dropdown-user-email">
+                  {user?.email || 'operator1@ibvap.mil'}
+                </div>
+                <div className="dropdown-user-role">
+                  Clearance: TOP SECRET (Level 4)
+                </div>
+              </div>
+
+              <div className="dropdown-menu-divider"></div>
+
+              <button
+                className="dropdown-action-btn"
+                onClick={() => {
+                  setShowUserMenu(false);
+                  logout();
+                }}
+              >
+                <LogOut size={14} className="text-red-400" />
+                <span>Sign Out</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );
-};
-
-export default Header;
+}

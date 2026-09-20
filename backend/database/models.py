@@ -137,6 +137,8 @@ class AlertRecord:
     target_id: Optional[str] = None
     status: str = "NEW"             # NEW | ACKNOWLEDGED | DISPATCHED | RESOLVED
     snapshot_path: Optional[str] = None
+    snapshot_base64: Optional[str] = None
+    snapshot_url: Optional[str] = None
     frs_match_name: Optional[str] = None
     frs_match_score: Optional[float] = None
     plate_text: Optional[str] = None
@@ -145,6 +147,7 @@ class AlertRecord:
     gps_coords: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
+        url = self.snapshot_url or (f"/api/v1/snapshots/{self.id}" if self.id else None)
         return {
             "id": self.id,
             "camera_id": self.camera_id,
@@ -159,6 +162,10 @@ class AlertRecord:
             "status": self.status,
             "snapshot_path": self.snapshot_path,
             "snapshotPath": self.snapshot_path,
+            "snapshot_url": url,
+            "snapshotUrl": url,
+            "snapshot_base64": self.snapshot_base64,
+            "snapshotBase64": self.snapshot_base64,
             "frs_match_name": self.frs_match_name,
             "frsMatchName": self.frs_match_name,
             "frs_match_score": self.frs_match_score,
@@ -217,7 +224,7 @@ class SnapshotRecord:
     camera_id: str
     frame_number: int
     file_path: str
-    captured_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+    captured_at: datetime.datetime = field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc))
     file_size_bytes: int = 0
 
 
@@ -234,4 +241,21 @@ class UserRecord:
     department: str = "Sector-4 Border Defense"
     created_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
     last_login_at: Optional[datetime.datetime] = None
+
+
+@dataclass
+class AuditBlockRecord:
+    index: int
+    timestamp: str
+    event_type: str
+    camera_id: str
+    alert_id: Optional[str]
+    payload_json: str
+    data_hash: str
+    previous_hash: str
+    merkle_root: str
+    block_hash: str
+    validator_node: str = "NODE-BSF-SECTOR4-ALPHA"
+    signature: str = ""
+    nonce: int = 0
 

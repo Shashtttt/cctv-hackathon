@@ -26,152 +26,14 @@ import {
   Trash2
 } from 'lucide-react';
 import { fetchCameras, getCameraStreamUrl, deleteCamera } from '../services/apiService';
-import { INDIA_TRAFFIC_CAMERAS } from '../services/trafficVisionCatalog';
+import { enumerateDeviceCameras } from '../utils/deviceDetector';
 import { CameraDetailModal } from '../components/CameraDetailModal';
 import { VirtualFenceConfigModal } from '../components/VirtualFenceConfigModal';
 import { AddIpCameraModal } from '../components/AddIpCameraModal';
 import './CamerasPage.css';
 
-const trafficVisionCamEntries = INDIA_TRAFFIC_CAMERAS.map((tv, idx) => ({
-  id: tv.id,
-  code: `TV-IN-0${idx + 1}`,
-  name: tv.name,
-  status: 'online',
-  statusText: 'ONLINE ⚡',
-  location: tv.location,
-  gps_coords: tv.gps,
-  resolution: tv.resolution,
-  lastSeen: 'Live Now',
-  image: '/assets/cam1.png',
-  streamUrl: tv.streamUrl,
-  feedType: tv.feedType,
-  recText: 'TRAFFICVISION',
-  badgeTopRight: '🇮🇳 INDIA LIVE',
-  overlayBottomLeft: tv.location.toUpperCase(),
-  overlayBottomRight: `${tv.resolution} @ ${tv.fps}fps`,
-  type: 'online',
-  hasDetections: true,
-  isTrafficVision: true,
-  detectionMode: 'c01_double'
-}));
-
-const defaultCamerasData = [
-  ...trafficVisionCamEntries,
-  {
-    id: 'cam-01',
-    code: 'C 01',
-    name: 'DLF Cyber City North Gate',
-    status: 'online',
-    statusText: 'Online',
-    location: 'Gurgaon Cyber City, Haryana',
-    gps_coords: '28.4949° N, 77.0895° E',
-    resolution: '1080p',
-    lastSeen: 'Just now',
-    image: '/assets/cam1.png',
-    recText: 'REC',
-    badgeTopRight: 'CH-01 LIVE',
-    overlayBottomLeft: 'GURGAON CYBER CITY',
-    overlayBottomRight: '1080p @ 30fps',
-    type: 'online',
-    hasDetections: true,
-    detectionMode: 'c01_double'
-  },
-  {
-    id: 'cam-02',
-    code: 'C 02',
-    name: 'Sector 29 Leisure Valley Post',
-    status: 'online',
-    statusText: 'Online',
-    location: 'Gurgaon Sector 29, Haryana',
-    gps_coords: '28.4682° N, 77.0620° E',
-    resolution: '1080p',
-    lastSeen: 'Just now',
-    image: '/assets/cam2.png',
-    recText: 'REC',
-    badgeTopRight: 'IR NIGHT-VISION',
-    overlayBottomLeft: 'SECTOR 29 VALLEY',
-    overlayBottomRight: '1080p @ 30fps',
-    type: 'online',
-    hasDetections: true,
-    detectionMode: 'c02_patrol'
-  },
-  {
-    id: 'cam-03',
-    code: 'C 03',
-    name: 'Sohna Road Surveillance Post',
-    status: 'warning',
-    statusText: 'Warning',
-    location: 'Gurgaon Sohna Road, Haryana',
-    gps_coords: '28.4198° N, 77.0401° E',
-    resolution: '1080p',
-    lastSeen: '10 sec ago',
-    image: '/assets/cam3.png',
-    recText: 'ANOMALY',
-    badgeTopRight: 'MOTION TRIG',
-    overlayBottomLeft: 'SOHNA CORRIDOR',
-    overlayBottomRight: '1080p @ 18fps',
-    type: 'warning',
-    hasDetections: true,
-    detectionMode: 'c03_alerts'
-  },
-  {
-    id: 'cam-04',
-    code: 'c-04',
-    name: 'BOP Entry',
-    status: 'online',
-    statusText: 'Online',
-    location: 'Sector 04',
-    gps_coords: '34.0512° N, 74.9310° E',
-    resolution: '720p',
-    lastSeen: 'Just now',
-    image: '/assets/cam4.png',
-    recText: 'REC',
-    badgeTopRight: 'GUARD POST',
-    overlayBottomLeft: 'CAM 7 BOP',
-    overlayBottomRight: '720p @ 30fps',
-    hasDetections: true,
-    detectionMode: 'c04_security',
-    type: 'online'
-  },
-  {
-    id: 'cam-05',
-    code: 'c-05',
-    name: 'Watch Tower',
-    status: 'online',
-    statusText: 'Online',
-    location: 'Sector 05',
-    gps_coords: '34.0321° N, 74.7540° E',
-    resolution: '1080p',
-    lastSeen: 'Just now',
-    image: '/assets/cam5.png',
-    recText: 'REC',
-    badgeTopRight: 'STATION 7-N',
-    overlayBottomLeft: 'EL PASO HIGHWAY',
-    overlayBottomRight: '1080p @ 30fps',
-    hasDetections: true,
-    detectionMode: 'c05_clear',
-    type: 'online'
-  },
-  {
-    id: 'cam-06',
-    code: 'C-06',
-    name: 'Patrol Road',
-    status: 'offline',
-    statusText: 'Offline',
-    location: 'Sector 06',
-    resolution: '1080p',
-    lastSeen: '5 min ago',
-    isOffline: true,
-    overlayBottomLeft: 'BORDER-SECURE-01',
-    overlayBottomRight: '1080p (LOST)',
-    hasDetections: true,
-    detectionMode: 'c06_cached',
-    type: 'offline'
-  }
-];
-
 const CamerasPage = () => {
-  const [cameras, setCameras] = useState(defaultCamerasData);
+  const [cameras, setCameras] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [locationFilter, setLocationFilter] = useState('all');
@@ -186,51 +48,94 @@ const CamerasPage = () => {
 
   const loadCameras = async () => {
     try {
-      const data = await fetchCameras();
-      if (Array.isArray(data) && data.length > 0) {
-        const customCams = [];
-        const standardCams = [];
-
-        data.forEach((item, index) => {
-          const isCustom = item.id.startsWith('ip-') || item.id.startsWith('cam-mobile') || (item.rtsp_url && (item.rtsp_url.startsWith('http') || item.rtsp_url.startsWith('rtsp')));
-          const fallback = defaultCamerasData.find(c => c.id === item.id) || defaultCamerasData[index % defaultCamerasData.length];
-          
-          const camObj = {
-            id: item.id,
-            code: item.code || fallback.code,
-            name: item.name || fallback.name,
-            status: item.status ? item.status.toLowerCase() : fallback.status,
-            statusText: item.status ? item.status.toUpperCase() : fallback.statusText,
-            location: item.location || fallback.location,
-            gps_coords: item.gps_coords || fallback.gps_coords,
-            resolution: item.resolution || fallback.resolution,
-            lastSeen: item.last_frame_at ? 'Just now' : fallback.lastSeen,
-            image: fallback.image,
-            streamUrl: isCustom ? getCameraStreamUrl(item.id) : (fallback.streamUrl || getCameraStreamUrl(item.id)),
-            recText: isCustom ? 'REC ⚡' : fallback.recText,
-            badgeTopRight: isCustom ? 'IP CAMERA' : (item.mode || fallback.badgeTopRight),
-            overlayBottomLeft: (item.location || fallback.overlayBottomLeft || 'SECTOR 04').toUpperCase(),
-            overlayBottomRight: `${item.resolution || '1080p'} @ ${item.fps || 25}fps`,
-            type: item.status || fallback.type,
-            isOffline: item.status === 'offline',
-            hasDetections: true,
-            detectionMode: fallback.detectionMode || 'c01_double',
-            isCustomIp: isCustom,
-            rtsp_url: item.rtsp_url,
-          };
-
-          if (isCustom) {
-            customCams.push(camObj);
-          } else {
-            standardCams.push(camObj);
-          }
-        });
-
-        // Prepend custom IP cameras so they appear prominently at the top
-        setCameras([...customCams, ...standardCams]);
+      // 1. Detect genuine physical hardware cameras on this device
+      let hardwareCams = [];
+      try {
+        const detected = await enumerateDeviceCameras();
+        hardwareCams = (detected || []).map((d, index) => ({
+          id: d.id || `dev-cam-${index + 1}`,
+          code: d.isBack ? 'DEV-REAR-01' : (index === 0 ? 'DEV-OPTICAL-01' : `DEV-OPTICAL-0${index + 1}`),
+          name: d.name || d.label || (index === 0 ? 'Integrated HD Camera' : `External USB CCTV ${index}`),
+          status: 'online',
+          statusText: 'ONLINE ⚡',
+          location: 'Local Optical Device (Hardware)',
+          gps_coords: 'Active Device Sensor',
+          resolution: d.resolution || '1080p FHD',
+          lastSeen: 'Live Now',
+          image: '/assets/cam1.png',
+          streamUrl: null,
+          frameUrl: null,
+          recText: 'LIVE HARDWARE ⚡',
+          badgeTopRight: d.isBack ? '📷 REAR SENSOR' : '💻 FRONT WEBCAM',
+          overlayBottomLeft: (d.name || d.label || 'OPTICAL SENSOR').toUpperCase(),
+          overlayBottomRight: `${d.resolution || '1080p'} @ 30fps`,
+          type: 'online',
+          isOffline: false,
+          hasDetections: true,
+          detectionMode: 'c01_double',
+          isDeviceHardware: true,
+          isCustomIp: false,
+        }));
+      } catch (devErr) {
+        console.debug('Hardware camera enumeration notice:', devErr);
       }
+
+      // 2. Fetch all real IP/mobile cameras registered in backend
+      let backendCams = [];
+      try {
+        const data = await fetchCameras();
+        if (Array.isArray(data)) {
+          // Exclude synthetic placeholder feeds, mp4 demo files, and local webcam ingest cam-01
+          const realCameras = data.filter(c => 
+            c.rtsp_url && 
+            !c.rtsp_url.startsWith('synthetic://') &&
+            !c.rtsp_url.endsWith('.mp4') &&
+            !c.rtsp_url.endsWith('.avi') &&
+            c.id.toLowerCase() !== 'cam-01' &&
+            !c.id.toLowerCase().startsWith('dev-cam')
+          );
+
+          backendCams = realCameras.map((item, index) => {
+            const isMobile = Boolean(item.rtsp_url && item.rtsp_url.startsWith('mobile://'));
+            const isOnline = item.status === 'online' || item.is_active;
+            const isConnecting = item.status === 'connecting';
+            const currentStatus = isOnline ? 'online' : (isConnecting ? 'connecting' : (isMobile ? 'standby' : 'offline'));
+
+            return {
+              id: item.id,
+              code: item.code || `IP-${index + 1}`,
+              name: item.name || `IP Camera ${index + 1}`,
+              status: currentStatus,
+              statusText: isOnline ? 'ONLINE ⚡' : (isConnecting ? 'CONNECTING…' : (isMobile ? 'STANDBY 📱' : 'OFFLINE')),
+              location: item.location || 'Network Perimeter',
+              gps_coords: item.gps_coords || '28.4949° N, 77.0895° E',
+              resolution: item.resolution || '1080p FHD',
+              lastSeen: isOnline ? 'Live Now' : (item.last_frame_at ? 'Recent' : 'Offline'),
+              image: '/assets/cam2.png',
+              streamUrl: item.stream_url || getCameraStreamUrl(item.id),
+              frameUrl: item.frame_url || `/api/v1/cameras/${item.id}/frame`,
+              recText: isOnline ? 'LIVE AI ⚡' : (isConnecting ? 'CONNECTING' : 'STANDBY'),
+              badgeTopRight: isMobile ? '📱 MOBILE CAM' : '🌐 IP CAMERA',
+              overlayBottomLeft: (item.location || 'NETWORK STREAM').toUpperCase(),
+              overlayBottomRight: `${item.resolution || '1080p'} @ ${item.fps || 25}fps`,
+              type: currentStatus,
+              isOffline: !isOnline,
+              hasDetections: true,
+              detectionMode: 'c01_double',
+              isCustomIp: true,
+              isMobile,
+              rtsp_url: item.rtsp_url,
+            };
+          });
+        }
+      } catch (apiErr) {
+        console.debug('Cameras API load notice:', apiErr);
+      }
+
+      // Combine genuine hardware cameras with registered IP cameras
+      setCameras([...hardwareCams, ...backendCams]);
     } catch (e) {
-      console.debug('Cameras API fallback loaded');
+      console.debug('Cameras load error:', e);
     }
   };
 
@@ -247,7 +152,10 @@ const CamerasPage = () => {
 
   useEffect(() => {
     loadCameras();
+    const interval = setInterval(loadCameras, 4000);
+    return () => clearInterval(interval);
   }, []);
+
 
   // Filtered Cameras
   const filteredCameras = cameras.filter((cam) => {
@@ -487,51 +395,29 @@ const CamerasPage = () => {
             <div className={`cam-card-viewport scanlines ${cam.isOffline ? 'offline-viewport' : ''}`}>
               {!cam.isOffline ? (
                 <>
-                  <img 
-                    src={streamErrors[cam.id] ? cam.image : getCameraStreamUrl(cam.id)} 
-                    onError={() => handleStreamError(cam.id)}
-                    alt={cam.name} 
-                    className="cam-viewport-img" 
-                  />
-
-                  {/* Real-time Tactical Detection Overlay */}
-                  <div className="camera-detection-overlay" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-                    <div 
-                      style={{
-                        position: 'absolute',
-                        top: cam.type === 'GATE' ? '32%' : cam.type === 'ROAD' ? '40%' : '30%',
-                        left: cam.type === 'GATE' ? '42%' : cam.type === 'ROAD' ? '35%' : '45%',
-                        width: '24%',
-                        height: '42%',
-                        border: cam.status === 'warning' ? '2px solid #ff0033' : '1.8px solid #00f2fe',
-                        boxShadow: cam.status === 'warning' ? '0 0 12px rgba(255,0,51,0.5)' : '0 0 10px rgba(0,242,254,0.3)',
-                        borderRadius: '2px',
+                  {cam.streamUrl && (cam.streamUrl.endsWith('.mp4') || cam.streamUrl.endsWith('.webm')) ? (
+                    <video 
+                      src={cam.streamUrl} 
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className="cam-viewport-img" 
+                    />
+                  ) : (
+                    <img 
+                      src={cam.streamUrl || getCameraStreamUrl(cam.id)}
+                      alt={cam.name}
+                      className="cam-viewport-img" 
+                      onError={(e) => {
+                        setTimeout(() => {
+                          if (e.target) {
+                            e.target.src = `${cam.frameUrl || `/api/v1/cameras/${cam.id}/frame`}?t=${Date.now()}`;
+                          }
+                        }, 800);
                       }}
-                    >
-                      <span style={{ position: 'absolute', top: -1, left: -1, width: 7, height: 7, borderTop: '2px solid #fff', borderLeft: '2px solid #fff' }}></span>
-                      <span style={{ position: 'absolute', top: -1, right: -1, width: 7, height: 7, borderTop: '2px solid #fff', borderRight: '2px solid #fff' }}></span>
-                      <span style={{ position: 'absolute', bottom: -1, left: -1, width: 7, height: 7, borderBottom: '2px solid #fff', borderLeft: '2px solid #fff' }}></span>
-                      <span style={{ position: 'absolute', bottom: -1, right: -1, width: 7, height: 7, borderBottom: '2px solid #fff', borderRight: '2px solid #fff' }}></span>
-
-                      <span
-                        className="font-mono"
-                        style={{
-                          position: 'absolute',
-                          top: -16,
-                          left: 0,
-                          fontSize: '9px',
-                          fontWeight: 700,
-                          padding: '1px 5px',
-                          background: cam.status === 'warning' ? '#ff0033' : '#00f2fe',
-                          color: '#000',
-                          borderRadius: '2px',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {cam.status === 'warning' ? '🚨 INTRUSION [98%]' : cam.type === 'ROAD' ? '🚗 VEHICLE [ANPR 94%]' : '👤 SENTRY [97%]'}
-                      </span>
-                    </div>
-                  </div>
+                    />
+                  )}
 
                   {/* Top Overlays */}
                   <div className="viewport-top-bar">
@@ -872,6 +758,7 @@ const CamerasPage = () => {
       {selectedCameraModal && (
         <CameraDetailModal
           camera={selectedCameraModal}
+          isWebcam={selectedCameraModal.isDeviceHardware}
           onClose={() => setSelectedCameraModal(null)}
         />
       )}
