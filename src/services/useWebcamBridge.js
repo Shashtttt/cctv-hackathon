@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { getDevicePlatform, enumerateDeviceCameras } from '../utils/deviceDetector';
-import { soundController } from '../utils/audioAlert';
+import { soundController, isUnauthorizedWeaponThreat } from '../utils/audioAlert';
 import { reverseGeocodeCoords, POPULAR_LOCATIONS } from '../utils/geoLocator';
 import { syncSnapshotToFirestore, syncAlertToFirestore } from './firestoreService';
 
@@ -23,8 +23,14 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
   const [geoPosition, setGeoPosition] = useState(null);
   const geoWatchIdRef = useRef(null);
   const geoPositionRef = useRef(null);
-  const [resolvedLocation, setResolvedLocation] = useState('Noida Sector 28, Uttar Pradesh');
-  const resolvedLocationRef = useRef('Noida Sector 28, Uttar Pradesh');
+  const [resolvedLocation, setResolvedLocation] = useState(() => {
+    try {
+      return (typeof window !== 'undefined' ? localStorage.getItem('ibvap_dynamic_location_name') : null) || 'Detecting Location...';
+    } catch {
+      return 'Detecting Location...';
+    }
+  });
+  const resolvedLocationRef = useRef(resolvedLocation);
 
   const [telemetry, setTelemetry] = useState({
     detectionsCount: 0,
@@ -135,7 +141,29 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
             }));
           },
           (err) => {
-            console.debug('Geolocation notice:', err?.message);
+            console.debug('Geolocation notice:', err?.message, 'Falling back to IP geolocation...');
+            fetch('https://ipwho.is/')
+              .then((r) => r.json())
+              .then((data) => {
+                if (data && data.success && data.latitude && data.longitude) {
+                  const areaName = [data.city, data.region, data.country].filter(Boolean).join(', ');
+                  const latStr = `${Math.abs(data.latitude).toFixed(4)}° ${data.latitude >= 0 ? 'N' : 'S'}`;
+                  const lonStr = `${Math.abs(data.longitude).toFixed(4)}° ${data.longitude >= 0 ? 'E' : 'W'}`;
+                  const formatted = `${latStr}, ${lonStr}`;
+                  setResolvedLocation(areaName);
+                  resolvedLocationRef.current = areaName;
+                  try {
+                    localStorage.setItem('ibvap_dynamic_location_name', areaName);
+                    localStorage.setItem('ibvap_dynamic_location', JSON.stringify({ latitude: data.latitude, longitude: data.longitude, formatted }));
+                  } catch {}
+                  setTelemetry((prev) => ({
+                    ...prev,
+                    location: areaName,
+                    gpsCoords: formatted,
+                  }));
+                }
+              })
+              .catch(() => {});
           },
           { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
         );
@@ -278,9 +306,11 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
             return name === 'wristwatch' || held === 'wristwatch' || held === 'watch';
           }).length;
           const objectsCount = dets.filter((d) => d.class_id !== 0 && !isWeaponItem(d)).length;
+          const unauthorizedWeaponDets = dets.filter((d) => isUnauthorizedWeaponThreat(d, dets));
+          const hasUnauthorizedWeapons = unauthorizedWeaponDets.length > 0;
 
-          // PLAY SIREN ONLY WHEN WEAPON DETECTED (knife, pistol, gun, firearm, weapon, etc.)
-          if (weaponsCount > 0 || armedCount > 0) {
+          // PLAY SIREN ONLY WHEN GENUINE UNAUTHORIZED WEAPON DETECTED
+          if (hasUnauthorizedWeapons) {
             soundController.triggerWeaponSiren(2000);
 
             // SAVE WEAPON DETECTED SNAPSHOT LIVE TO FIREBASE (Debounced by 4s to prevent flooding)
@@ -288,8 +318,7 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
             if (nowTime - lastWeaponSnapshotTimeRef.current > 4000 && res.data.annotated_frame) {
               lastWeaponSnapshotTimeRef.current = nowTime;
               const snapId = `WEAPON-${(cameraId || 'CAM-01').toUpperCase()}-${nowTime}`;
-              const weaponDets = dets.filter(isWeaponItem);
-              const weaponNames = weaponDets.map((d) => d.class_name || d.held_item || 'Weapon').join(', ') || 'Firearm / Blade';
+              const weaponNames = unauthorizedWeaponDets.map((d) => d.class_name || d.held_item || 'Weapon').join(', ') || 'Firearm / Blade';
               const snapPayload = {
                 id: snapId,
                 alert_id: snapId,

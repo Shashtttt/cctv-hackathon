@@ -9,6 +9,7 @@ import AnalyticsPage from './pages/AnalyticsPage';
 import SettingsPage from './pages/SettingsPage';
 import SnapshotsPage from './pages/SnapshotsPage';
 import BlockchainPage from './pages/BlockchainPage';
+import OfficerRegistryPage from './pages/OfficerRegistryPage';
 import LoginPage from './pages/LoginPage';
 import { RemoteCameraPage } from './pages/RemoteCameraPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -54,6 +55,8 @@ function MainAppLayout() {
             {activeTab === 'alerts' && <AlertsEventsPage />}
 
             {activeTab === 'blockchain' && <BlockchainPage />}
+
+            {activeTab === 'registry' && <OfficerRegistryPage />}
 
             {activeTab === 'cameras' && <CamerasPage />}
 

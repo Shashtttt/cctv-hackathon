@@ -309,3 +309,57 @@ class SoundController {
 }
 
 export const soundController = new SoundController();
+
+/**
+ * Validates whether a detection is a genuine unauthorized weapon threat.
+ * Returns false if:
+ * 1. The detection itself is authorized (is_authorized === true or threat_level === 'AUTHORIZED')
+ * 2. The item is held by an authorized person
+ * 3. An authorized sentry in the scene is wielding the weapon
+ * 4. The item is a casual object (phone, watch, baggage)
+ */
+export function isUnauthorizedWeaponThreat(det, allDets = []) {
+  if (!det) return false;
+
+  // 1. Direct authorization clearance
+  if (det.is_authorized || det.is_weapon_authorized || det.threat_level === 'AUTHORIZED') {
+    return false;
+  }
+
+  // 2. Reject casual / non-weapon items
+  if (det.is_casual_object || det.held_item_type === 'CASUAL_OBJECT') {
+    return false;
+  }
+  const name = (det.class_name || '').toLowerCase();
+  const held = (det.held_item || '').toLowerCase();
+  const unusual = (det.unusual_item || '').toLowerCase();
+  if (
+    name.includes('watch') || held.includes('watch') || unusual.includes('watch') ||
+    name.includes('unknown') || held.includes('unknown') || unusual.includes('unknown')
+  ) {
+    return false;
+  }
+
+  // 3. Check if held by an authorized person
+  if (det.held_by_target_id) {
+    const holder = allDets.find((d) => d.target_id === det.held_by_target_id);
+    if (holder && (holder.is_authorized || holder.is_weapon_authorized || holder.threat_level === 'AUTHORIZED')) {
+      return false;
+    }
+  }
+
+  // 4. If any person in the frame is authorized and holding, and this is a held weapon
+  const hasAuthorizedHolder = allDets.some(
+    (d) => (d.is_authorized || d.is_weapon_authorized || d.threat_level === 'AUTHORIZED') &&
+           (d.is_holding || d.held_item_type === 'WEAPON')
+  );
+  if (hasAuthorizedHolder && (det.is_held || det.is_holding)) {
+    return false;
+  }
+
+  // 5. Genuine weapon threat: either an armed person or an unheld weapon object
+  const isArmed = det.is_holding && det.held_item_type === 'WEAPON';
+  const isWeapon = Boolean(det.is_weapon);
+  return isArmed || isWeapon;
+}
+

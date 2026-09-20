@@ -99,7 +99,9 @@ async def init_db() -> None:
                     face_embedding  TEXT,           -- JSON array of 128 floats
                     last_seen       TEXT,
                     last_seen_at    TEXT,
-                    enrolled_at     TEXT NOT NULL
+                    enrolled_at     TEXT NOT NULL,
+                    is_weapon_authorized INTEGER DEFAULT 0,
+                    is_authorized        INTEGER DEFAULT 0
                 );
 
                 CREATE TABLE IF NOT EXISTS anpr_watchlist (
@@ -109,7 +111,9 @@ async def init_db() -> None:
                     vehicle_type    TEXT NOT NULL DEFAULT '',
                     threat_level    TEXT NOT NULL DEFAULT 'HIGH',
                     notes           TEXT NOT NULL DEFAULT '',
-                    flagged_date    TEXT
+                    flagged_date    TEXT,
+                    is_weapon_authorized INTEGER DEFAULT 0,
+                    is_authorized        INTEGER DEFAULT 0
                 );
 
                 CREATE TABLE IF NOT EXISTS snapshots (
@@ -201,6 +205,30 @@ async def init_db() -> None:
                 except Exception:
                     pass
 
+            for col, col_type in [
+                ("is_weapon_authorized", "INTEGER DEFAULT 0"),
+                ("is_authorized", "INTEGER DEFAULT 0"),
+            ]:
+                try:
+                    await db.execute(f"ALTER TABLE frs_watchlist ADD COLUMN {col} {col_type}")
+                except Exception:
+                    pass
+                try:
+                    await db.execute(f"ALTER TABLE anpr_watchlist ADD COLUMN {col} {col_type}")
+                except Exception:
+                    pass
+
+            # Ensure all cameras have FRS and ANPR enabled in analytics_modes
+            try:
+                await db.execute("""
+                    UPDATE cameras 
+                    SET analytics_modes='["WEAPON", "INTRUSION", "PERSON", "FRS", "ANPR"]'
+                    WHERE analytics_modes NOT LIKE '%FRS%' OR analytics_modes NOT LIKE '%ANPR%'
+                """)
+                await db.commit()
+            except Exception:
+                pass
+
             log.info("Database schema initialised at %s", DB_PATH)
 
         # Seed demo data if database is empty
@@ -213,73 +241,8 @@ async def init_db() -> None:
 
 
 async def seed_initial_data_if_empty() -> None:
-    """Populates default intelligence watchlists if tables are empty. Does not seed dummy cameras."""
-    async with get_db() as db:
-        async with db.execute("SELECT COUNT(*) AS cnt FROM frs_watchlist") as cur:
-            row = await cur.fetchone()
-            if row and row["cnt"] > 0:
-                return  # Database already seeded
-
-        log.info("Seeding intelligence watchlists …")
-        now = datetime.datetime.utcnow().isoformat()
-
-
-        # 2. FRS Watchlist
-        subjects = [
-            (
-                "W-901", "Viktor K. Petrov", "The Fox", "High-Value Target", "CRITICAL",
-                "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
-                "Wanted for unauthorized border crossing & reconnaissance.",
-                None, "BOP-04 Marshland", now, now,
-            ),
-            (
-                "W-902", "Tariq Al-Mansoor", "Falcon", "Smuggling Suspect", "HIGH",
-                "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
-                "Associated with night perimeter breaches.",
-                None, "BOP-12 South Gate", now, now,
-            ),
-            (
-                "W-903", "Elena Rostova", "Shadow", "Persons of Interest", "MEDIUM",
-                "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
-                "Frequent movement around Sector 7 buffer zone.",
-                None, "CHK-02 Checkpoint", now, now,
-            ),
-        ]
-        await db.executemany(
-            """INSERT INTO frs_watchlist
-               (id, name, alias, category, threat_level, avatar_url, notes,
-                face_embedding, last_seen, last_seen_at, enrolled_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-            subjects,
-        )
-
-        # 3. ANPR Watchlist
-        vehicles = [
-            (
-                "JK-02-AX-8912", "Unknown / Suspicious", "WANTED",
-                "Heavy Utility Truck", "CRITICAL",
-                "Reported stolen from border staging warehouse.", "2026-09-02",
-            ),
-            (
-                "PB-10-CZ-4401", "Ramanjit Singh", "SUSPICIOUS",
-                "Armored SUV / 4x4", "HIGH",
-                "Unregistered border transit route.", "2026-09-05",
-            ),
-            (
-                "HR-26-BQ-7719", "Defense Logistics Corp", "PERMITTED",
-                "Cargo Supply Truck", "LOW",
-                "Cleared supply convoy clearance.", "2026-09-01",
-            ),
-        ]
-        await db.executemany(
-            """INSERT INTO anpr_watchlist
-               (plate, owner, status, vehicle_type, threat_level, notes, flagged_date)
-               VALUES (?,?,?,?,?,?,?)""",
-            vehicles,
-        )
-
-        await db.commit()
-        log.info("Initial demo dataset seeded successfully.")
+    """Watchlists start clean and are dynamically managed by the admin."""
+    pass
 
 
 
@@ -543,8 +506,9 @@ async def save_frs_subject(subject: WatchlistSubject) -> None:
         await db.execute(
             """INSERT OR REPLACE INTO frs_watchlist
                (id, name, alias, category, threat_level, avatar_url, notes,
-                face_embedding, last_seen, last_seen_at, enrolled_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                face_embedding, last_seen, last_seen_at, enrolled_at,
+                is_weapon_authorized, is_authorized)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 subject.id, subject.name, subject.alias, subject.category,
                 subject.threat_level, subject.avatar_url, subject.notes,
@@ -552,6 +516,8 @@ async def save_frs_subject(subject: WatchlistSubject) -> None:
                 subject.last_seen,
                 subject.last_seen_at.isoformat() if subject.last_seen_at else None,
                 subject.enrolled_at.isoformat(),
+                1 if getattr(subject, "is_weapon_authorized", False) else 0,
+                1 if getattr(subject, "is_authorized", False) else 0,
             ),
         )
         await db.commit()
@@ -573,12 +539,18 @@ async def get_frs_subject(subject_id: str) -> Optional[WatchlistSubject]:
     return _row_to_frs(row) if row else None
 
 
-async def update_frs_embedding(subject_id: str, embedding: List[float]) -> None:
+async def update_frs_embedding(subject_id: str, embedding: List[float], avatar_url: Optional[str] = None) -> None:
     async with get_db() as db:
-        await db.execute(
-            "UPDATE frs_watchlist SET face_embedding=? WHERE id=?",
-            (json.dumps(embedding), subject_id),
-        )
+        if avatar_url:
+            await db.execute(
+                "UPDATE frs_watchlist SET face_embedding=?, avatar_url=? WHERE id=?",
+                (json.dumps(embedding), avatar_url, subject_id),
+            )
+        else:
+            await db.execute(
+                "UPDATE frs_watchlist SET face_embedding=? WHERE id=?",
+                (json.dumps(embedding), subject_id),
+            )
         await db.commit()
 
 
@@ -590,6 +562,14 @@ async def delete_frs_subject(subject_id: str) -> None:
 
 def _row_to_frs(row: aiosqlite.Row) -> WatchlistSubject:
     d = dict(row)
+    cat_upper = (d.get("category") or "").upper()
+    threat_upper = (d.get("threat_level") or "").upper()
+    is_auth = (
+        bool(d.get("is_authorized", 0))
+        or threat_upper == "AUTHORIZED"
+        or cat_upper in ("SECURITY_OFFICER", "SENTRY", "PATROL_LEAD", "AUTHORIZED_PERSONNEL")
+    )
+    is_wep_auth = bool(d.get("is_weapon_authorized", 0)) or (is_auth and cat_upper in ("SECURITY_OFFICER", "SENTRY", "PATROL_LEAD", "AUTHORIZED_PERSONNEL"))
     return WatchlistSubject(
         id=d["id"], name=d["name"], alias=d["alias"] or "",
         category=d["category"] or "", threat_level=d["threat_level"],
@@ -601,6 +581,8 @@ def _row_to_frs(row: aiosqlite.Row) -> WatchlistSubject:
             if d["last_seen_at"] else None
         ),
         enrolled_at=datetime.datetime.fromisoformat(d["enrolled_at"]),
+        is_weapon_authorized=is_wep_auth,
+        is_authorized=is_auth,
     )
 
 
@@ -610,12 +592,15 @@ async def save_anpr_vehicle(vehicle: WatchlistVehicle) -> None:
     async with get_db() as db:
         await db.execute(
             """INSERT OR REPLACE INTO anpr_watchlist
-               (plate, owner, status, vehicle_type, threat_level, notes, flagged_date)
-               VALUES (?,?,?,?,?,?,?)""",
+               (plate, owner, status, vehicle_type, threat_level, notes, flagged_date,
+                is_weapon_authorized, is_authorized)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
             (
                 vehicle.plate.upper(), vehicle.owner, vehicle.status,
                 vehicle.vehicle_type, vehicle.threat_level, vehicle.notes,
                 vehicle.flagged_date,
+                1 if getattr(vehicle, "is_weapon_authorized", False) else 0,
+                1 if getattr(vehicle, "is_authorized", False) or vehicle.status.upper() == "AUTHORIZED" else 0,
             ),
         )
         await db.commit()
@@ -646,11 +631,16 @@ async def delete_anpr_vehicle(plate: str) -> None:
 
 def _row_to_anpr(row: aiosqlite.Row) -> WatchlistVehicle:
     d = dict(row)
+    status_upper = (d.get("status") or "").upper()
+    threat_upper = (d.get("threat_level") or "").upper()
+    is_auth = bool(d.get("is_authorized", 0)) or status_upper == "AUTHORIZED" or threat_upper == "AUTHORIZED"
     return WatchlistVehicle(
         plate=d["plate"], owner=d["owner"] or "Unknown",
         status=d["status"], vehicle_type=d["vehicle_type"] or "",
         threat_level=d["threat_level"], notes=d["notes"] or "",
         flagged_date=d["flagged_date"],
+        is_weapon_authorized=bool(d.get("is_weapon_authorized", 0)),
+        is_authorized=is_auth,
     )
 
 

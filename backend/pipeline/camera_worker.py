@@ -75,7 +75,17 @@ class CameraWorker:
 
         # Load watchlists
         self._face_rec.load_watchlist(watchlist_frs)
-        self._anpr_watchlist: List[str] = watchlist_anpr
+        self._anpr_watchlist: List[str] = []
+        self._anpr_meta: Dict[str, dict] = {}
+        for item in (watchlist_anpr or []):
+            if isinstance(item, dict):
+                p = item.get("plate", "").upper()
+                self._anpr_watchlist.append(p)
+                self._anpr_meta[p] = item
+            elif isinstance(item, str):
+                p = item.upper()
+                self._anpr_watchlist.append(p)
+                self._anpr_meta[p] = {"plate": p, "status": "SUSPICIOUS"}
 
         # Internal queues
         self._frame_q: "queue.Queue[Optional[np.ndarray]]" = queue.Queue(
@@ -368,20 +378,110 @@ class CameraWorker:
             det.loiter_seconds = dwell_rec.dwell_seconds
             det.is_in_fence = is_in_fence
 
+            # 1. Human Face Identification & Security Clearance (Run first for persons)
+            if det.class_id in HUMAN_CLASSES and "FRS" in self.camera.analytics_modes:
+                x1, y1, x2, y2 = det.bbox.to_pixel(w, h)
+                faces = self._face_det.detect_in_crop(frame, (x1, y1, x2, y2))
+                for face in faces:
+                    if face.face_crop is not None:
+                        emb = self._face_rec.embed(face.face_crop)
+                        if emb is not None:
+                            match = self._face_rec.match_against_watchlist(emb)
+                            if match:
+                                det.frs_match_name  = match.name
+                                det.frs_match_score = match.score
+                                det.frs_watchlist_id = match.subject_id
+                                cat_upper = (getattr(match, "category", "") or "").upper()
+                                threat_upper = (getattr(match, "threat_level", "") or "").upper()
+                                is_auth = (
+                                    getattr(match, "is_authorized", False)
+                                    or getattr(match, "is_weapon_authorized", False)
+                                    or threat_upper == "AUTHORIZED"
+                                    or cat_upper in ("SECURITY_OFFICER", "SENTRY", "PATROL_LEAD", "AUTHORIZED_PERSONNEL", "OFFICER", "SOLDIER")
+                                )
+                                if is_auth:
+                                    det.is_authorized = True
+                                    det.threat_level = "AUTHORIZED"
+                                    det.authorization_role = getattr(match, "category", "SENTRY") or "SECURITY_OFFICER"
+                                    alert = self._make_alert(
+                                        camera_id=self.camera.id,
+                                        category="AUTHORIZED_PATROL",
+                                        severity="INFO",
+                                        title=f"🛡️ AUTHORIZED SENTRY: {match.name} [{self.camera.code}]",
+                                        description=f"Authorized security personnel '{match.name}' identified ({det.authorization_role}, {match.score:.1%} match).",
+                                        target_id=det.target_id,
+                                        frs_match_name=match.name,
+                                        frs_match_score=match.score,
+                                        is_authorized=True,
+                                    )
+                                    if alert:
+                                        alerts.append(alert)
+                                else:
+                                    alert = self._make_alert(
+                                        camera_id=self.camera.id,
+                                        category="FRS_MATCH",
+                                        severity=("CRITICAL" if match.threat_level == "CRITICAL" else "HIGH"),
+                                        title=f"FRS Match: {match.name} [{self.camera.code}]",
+                                        description=f"Subject '{match.name}' matched with {match.score:.1%} "
+                                                    f"cosine similarity (threat: {match.threat_level}).",
+                                        target_id=det.target_id,
+                                        frs_match_name=match.name,
+                                        frs_match_score=match.score,
+                                    )
+                                    if alert:
+                                        alerts.append(alert)
+
+                # Activity classification
+                prev_pos = self._prev_positions.get(det.target_id)
+                activity = self._activity.classify(det, prev_bbox_center=prev_pos)
+                det.pose_label = activity.label.value
+                if activity.is_suspicious and activity.label.value not in ["RUNNING", "WALKING"] and not det.is_authorized:
+                    alert = self._make_alert(
+                        camera_id=self.camera.id,
+                        category="SUSPICIOUS_ACTIVITY",
+                        severity="HIGH",
+                        title=f"Suspicious Activity [{self.camera.code}]",
+                        description=activity.description,
+                        target_id=det.target_id,
+                    )
+                    if alert:
+                        alerts.append(alert)
+
+                # Propagate authorization to held weapon objects (prevents false siren on authorized armed sentry)
+                if det.is_authorized:
+                    for other in detections:
+                        if getattr(other, "held_by_target_id", None) == det.target_id and getattr(other, "is_weapon", False):
+                            other.is_authorized = True
+                            other.threat_level = "AUTHORIZED"
+
+            # 2. Virtual Fence Breach Alert
             if br and br.is_breaching:
-                alert = self._make_alert(
-                    camera_id=self.camera.id,
-                    category="VIRTUAL_FENCE_INTRUSION",
-                    severity="CRITICAL",
-                    title=f"Perimeter Breach [{self.camera.code}]",
-                    description=f"Target {det.target_id} ({det.class_name}) crossed virtual fence "
-                                f"({br.direction.value}). Dwell: {det.loiter_seconds:.0f}s.",
-                    target_id=det.target_id,
-                )
+                if det.is_authorized:
+                    alert = self._make_alert(
+                        camera_id=self.camera.id,
+                        category="AUTHORIZED_PATROL",
+                        severity="INFO",
+                        title=f"Authorized Patrol In Perimeter [{self.camera.code}]",
+                        description=f"Authorized sentry {det.frs_match_name or det.target_id} patrolling perimeter zone.",
+                        target_id=det.target_id,
+                        is_authorized=True,
+                    )
+                else:
+                    det.threat_level = "CRITICAL"
+                    alert = self._make_alert(
+                        camera_id=self.camera.id,
+                        category="VIRTUAL_FENCE_INTRUSION",
+                        severity="CRITICAL",
+                        title=f"🚨 UNAUTHORIZED INTRUDER: Perimeter Intrusion [{self.camera.code}]",
+                        description=f"Unauthorized target {det.target_id} ({det.class_name}) crossed virtual fence "
+                                    f"({br.direction.value}). Dwell: {det.loiter_seconds:.0f}s.",
+                        target_id=det.target_id,
+                    )
                 if alert:
                     alerts.append(alert)
 
-            if self._loitering.should_fire_loitering_alert(det.target_id):
+            # 3. Loitering Alert
+            if self._loitering.should_fire_loitering_alert(det.target_id) and not det.is_authorized:
                 alert = self._make_alert(
                     camera_id=self.camera.id,
                     category="LOITERING",
@@ -394,18 +494,35 @@ class CameraWorker:
                 if alert:
                     alerts.append(alert)
 
+            # 4. Weapon & Hand-Held Threat Alerts (Authorized sentry clearance vs Unauthorized armed hostile)
             if getattr(det, "is_holding", False):
                 if getattr(det, "held_item_type", "") == "WEAPON":
-                    alert = self._make_alert(
-                        camera_id=self.camera.id,
-                        category="ARMED_PERSON",
-                        severity="CRITICAL",
-                        title=f"CRITICAL: Armed Subject Holding {det.held_item} [{self.camera.code}]",
-                        description=f"Subject {det.target_id} confirmed armed with {det.held_item} in {det.held_by_hand or 'hand'}. Immediate DEFCON 1 response required.",
-                        target_id=det.target_id,
-                    )
-                    if alert:
-                        alerts.append(alert)
+                    if det.is_authorized:
+                        det.threat_level = "AUTHORIZED"
+                        alert = self._make_alert(
+                            camera_id=self.camera.id,
+                            category="AUTHORIZED_ARMED_PATROL",
+                            severity="INFO",
+                            title=f"🛡️ AUTHORIZED SENTRY: {det.frs_match_name or det.target_id} [ARMED]",
+                            description=f"Authorized sentry {det.frs_match_name or det.target_id} confirmed carrying service weapon ({det.held_item}). Weapon clearance confirmed.",
+                            target_id=det.target_id,
+                            is_authorized=True,
+                        )
+                        if alert:
+                            alerts.append(alert)
+                    else:
+                        det.is_authorized = False
+                        det.threat_level = "CRITICAL"
+                        alert = self._make_alert(
+                            camera_id=self.camera.id,
+                            category="ARMED_HOSTILE_INTRUDER",
+                            severity="CRITICAL",
+                            title=f"🚨 UNAUTHORIZED ARMED HOSTILE: {det.target_id} [{self.camera.code}]",
+                            description=f"CRITICAL: Unregistered armed hostile {det.target_id} confirmed wielding {det.held_item} in {det.held_by_hand or 'hand'}. Immediate DEFCON 1 response active.",
+                            target_id=det.target_id,
+                        )
+                        if alert:
+                            alerts.append(alert)
                 elif getattr(det, "held_item_type", "") == "CASUAL_OBJECT" and (det.is_in_fence or det.loiter_seconds > 8):
                     alert = self._make_alert(
                         camera_id=self.camera.id,
@@ -418,7 +535,8 @@ class CameraWorker:
                     if alert:
                         alerts.append(alert)
 
-            if getattr(det, "is_weapon", False) and not getattr(det, "is_held", False):
+            # 5. Unattended weapon and baggage
+            if getattr(det, "is_weapon", False) and not getattr(det, "is_held", False) and not getattr(det, "is_authorized", False):
                 w_name = (det.unusual_item or det.class_name).upper()
                 alert = self._make_alert(
                     camera_id=self.camera.id,
@@ -444,48 +562,7 @@ class CameraWorker:
                 if alert:
                     alerts.append(alert)
 
-            if det.class_id in HUMAN_CLASSES and "FRS" in self.camera.analytics_modes:
-                x1, y1, x2, y2 = det.bbox.to_pixel(w, h)
-                faces = self._face_det.detect_in_crop(frame, (x1, y1, x2, y2))
-                for face in faces:
-                    if face.face_crop is not None:
-                        emb = self._face_rec.embed(face.face_crop)
-                        if emb is not None:
-                            match = self._face_rec.match_against_watchlist(emb)
-                            if match:
-                                det.frs_match_name  = match.name
-                                det.frs_match_score = match.score
-                                det.frs_watchlist_id = match.subject_id
-                                alert = self._make_alert(
-                                    camera_id=self.camera.id,
-                                    category="FRS_MATCH",
-                                    severity=("CRITICAL" if match.threat_level == "CRITICAL" else "HIGH"),
-                                    title=f"FRS Match: {match.name} [{self.camera.code}]",
-                                    description=f"Subject '{match.name}' matched with {match.score:.1%} "
-                                                f"cosine similarity (threat: {match.threat_level}).",
-                                    target_id=det.target_id,
-                                    frs_match_name=match.name,
-                                    frs_match_score=match.score,
-                                )
-                                if alert:
-                                    alerts.append(alert)
-
-                # Activity classification
-                prev_pos = self._prev_positions.get(det.target_id)
-                activity = self._activity.classify(det, prev_bbox_center=prev_pos)
-                det.pose_label = activity.label.value
-                if activity.is_suspicious and activity.label.value not in ["RUNNING", "WALKING"]:
-                    alert = self._make_alert(
-                        camera_id=self.camera.id,
-                        category="SUSPICIOUS_ACTIVITY",
-                        severity="HIGH",
-                        title=f"Suspicious Activity [{self.camera.code}]",
-                        description=activity.description,
-                        target_id=det.target_id,
-                    )
-                    if alert:
-                        alerts.append(alert)
-
+            # 6. Vehicle & ANPR License Plate Recognition
             if det.class_id in VEHICLE_CLASSES and "ANPR" in self.camera.analytics_modes:
                 x1, y1, x2, y2 = det.bbox.to_pixel(w, h)
                 plates = self._anpr.detect_in_vehicle_crop(frame, (x1, y1, x2, y2))
@@ -495,16 +572,60 @@ class CameraWorker:
                     matched_plate, dist = self._anpr.fuzzy_check_watchlist(
                         plate.plate_text, self._anpr_watchlist
                     )
-                    if matched_plate:
-                        det.is_blacklisted = True
+                    meta = self._anpr_meta.get(matched_plate or plate.plate_text.upper(), {})
+                    if not meta and matched_plate:
+                        for k, v in self._anpr_meta.items():
+                            if k.replace("-", "").replace(" ", "").upper() == matched_plate.replace("-", "").replace(" ", "").upper():
+                                meta = v
+                                break
+
+                    is_auth_vehicle = (
+                        meta.get("status") == "AUTHORIZED"
+                        or meta.get("threat_level") == "AUTHORIZED"
+                        or meta.get("is_authorized", False)
+                    )
+
+                    if matched_plate and is_auth_vehicle:
+                        det.is_authorized = True
+                        det.threat_level = "AUTHORIZED"
                         alert = self._make_alert(
                             camera_id=self.camera.id,
-                            category="ANPR_MATCH",
+                            category="AUTHORIZED_VEHICLE",
+                            severity="INFO",
+                            title=f"🚗 AUTHORIZED VEHICLE: {plate.plate_text} [{self.camera.code}]",
+                            description=f"Authorized vehicle plate '{plate.plate_text}' verified in fleet clearance registry.",
+                            target_id=det.target_id,
+                            plate_text=plate.plate_text,
+                            is_authorized=True,
+                        )
+                        if alert:
+                            alerts.append(alert)
+                    elif matched_plate and not is_auth_vehicle:
+                        det.is_blacklisted = True
+                        det.is_authorized = False
+                        det.threat_level = "UNAUTHORIZED"
+                        alert = self._make_alert(
+                            camera_id=self.camera.id,
+                            category="UNAUTHORIZED_VEHICLE",
                             severity="CRITICAL",
-                            title=f"Blacklisted Vehicle [{self.camera.code}]: {plate.plate_text}",
-                            description=f"Plate '{plate.plate_text}' matched watchlist entry "
+                            title=f"⚠️ UNAUTHORIZED VEHICLE [{self.camera.code}]: {plate.plate_text}",
+                            description=f"Plate '{plate.plate_text}' matched blacklisted watchlist entry "
                                         f"'{matched_plate}' (OCR conf: {plate.confidence:.1%}, "
                                         f"Levenshtein dist: {dist}).",
+                            target_id=det.target_id,
+                            plate_text=plate.plate_text,
+                        )
+                        if alert:
+                            alerts.append(alert)
+                    else:
+                        det.is_authorized = False
+                        det.threat_level = "UNAUTHORIZED"
+                        alert = self._make_alert(
+                            camera_id=self.camera.id,
+                            category="UNAUTHORIZED_VEHICLE",
+                            severity="CRITICAL" if det.is_in_fence else "HIGH",
+                            title=f"⚠️ UNAUTHORIZED VEHICLE [{self.camera.code}]: {plate.plate_text}",
+                            description=f"Unregistered / unauthorized vehicle plate '{plate.plate_text}' detected in sector.",
                             target_id=det.target_id,
                             plate_text=plate.plate_text,
                         )
@@ -550,6 +671,7 @@ class CameraWorker:
         frs_match_name: Optional[str] = None,
         frs_match_score: Optional[float] = None,
         plate_text: Optional[str] = None,
+        is_authorized: bool = False,
     ) -> Optional[AlertRecord]:
         """
         Create an AlertRecord only if throttle window has elapsed for this
@@ -575,6 +697,7 @@ class CameraWorker:
             frs_match_name=frs_match_name,
             frs_match_score=frs_match_score,
             plate_text=plate_text,
+            is_authorized=is_authorized,
         )
 
 
@@ -630,7 +753,8 @@ class CameraWorker:
 
                             start_pt = wrist_pt if wrist_pt else ((px1 + px2) // 2, (py1 + py2) // 2)
                             is_weapon_held = det.held_item_type == "WEAPON" or any(w in (det.held_item or "").lower() for w in ("knife", "pistol", "gun", "rifle", "shotgun", "firearm", "weapon", "blade", "dagger", "sword"))
-                            tether_color = (0, 0, 255) if is_weapon_held else (0, 200, 0)
+                            is_auth_held = getattr(det, "is_authorized", False) or getattr(obj, "is_authorized", False)
+                            tether_color = (0, 230, 0) if is_auth_held else ((0, 0, 255) if is_weapon_held else (0, 200, 0))
                             cv2.line(frame, start_pt, obj_center, tether_color, 2, cv2.LINE_AA)
                             cv2.circle(frame, obj_center, 4, tether_color, -1, cv2.LINE_AA)
 
@@ -644,19 +768,23 @@ class CameraWorker:
 
                 is_weapon = bool(getattr(det, "is_weapon", False)) and not is_casual and not is_watch_or_unknown
                 is_armed = bool(getattr(det, "is_holding", False)) and getattr(det, "held_item_type", "") == "WEAPON" and not is_casual and not is_watch_or_unknown
-                is_weapon_threat = is_armed or is_weapon
-                is_holding_casual = getattr(det, "is_holding", False) and not is_weapon_threat
+                is_holding_casual = getattr(det, "is_holding", False) and not (is_armed or is_weapon)
                 is_unattended_bag = det.class_name in ("backpack", "suitcase", "handbag") and not getattr(det, "is_held", False)
-                is_critical = is_weapon_threat or det.pose_label in ("CROUCHING", "PRONE")
+                is_auth = getattr(det, "is_authorized", False) or det.threat_level == "AUTHORIZED"
+                is_critical = (is_armed and not is_auth) or (is_weapon and not is_auth) or det.threat_level in ("CRITICAL", "UNAUTHORIZED") or det.pose_label in ("CROUCHING", "PRONE")
 
-                # Strict User Rule: Red for weapons/armed; Green for all casual objects, persons, and items
-                if is_weapon_threat:
+                # Clearance Green for Authorized entities; Tactical Red for weapons / unauthorized armed hostiles; Green for standard objects
+                if is_auth:
+                    colour = (0, 230, 0)        # Clearance Green (BGR)
+                elif is_armed or is_weapon or det.threat_level in ("CRITICAL", "UNAUTHORIZED") or getattr(det, "is_blacklisted", False):
                     colour = (0, 0, 255)        # Tactical Red (BGR)
+                elif is_unattended_bag:
+                    colour = (0, 140, 255)      # Amber / Orange
                 else:
                     colour = (0, 200, 0)        # Green for all non-weapons & casual objects (BGR)
 
                 # Draw Bounding Box & Corner Reticle
-                thickness = 3 if is_weapon_threat else 2
+                thickness = 3 if is_critical else 2
                 cv2.rectangle(frame, (x1, y1), (x2, y2), colour, thickness)
 
                 corner_len = min(20, max(6, (x2 - x1) // 4))
@@ -679,34 +807,45 @@ class CameraWorker:
                             if c1 > 0.35 and c2 > 0.35:
                                 pt1 = (int(kx1 * w), int(ky1 * h))
                                 pt2 = (int(kx2 * w), int(ky2 * h))
-                                cv2.line(frame, pt1, pt2, (0, 0, 255) if is_weapon_threat else (0, 200, 0), 2, cv2.LINE_AA)
+                                cv2.line(frame, pt1, pt2, (0, 230, 0) if is_auth else (0, 0, 255) if is_critical else (0, 200, 0), 2, cv2.LINE_AA)
 
                     for kx, ky, kc in kps:
                         if kc > 0.35:
-                            cv2.circle(frame, (int(kx * w), int(ky * h)), 4, (0, 0, 255) if is_weapon_threat else (0, 200, 0), -1, cv2.LINE_AA)
+                            cv2.circle(frame, (int(kx * w), int(ky * h)), 4, (0, 230, 0) if is_auth else (0, 0, 255) if is_critical else (0, 200, 0), -1, cv2.LINE_AA)
 
                 # Tag Label Box matching Screenshot 2
                 label_parts = []
-                if is_armed:
-                    label_parts.append(f"🚨 ARMED: {det.held_item}")
-                elif is_holding_casual:
-                    label_parts.append(f"📦 HOLDING: {det.held_item}")
+                if is_auth:
+                    if is_armed:
+                        label_parts.append(f"[AUTH SENTRY: {det.frs_match_name or det.target_id} - ARMED]")
+                    elif is_weapon:
+                        label_parts.append(f"[AUTH WEAPON: {det.class_name.upper()}]")
+                    elif det.class_id in VEHICLE_CLASSES:
+                        label_parts.append(f"[AUTH VEHICLE: {det.plate_text or det.target_id}]")
+                    else:
+                        label_parts.append(f"[AUTHORIZED: {det.frs_match_name or det.target_id}]")
+                elif is_armed:
+                    label_parts.append(f"[UNAUTHORIZED ARMED HOSTILE: {det.target_id} - {det.held_item}]")
                 elif is_weapon:
-                    label_parts.append(f"🚨 WEAPON: {det.class_name.upper()}")
+                    label_parts.append(f"[UNAUTHORIZED WEAPON: {det.class_name.upper()}]")
+                elif det.class_id in VEHICLE_CLASSES and getattr(det, "plate_text", None):
+                    label_parts.append(f"[UNAUTHORIZED VEHICLE: {det.plate_text}]")
+                elif is_holding_casual:
+                    label_parts.append(f"HOLDING: {det.held_item}")
                 elif is_unattended_bag:
-                    label_parts.append(f"⚠️ UNATTENDED: {det.class_name.upper()}")
+                    label_parts.append(f"UNATTENDED: {det.class_name.upper()}")
                 elif det.is_unusual:
-                    label_parts.append(f"⚠️ UNUSUAL: {(det.unusual_item or det.class_name).upper()}")
+                    label_parts.append(f"UNUSUAL: {(det.unusual_item or det.class_name).upper()}")
                 else:
                     label_parts.append(f"{det.target_id} {det.class_name.upper()}")
 
-                if det.pose_label and det.class_id == 0:
+                if det.pose_label and det.class_id == 0 and not is_auth:
                     label_parts.append(f"[{det.pose_label}]")
-                if det.frs_match_name:
+                if det.frs_match_name and not is_auth:
                     label_parts.append(f"FRS:{det.frs_match_name}")
-                if det.plate_text:
+                if det.plate_text and not is_auth and not any("VEHICLE" in lp for lp in label_parts):
                     label_parts.append(f"PLATE:{det.plate_text}")
-                if det.loiter_seconds > 3:
+                if det.loiter_seconds > 3 and not is_auth:
                     label_parts.append(f"DWELL:{det.loiter_seconds:.0f}s")
 
                 label = " | ".join(label_parts)

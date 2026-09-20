@@ -119,6 +119,10 @@ function fastLocalMatch(lat, lon) {
  */
 export async function reverseGeocodeCoords(latitude, longitude) {
   if (!latitude || !longitude || isNaN(latitude) || isNaN(longitude)) {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('ibvap_dynamic_location_name') : null;
+      if (saved) return saved;
+    } catch {}
     return 'Noida Sector 28, Uttar Pradesh';
   }
 

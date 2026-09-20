@@ -15,7 +15,7 @@ import {
   MapPin
 } from 'lucide-react';
 import { TRAFFIC_VISION_SETTINGS, INDIA_TRAFFIC_CAMERAS } from '../services/trafficVisionCatalog';
-import { soundController } from '../utils/audioAlert';
+import { soundController, isUnauthorizedWeaponThreat } from '../utils/audioAlert';
 import './TrafficVisionPlayer.css';
 
 export const TrafficVisionPlayer = ({
@@ -160,8 +160,7 @@ export const TrafficVisionPlayer = ({
           }));
 
           const hasWeapon = dets.some(
-            (d) => !d.is_casual_object && d.held_item_type !== 'CASUAL_OBJECT' &&
-                   (d.is_weapon || (d.is_holding && d.held_item_type === 'WEAPON'))
+            (d) => isUnauthorizedWeaponThreat(d, dets)
           );
           if (hasWeapon) {
             soundController.triggerWeaponSiren(2000);

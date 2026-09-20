@@ -27,6 +27,9 @@ class MatchResult:
     score: float
     threat_level: str
     is_match: bool
+    category: str = ""
+    is_weapon_authorized: bool = False
+    is_authorized: bool = False
 
 
 class FaceRecognizer:
@@ -133,7 +136,17 @@ class FaceRecognizer:
             emb = np.array(emb_list, dtype=np.float32)
             norm = np.linalg.norm(emb)
             emb = emb / (norm + 1e-8)
-            self._watchlist[s["id"]] = (s["name"], s.get("threat_level", "MEDIUM"), emb)
+            cat = s.get("category", "")
+            cat_upper = cat.upper()
+            threat = s.get("threat_level", "MEDIUM")
+            threat_upper = threat.upper()
+            is_auth = (
+                bool(s.get("is_authorized", False))
+                or threat_upper == "AUTHORIZED"
+                or cat_upper in ("SECURITY_OFFICER", "SENTRY", "PATROL_LEAD", "AUTHORIZED_PERSONNEL")
+            )
+            is_wep = bool(s.get("is_weapon_authorized", False)) or (is_auth and cat_upper in ("SECURITY_OFFICER", "SENTRY", "PATROL_LEAD", "AUTHORIZED_PERSONNEL"))
+            self._watchlist[s["id"]] = (s["name"], threat, emb, cat, is_wep, is_auth)
             self._subject_ids.append(s["id"])
             embeddings.append(emb)
 
@@ -145,10 +158,11 @@ class FaceRecognizer:
             log.warning("FRS watchlist has no enrolled embeddings — enroll subjects with photos.")
 
     def add_subject(self, subject_id: str, name: str, threat_level: str,
-                    embedding: np.ndarray) -> None:
+                    embedding: np.ndarray, category: str = "",
+                    is_weapon_authorized: bool = False, is_authorized: bool = False) -> None:
         """Hot-add a single subject to the in-memory watchlist (no rebuild required)."""
         emb = embedding / (np.linalg.norm(embedding) + 1e-8)
-        self._watchlist[subject_id] = (name, threat_level, emb)
+        self._watchlist[subject_id] = (name, threat_level, emb, category, is_weapon_authorized, is_authorized)
         if subject_id not in self._subject_ids:
             self._subject_ids.append(subject_id)
         # Rebuild matrix
@@ -185,13 +199,21 @@ class FaceRecognizer:
             return None
 
         sid = self._subject_ids[best_idx]
-        name, threat, _ = self._watchlist[sid]
+        item = self._watchlist[sid]
+        name = item[0]
+        threat = item[1]
+        cat = item[3] if len(item) > 3 else ""
+        is_wep = item[4] if len(item) > 4 else False
+        is_auth = item[5] if len(item) > 5 else False
         return MatchResult(
             subject_id=sid,
             name=name,
             score=best_score,
             threat_level=threat,
             is_match=True,
+            category=cat,
+            is_weapon_authorized=is_wep,
+            is_authorized=is_auth,
         )
 
     def match_score(self, emb1: np.ndarray, emb2: np.ndarray) -> float:

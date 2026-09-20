@@ -13,6 +13,7 @@ const wsBackendTarget = process.env.WS_BACKEND_URL || `ws://127.0.0.1:${backendP
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: './',
   plugins: [react(), tailwindcss(), basicSsl()],
   server: {
     host: '0.0.0.0',

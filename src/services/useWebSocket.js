@@ -74,13 +74,37 @@ export const useWebSocket = () => {
                 gps_coords: p.gps_coords || p.gpsCoords || null,
               };
 
-              // Trigger weapon siren for weapons or armed subjects received from server broadcast
+              // Siren trigger logic: Suppress for authorized sentries/vehicles, trigger for unauthorized hostiles
               const cat = String(p.category || '').toUpperCase();
               const title = String(p.title || '').toLowerCase();
-              const desc = String(p.description || '').toLowerCase();
-              const isWeaponAlert = cat.includes('WEAPON') || cat.includes('ARMED') || title.includes('weapon') || title.includes('armed') || title.includes('pistol') || title.includes('knife') || desc.includes('weapon');
-              if (isWeaponAlert) {
-                soundController.playSirenBurst(3.5);
+              const isAuthClearance = p.is_authorized ||
+                cat === 'AUTHORIZED_PATROL' ||
+                cat === 'AUTHORIZED_ARMED_PATROL' ||
+                cat === 'AUTHORIZED_VEHICLE' ||
+                title.includes('authorized sentry') ||
+                title.includes('authorized vehicle') ||
+                title.includes('[auth sentry') ||
+                title.includes('[auth vehicle') ||
+                title.includes('weapon clearance') ||
+                title.includes('clearance confirmed') ||
+                title.startsWith('🛡️');
+
+              if (!isAuthClearance) {
+                const isUnauthorizedThreat =
+                  cat === 'ARMED_HOSTILE_INTRUDER' ||
+                  cat === 'UNAUTHORIZED_VEHICLE' ||
+                  cat === 'VIRTUAL_FENCE_INTRUSION' ||
+                  cat === 'RESTRICTED_ZONE_BREACH' ||
+                  (cat === 'ANPR_MATCH' && String(p.severity || '').toUpperCase() === 'CRITICAL') ||
+                  title.includes('unauthorized') ||
+                  title.includes('armed hostile') ||
+                  title.includes('hostile') ||
+                  (cat.includes('WEAPON') && !cat.includes('AUTHORIZED')) ||
+                  (cat.includes('ARMED') && !cat.includes('AUTHORIZED'));
+
+                if (isUnauthorizedThreat) {
+                  soundController.playSirenBurst(3.5);
+                }
               }
 
               setAlerts((prev) => [newAlert, ...prev.slice(0, 19)]);

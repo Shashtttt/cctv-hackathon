@@ -69,6 +69,8 @@ class Detection:
     held_by_hand: Optional[str] = None
     is_held: bool = False
     held_by_target_id: Optional[str] = None
+    is_authorized: bool = False
+    authorization_role: Optional[str] = None
 
 
 @dataclass
@@ -134,6 +136,7 @@ class AlertRecord:
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     gps_coords: Optional[str] = None
+    is_authorized: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         url = self.snapshot_url or (f"/api/v1/snapshots/{self.id}" if self.id else None)
@@ -149,6 +152,7 @@ class AlertRecord:
             "target_id": self.target_id,
             "targetId": self.target_id,
             "status": self.status,
+            "is_authorized": self.is_authorized,
             "snapshot_path": self.snapshot_path,
             "snapshotPath": self.snapshot_path,
             "snapshot_url": url,
@@ -181,6 +185,8 @@ class WatchlistSubject:
     last_seen: Optional[str] = None
     last_seen_at: Optional[datetime.datetime] = None
     enrolled_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+    is_weapon_authorized: bool = False
+    is_authorized: bool = False
 
 
 @dataclass
@@ -192,6 +198,8 @@ class WatchlistVehicle:
     threat_level: str
     notes: str
     flagged_date: Optional[str] = None
+    is_weapon_authorized: bool = False
+    is_authorized: bool = False
 
 
 @dataclass

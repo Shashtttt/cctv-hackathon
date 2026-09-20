@@ -50,7 +50,7 @@ class FaceDetector:
                     str(onnx_path),
                     "",
                     self._YUNET_INPUT_SIZE,
-                    score_threshold=0.6,
+                    score_threshold=0.45,
                     nms_threshold=0.3,
                     top_k=5000,
                 )

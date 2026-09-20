@@ -33,13 +33,35 @@ export default function RecentAlertsPanel({ onNavigateToAlerts }) {
     const latest = wsAlerts[0];
     if (!latest) return;
 
-    // Trigger siren if critical or high alert
+    // Suppress siren for authorized sentry / vehicle clearance categories
     const sev = (latest.severity || '').toUpperCase();
     const title = (latest.title || '').toLowerCase();
-    const desc = (latest.description || latest.text || '').toLowerCase();
     const cat = (latest.category || '').toUpperCase();
 
-    const isHighThreat = sev === 'CRITICAL' || sev === 'HIGH' || title.includes('weapon') || title.includes('intrusion') || desc.includes('restricted') || cat.includes('INTRUSION');
+    const isAuthClearance =
+      latest.is_authorized ||
+      cat === 'AUTHORIZED_PATROL' ||
+      cat === 'AUTHORIZED_ARMED_PATROL' ||
+      cat === 'AUTHORIZED_VEHICLE' ||
+      title.includes('authorized sentry') ||
+      title.includes('authorized vehicle') ||
+      title.includes('[auth sentry') ||
+      title.includes('[auth vehicle') ||
+      title.includes('weapon clearance') ||
+      title.includes('clearance confirmed');
+
+    // Trigger siren only for genuine unauthorized threats
+    const isHighThreat = !isAuthClearance && (
+      sev === 'CRITICAL' ||
+      (sev === 'HIGH' && cat.includes('WEAPON')) ||
+      (sev === 'HIGH' && title.includes('unauthorized')) ||
+      title.includes('intrusion') ||
+      title.includes('hostile') ||
+      cat === 'ARMED_HOSTILE_INTRUDER' ||
+      cat === 'UNAUTHORIZED_VEHICLE' ||
+      cat === 'VIRTUAL_FENCE_INTRUSION' ||
+      cat === 'RESTRICTED_ZONE_BREACH'
+    );
     if (isHighThreat) {
       soundController.playSirenBurst(3.2);
     }

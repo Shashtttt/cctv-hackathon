@@ -306,21 +306,24 @@ export const fetchANPRWatchlist = async () => {
     const response = await api.get('/anpr/watchlist');
     if (Array.isArray(response.data)) return response.data;
   } catch (error) {
-    console.warn('ANPR Watchlist API fallback:', error.message);
+    console.warn('ANPR Watchlist API notice:', error.message);
   }
-  return [
-    { plate: 'HR26AB1234', owner: 'Patrol Unit #4', status: 'AUTHORIZED', vehicle_type: 'SUV', threat_level: 'LOW', notes: 'Sector patrol vehicle' },
-    { plate: 'DL01XY9999', owner: 'Suspect Transport', status: 'FLAGGED', vehicle_type: 'Van', threat_level: 'HIGH', notes: 'Vehicle seen probing Sector 4 fence' },
-  ];
+  return [];
 };
 
 export const addANPRVehicle = async (vehicle) => {
   const response = await api.post('/anpr/watchlist', vehicle);
   return response.data;
 };
+export const createANPRVehicle = addANPRVehicle;
+
+export const updateANPRVehicle = async (plate, updateData) => {
+  const response = await api.put(`/anpr/watchlist/${encodeURIComponent(plate)}`, updateData);
+  return response.data;
+};
 
 export const deleteANPRVehicle = async (plate) => {
-  const response = await api.delete(`/anpr/watchlist/${plate}`);
+  const response = await api.delete(`/anpr/watchlist/${encodeURIComponent(plate)}`);
   return response.data;
 };
 
@@ -329,18 +332,19 @@ export const fetchFRSWatchlist = async () => {
     const response = await api.get('/frs/watchlist');
     if (Array.isArray(response.data)) return response.data;
   } catch (error) {
-    console.warn('FRS Watchlist API fallback:', error.message);
+    console.warn('FRS Watchlist API notice:', error.message);
   }
-  return [
-    { id: 'W-01', name: 'Raj Kumar', alias: 'Officer RK', category: 'SECURITY_STAFF', threat_level: 'NONE', avatar_url: '', notes: 'Sector 01 Post Officer', has_embedding: true },
-    { id: 'W-02', name: 'Amit Sharma', alias: 'Patrol 2', category: 'SECURITY_STAFF', threat_level: 'NONE', avatar_url: '', notes: 'Border Patrol Unit', has_embedding: true },
-    { id: 'W-03', name: 'Vikram Singh', alias: 'QRT Lead', category: 'SECURITY_STAFF', threat_level: 'NONE', avatar_url: '', notes: 'Quick Response Team', has_embedding: true },
-    { id: 'W-04', name: 'Neha Patel', alias: 'Terminal Spec', category: 'STAFF', threat_level: 'NONE', avatar_url: '', notes: 'Terminal Access Specialist', has_embedding: false },
-  ];
+  return [];
 };
 
 export const addFRSSubject = async (subject) => {
   const response = await api.post('/frs/watchlist', subject);
+  return response.data;
+};
+export const createFRSSubject = addFRSSubject;
+
+export const updateFRSSubject = async (subjectId, updateData) => {
+  const response = await api.put(`/frs/watchlist/${encodeURIComponent(subjectId)}`, updateData);
   return response.data;
 };
 
@@ -354,9 +358,11 @@ export const uploadFRSSubjectPhoto = async (subjectId, file) => {
   formData.append('photo', file);
   const response = await api.post(`/frs/watchlist/${subjectId}/enroll-photo`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 15000,
   });
   return response.data;
 };
+export const enrollFRSSubjectPhoto = uploadFRSSubjectPhoto;
 
 // Snapshots Management API (Admin Vault)
 export const fetchSnapshots = async (limit = 200, category = 'ALL') => {

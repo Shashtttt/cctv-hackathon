@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: list[str] | str = ["*"]
 
     DATABASE_URL: str = f"sqlite+aiosqlite:///{DB_PATH}"
+    DATABASE_PATH: Path = DB_PATH
 
     YOLO_POSE_MODEL: Path = MODELS_DIR / "yolov8n-pose.pt"
     YOLO_OBJECT_MODEL: Path = MODELS_DIR / "yolov8n.pt"
@@ -46,7 +47,7 @@ class Settings(BaseSettings):
     YOLO_WEAPON_UNCERTAIN_FLOOR: float = 0.55
     YOLO_OBJECT_CONFIDENCE_THRESHOLD: float = 0.25
     MIN_WEAPON_AREA_RATIO: float = 0.010
-    FRS_SIMILARITY_THRESHOLD: float = 0.40
+    FRS_SIMILARITY_THRESHOLD: float = 0.36
     ANPR_OCR_CONFIDENCE: float = 0.60
     ANPR_FUZZY_DISTANCE: int = 2
 

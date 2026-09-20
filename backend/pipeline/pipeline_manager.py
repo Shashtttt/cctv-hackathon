@@ -115,12 +115,22 @@ class PipelineManager:
 
         frs_list = [
             {
-                "id": s.id, "name": s.name, "threat_level": s.threat_level,
-                "face_embedding": s.face_embedding,
+                "id": s.id, "name": s.name, "category": s.category,
+                "threat_level": s.threat_level, "face_embedding": s.face_embedding,
+                "is_weapon_authorized": getattr(s, "is_weapon_authorized", False),
+                "is_authorized": getattr(s, "is_authorized", False),
             }
             for s in frs_subjects
         ]
-        anpr_plates = [v.plate for v in anpr_vehicles]
+        anpr_plates = [
+            {
+                "plate": v.plate, "owner": v.owner, "status": v.status,
+                "vehicle_type": v.vehicle_type, "threat_level": v.threat_level,
+                "is_weapon_authorized": getattr(v, "is_weapon_authorized", False),
+                "is_authorized": getattr(v, "is_authorized", False),
+            }
+            for v in anpr_vehicles
+        ]
 
         if not cameras:
             log.warning("No cameras registered in DB. Workers will start when cameras are added.")
@@ -175,11 +185,23 @@ class PipelineManager:
         frs_subjects  = await get_frs_watchlist()
         anpr_vehicles = await get_anpr_watchlist()
         frs_list = [
-            {"id": s.id, "name": s.name, "threat_level": s.threat_level,
-             "face_embedding": s.face_embedding}
+            {
+                "id": s.id, "name": s.name, "category": s.category,
+                "threat_level": s.threat_level, "face_embedding": s.face_embedding,
+                "is_weapon_authorized": getattr(s, "is_weapon_authorized", False),
+                "is_authorized": getattr(s, "is_authorized", False),
+            }
             for s in frs_subjects
         ]
-        anpr_plates = [v.plate for v in anpr_vehicles]
+        anpr_plates = [
+            {
+                "plate": v.plate, "owner": v.owner, "status": v.status,
+                "vehicle_type": v.vehicle_type, "threat_level": v.threat_level,
+                "is_weapon_authorized": getattr(v, "is_weapon_authorized", False),
+                "is_authorized": getattr(v, "is_authorized", False),
+            }
+            for v in anpr_vehicles
+        ]
         self._spawn_worker(camera, frs_list, anpr_plates)
         log.info("Camera %s added and worker spawned.", camera.id)
 
@@ -188,13 +210,13 @@ class PipelineManager:
         if cam_id not in self._workers:
             return
         self._stop_events[cam_id].set()
-        self._workers[cam_id].join(timeout=10)
-        if self._workers[cam_id].is_alive():
-            self._workers[cam_id].terminate()
-        del self._workers[cam_id]
-        del self._stop_events[cam_id]
-        self._cameras.pop(cam_id, None)
-        log.info("Camera %s worker removed.", cam_id)
+        proc = self._workers.pop(cam_id, None)
+        self._stop_events.pop(cam_id, None)
+        if proc and proc.is_alive():
+            proc.join(timeout=3)
+            if proc.is_alive():
+                proc.terminate()
+        log.info("Camera %s worker stopped and removed.", cam_id)
 
     async def update_fence(self, cam_id: str, fence_points: list) -> None:
         """
@@ -210,13 +232,25 @@ class PipelineManager:
             log.info("Fence updated for %s — worker restarted.", cam_id)
 
     async def reload_watchlists(self) -> None:
-        """Reload FRS and ANPR watchlists — restarts all workers."""
-        log.info("Reloading watchlists — restarting all workers …")
-        camera_list = list(self._cameras.values())
-        await self.stop()
-        for cam in camera_list:
-            self._cameras[cam.id] = cam
-        await self.start()
+        """Reload FRS and ANPR watchlists — syncs direct analyzer immediately, and restarts camera workers in background."""
+        log.info("Reloading watchlists — syncing direct analyzer and updating workers...")
+        try:
+            from ..ai.direct_analyzer import DirectAIAnalyzer
+            DirectAIAnalyzer.get_instance().sync_watchlists_from_db()
+        except Exception as exc:
+            log.debug("DirectAIAnalyzer sync skipped: %s", exc)
+
+        async def _restart_workers():
+            try:
+                camera_list = list(self._cameras.values())
+                await self.stop()
+                for cam in camera_list:
+                    self._cameras[cam.id] = cam
+                await self.start()
+            except Exception as e:
+                log.warning("Background worker reload exception: %s", e)
+
+        asyncio.create_task(_restart_workers())
 
 
     def register_alert_callback(self, cb: Callable) -> None:

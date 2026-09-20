@@ -19,7 +19,7 @@ import {
 import axios from 'axios';
 import { enumerateDeviceCameras, getDevicePlatform } from '../../utils/deviceDetector';
 import { fetchCameras, getCameraStreamUrl } from '../../services/apiService';
-import { soundController } from '../../utils/audioAlert';
+import { soundController, isUnauthorizedWeaponThreat } from '../../utils/audioAlert';
 import { useSentinelCamera } from '../../context/SentinelCameraContext';
 import { useLocation } from '../../context/LocationContext';
 import { AddIpCameraModal } from '../AddIpCameraModal';
@@ -156,9 +156,9 @@ export function CameraFeedItem({
             onDetectionsUpdate(dets);
           }
 
-          // Trigger weapon siren if weapon or armed subject detected
-          const hasWeapon = dets.some(d => d.is_weapon || (d.is_holding && d.held_item_type === 'WEAPON'));
-          if (hasWeapon) {
+          // Trigger siren ONLY for genuine unauthorized weapon threats
+          const hasUnauthorizedWeapon = dets.some(d => isUnauthorizedWeaponThreat(d, dets));
+          if (hasUnauthorizedWeapon) {
             soundController.triggerWeaponSiren(2000);
           }
         }
@@ -576,6 +576,7 @@ export default function LiveFeedsGrid({ onSelectCamera }) {
     telemetry: sentinelTelemetry,
     isSentinelActive 
   } = useSentinelCamera();
+  const { locationName: dynamicLocation, coords: dynamicCoords } = useLocation();
   const [deviceCameras, setDeviceCameras] = useState([]);
   const [ipCameras, setIpCameras] = useState([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -1067,9 +1068,18 @@ export default function LiveFeedsGrid({ onSelectCamera }) {
       {/* Detailed Camera Inspection & PTZ Modal */}
       {activeModalCam && (
         <CameraDetailModal
-          camera={activeModalCam}
+          camera={{
+            ...activeModalCam,
+            location: activeModalCam.location || dynamicLocation,
+            gps_coords: activeModalCam.gps_coords || dynamicCoords?.formatted,
+          }}
           isWebcam={activeModalCam.isDeviceHardware}
           webcamStream={streams[activeModalCam.id]}
+          webcamTelemetry={{
+            location: dynamicLocation,
+            gpsCoords: dynamicCoords?.formatted,
+            ...(sentinelTelemetry || {}),
+          }}
           liveDetections={(sentinelDetections && sentinelDetections.length > 0) ? sentinelDetections : (cameraDetections[activeModalCam.id] || [])}
           onDetectionsUpdate={(camId, dets) => setCameraDetections(prev => ({ ...prev, [camId]: dets }))}
           onClose={() => setActiveModalCam(null)}

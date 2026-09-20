@@ -8,7 +8,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { getDevicePlatform, enumerateDeviceCameras } from '../utils/deviceDetector';
-import { soundController } from '../utils/audioAlert';
+import { soundController, isUnauthorizedWeaponThreat } from '../utils/audioAlert';
 
 const SentinelCameraContext = createContext(null);
 
@@ -139,18 +139,24 @@ export const SentinelCameraProvider = ({ children }) => {
           const dets = res.data.detections || [];
           const persons = dets.filter(d => d.class_id === 0 || d.class_name === 'person').length;
           const vehicles = dets.filter(d => ['car', 'truck', 'bus', 'motorcycle'].includes(d.class_name)).length;
+          const unauthorizedWeapons = dets.filter(d => isUnauthorizedWeaponThreat(d, dets)).length;
+          const authPersonnel = dets.filter(d => d.is_authorized || d.threat_level === 'AUTHORIZED' || d.is_weapon_authorized);
           const weapons = dets.filter(d => d.is_weapon || d.held_item_type === 'WEAPON').length;
           const unusual = dets.filter(d => d.is_unusual).length;
 
-          // Sound alarm if weapon detected
-          if (weapons > 0) {
+          // Sound alarm ONLY if genuine unauthorized weapon detected
+          if (unauthorizedWeapons > 0) {
             soundController.triggerWeaponSiren(2000);
           }
 
           // Build human-readable identification summary
           let identifiedSummary = 'Perimeter Secure';
-          if (weapons > 0) {
-            identifiedSummary = `⚠️ ARMED THREAT DETECTED (${weapons})`;
+          if (unauthorizedWeapons > 0) {
+            identifiedSummary = `⚠️ ARMED THREAT DETECTED (${unauthorizedWeapons})`;
+          } else if (authPersonnel.length > 0) {
+            const names = authPersonnel.map(d => d.frs_match_name || d.authorization_role || 'Authorized Sentry').filter(Boolean).join(', ');
+            const isArmedSentry = dets.some(d => (d.is_authorized || d.threat_level === 'AUTHORIZED' || d.is_weapon_authorized) && (d.is_holding || d.held_item_type === 'WEAPON'));
+            identifiedSummary = `🛡️ ${names || 'Authorized Personnel'}${isArmedSentry ? ' [ARMED CLEARANCE]' : ''}`;
           } else if (persons > 0) {
             const poses = dets
               .filter(d => d.pose_label)

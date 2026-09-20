@@ -301,7 +301,7 @@ async def ingest_camera_frame(cam_id: str, request: Request):
             fps=20,
             resolution="720p HD",
             mode="MOBILE PAIRED",
-            analytics_modes=["WEAPON", "INTRUSION", "PERSON"],
+            analytics_modes=["WEAPON", "INTRUSION", "PERSON", "FRS", "ANPR"],
             fence_points=[],
         )
         try:
@@ -398,6 +398,9 @@ async def ingest_camera_frame(cam_id: str, request: Request):
                 "is_unusual": bool(d.is_unusual),
                 "unusual_item": str(d.unusual_item) if d.unusual_item else None,
                 "threat_level": str(d.threat_level),
+                "is_authorized": bool(getattr(d, "is_authorized", False)),
+                "is_weapon_authorized": bool(getattr(d, "is_weapon_authorized", False)),
+                "authorization_role": str(getattr(d, "authorization_role", None)) if getattr(d, "authorization_role", None) else None,
                 "is_weapon": bool(getattr(d, "is_weapon", False)),
                 "is_casual_object": bool(getattr(d, "is_casual_object", False)),
                 "is_holding": bool(getattr(d, "is_holding", False)),

@@ -849,17 +849,28 @@ class YOLODetector:
                         )
 
                 if obj.is_weapon and is_valid_weapon_scale:
-                    # 🚨 ARMED HOSTILE THREAT ESCALATION
-                    best_person.held_item_type = "WEAPON"
-                    best_person.threat_level = "CRITICAL"
-                    best_person.pose_label = f"ARMED (HOLDING {obj.class_name.upper()})"
-                    obj.threat_level = "CRITICAL"
-                    log.warning(
-                        "[THREAT ESCALATION] Target %s is ARMED with %s in %s!",
-                        best_person.target_id,
-                        obj.class_name.upper(),
-                        held_hand_label,
-                    )
+                    # If the holder is authorized, mark weapon as authorized too (no hostile alarm)
+                    if getattr(best_person, "is_authorized", False) or best_person.threat_level == "AUTHORIZED":
+                        best_person.held_item_type = "WEAPON"
+                        obj.is_authorized = True
+                        obj.threat_level = "AUTHORIZED"
+                        log.info(
+                            "[CLEARANCE] Authorized sentry %s holding %s — weapon clearance confirmed.",
+                            best_person.target_id,
+                            obj.class_name.upper(),
+                        )
+                    else:
+                        # 🚨 ARMED HOSTILE THREAT ESCALATION
+                        best_person.held_item_type = "WEAPON"
+                        best_person.threat_level = "CRITICAL"
+                        best_person.pose_label = f"ARMED (HOLDING {obj.class_name.upper()})"
+                        obj.threat_level = "CRITICAL"
+                        log.warning(
+                            "[THREAT ESCALATION] Target %s is ARMED with %s in %s!",
+                            best_person.target_id,
+                            obj.class_name.upper(),
+                            held_hand_label,
+                        )
                 else:
                     # Casual object in hand (phone, watch, baggage, bottle, pen, tool, etc.)
                     best_person.held_item_type = "CASUAL_OBJECT"

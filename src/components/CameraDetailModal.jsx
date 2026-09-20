@@ -38,8 +38,10 @@ import {
   Check
 } from 'lucide-react';
 import { TRAFFIC_VISION_SETTINGS } from '../services/trafficVisionCatalog';
-import { soundController } from '../utils/audioAlert';
+import { soundController, isUnauthorizedWeaponThreat } from '../utils/audioAlert';
 import { useSentinelCamera } from '../context/SentinelCameraContext';
+import { useLocation } from '../context/LocationContext';
+import { POPULAR_LOCATIONS } from '../utils/geoLocator';
 import { VirtualFenceConfigModal } from './VirtualFenceConfigModal';
 import './CameraDetailModal.css';
 
@@ -120,16 +122,18 @@ export const CameraDetailModal = ({
   const [fenceSavedFeedback, setFenceSavedFeedback] = useState(false);
   const { liveDetections: sentinelDetections, isSentinelActive, activeStream } = useSentinelCamera();
 
-  const activeDetections = (isSentinelActive && sentinelDetections && sentinelDetections.length > 0)
-    ? sentinelDetections
+  const activeDetections = (modalDetections && modalDetections.length > 0)
+    ? modalDetections
     : (liveDetections && liveDetections.length > 0
         ? liveDetections
-        : modalDetections);
+        : (isSentinelActive && sentinelDetections && sentinelDetections.length > 0
+            ? sentinelDetections
+            : []));
 
   useEffect(() => {
     if (liveDetections && liveDetections.length > 0) {
       setModalDetections(liveDetections);
-    } else if (sentinelDetections && sentinelDetections.length > 0) {
+    } else if (sentinelDetections && sentinelDetections.length > 0 && (!modalDetections || modalDetections.length === 0)) {
       setModalDetections(sentinelDetections);
     }
   }, [liveDetections, sentinelDetections]);
@@ -155,14 +159,39 @@ export const CameraDetailModal = ({
     (camera?.id && (camera.id.startsWith('dev-cam') || camera.id === 'cam-01'))
   );
 
+  const locationContext = useLocation();
+  const { locationName: ctxLocation, coords: ctxCoords, isLiveGps, detectLocation, setManualLocation } = locationContext || {};
+
+  const [customLocation, setCustomLocation] = useState(null);
+  const [isLocPickerOpen, setIsLocPickerOpen] = useState(false);
+  const [customInputText, setCustomInputText] = useState('');
+  const locPickerRef = useRef(null);
+
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (locPickerRef.current && !locPickerRef.current.contains(e.target)) {
+        setIsLocPickerOpen(false);
+      }
+    };
+    if (isLocPickerOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [isLocPickerOpen]);
+
+  const fallbackLocation = (ctxLocation && ctxLocation !== 'Resolving Location...' && ctxLocation !== 'Detecting Location...')
+    ? ctxLocation
+    : (typeof window !== 'undefined' ? localStorage.getItem('ibvap_dynamic_location_name') : null) || 'Sector Command Post';
+
   const camName = camera?.name || (isWebcam ? (camera?.deviceLabel || 'Physical Device Camera (AI Engine)') : 'Sector Camera');
   const camCode = camera?.code || (isWebcam ? 'C-01 AI' : (camera?.id ? camera.id.toUpperCase() : 'CAM-01'));
-  const camLocation = isWebcam
-    ? (webcamTelemetry.location || 'Noida Sector 28, Uttar Pradesh')
-    : (camera?.location || 'Noida Sector 28, Uttar Pradesh');
+  const camLocation = customLocation ||
+    (isWebcam
+      ? (webcamTelemetry.location || fallbackLocation)
+      : (camera?.location || fallbackLocation));
   const camGps = isWebcam
-    ? (webcamTelemetry.gpsCoords || '28.5708° N, 77.3271° E')
-    : (camera?.gps || camera?.gps_coords || '28.5708° N, 77.3271° E');
+    ? (webcamTelemetry.gpsCoords || ctxCoords?.formatted || '28.4949° N, 77.0895° E')
+    : (camera?.gps || camera?.gps_coords || ctxCoords?.formatted || '28.4949° N, 77.0895° E');
 
   const streamUrl = (camera?.streamUrl && !camera.streamUrl.includes('.mp4')) 
     ? camera.streamUrl 
@@ -265,13 +294,10 @@ export const CameraDetailModal = ({
     };
   }, [camera, isDeviceCam, webcamStream, activeStream, isSentinelActive, streamUrl, isHls, isMjpeg]);
 
-  // Fallback inference loop for modal view
+  // Active real-time AI inference loop for modal view
   useEffect(() => {
-    // Never run duplicate inference if camera is device/webcam (managed by page/sentinel) or IP camera (managed by backend)
-    if (isDeviceCam || isWebcam || webcamStream || isSentinelActive || camera?.isIpCamera || camera?.id?.startsWith('ip-')) {
-      return;
-    }
-    if (liveDetections !== undefined && liveDetections !== null) {
+    // Only skip if this is an RTSP / IP camera without direct browser feed
+    if (camera?.isIpCamera || (camera?.id && camera.id.startsWith('ip-') && !isDeviceCam)) {
       return;
     }
 
@@ -282,12 +308,12 @@ export const CameraDetailModal = ({
       if (!mounted) return;
       const video = videoRef.current;
       if (!video || video.readyState < 2 || video.videoWidth === 0) {
-        timeoutId = setTimeout(runModalInference, 300);
+        timeoutId = setTimeout(runModalInference, 250);
         return;
       }
 
       if (isInferringRef.current) {
-        timeoutId = setTimeout(runModalInference, 150);
+        timeoutId = setTimeout(runModalInference, 120);
         return;
       }
 
@@ -298,8 +324,9 @@ export const CameraDetailModal = ({
           offscreenCanvasRef.current = document.createElement('canvas');
         }
         const canvas = offscreenCanvasRef.current;
-        const vw = video.videoWidth;
-        const vh = video.videoHeight;
+        const vw = video.videoWidth || 640;
+        const vh = video.videoHeight || 480;
+        // Optimal resolution for high-speed edge AI inference
         const scale = Math.min(1.0, 640 / Math.max(vw, 1));
         canvas.width = Math.round(vw * scale);
         canvas.height = Math.round(vh * scale);
@@ -309,12 +336,13 @@ export const CameraDetailModal = ({
         const b64 = canvas.toDataURL('image/jpeg', 0.65);
 
         const camId = (camera?.id && !camera.id.startsWith('dev-')) ? camera.id : 'cam-01';
+        const t0 = performance.now();
         const res = await axios.post(`/api/v1/cameras/${camId}/ingest`, {
           image: b64,
           location: camLocation || 'Sector 28 Command Post',
         }, {
           headers: { 'Content-Type': 'application/json' },
-          timeout: 8000
+          timeout: 6000
         });
 
         if (mounted && res.data && res.data.success) {
@@ -324,7 +352,14 @@ export const CameraDetailModal = ({
             onDetectionsUpdate(camId, dets);
           }
 
-          const hasWeapon = dets.some(d => d.is_weapon || (d.is_holding && d.held_item_type === 'WEAPON'));
+          const latencyMs = Math.round(performance.now() - t0);
+          setStreamStats(prev => ({
+            ...prev,
+            latency: `${latencyMs}ms`,
+            fps: Math.min(30, Math.max(12, Math.round(1000 / Math.max(latencyMs, 1))))
+          }));
+
+          const hasWeapon = dets.some(d => isUnauthorizedWeaponThreat(d, dets));
           if (hasWeapon) {
             soundController.triggerWeaponSiren(2000);
           }
@@ -334,12 +369,12 @@ export const CameraDetailModal = ({
       } finally {
         isInferringRef.current = false;
         if (mounted) {
-          timeoutId = setTimeout(runModalInference, 350);
+          timeoutId = setTimeout(runModalInference, 200);
         }
       }
     };
 
-    timeoutId = setTimeout(runModalInference, 300);
+    timeoutId = setTimeout(runModalInference, 200);
 
     return () => {
       mounted = false;
@@ -701,9 +736,11 @@ export const CameraDetailModal = ({
           const isWeapon = isArmed || isWeaponItem;
 
           const isPerson = det.class_id === 0 || cName === 'person';
-          // Tactical UI Palette: Red for weapons/armed; Amber for casual objects; Cyan for persons/operators
+          const isAuth = Boolean(det.is_authorized) || det.threat_level === 'AUTHORIZED';
+          // Tactical UI Palette: Emerald Green for Authorized; Red for unauthorized armed hostiles; Amber for casual objects; Cyan for persons/operators
           let boxColor = '#00f0ff';
-          if (isWeapon) boxColor = '#ef4444';
+          if (isAuth) boxColor = '#10b981';
+          else if (isWeapon) boxColor = '#ef4444';
           else if (!isPerson) boxColor = '#f59e0b';
 
           // Box
@@ -810,8 +847,16 @@ export const CameraDetailModal = ({
           ctx.save();
           const confStr = rawConf != null ? `${(rawConf * 100).toFixed(0)}%` : '';
           let labelText = '';
-          if (isArmed) {
-            labelText = `🚨 ARMED SUBJECT: HOLDING ${det.held_item} (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
+          if (isAuth) {
+            if (isArmed) {
+              labelText = `🛡️ AUTH SENTRY: ${det.frs_match_name || det.target_id} [ARMED]`;
+            } else if (det.frs_match_name) {
+              labelText = `🛡️ AUTHORIZED: ${det.frs_match_name}`;
+            } else {
+              labelText = `🛡️ AUTHORIZED PERSONNEL [${det.target_id}]`;
+            }
+          } else if (isArmed) {
+            labelText = `🚨 UNAUTHORIZED ARMED HOSTILE: ${det.target_id} - ${det.held_item}`;
           } else if (isHoldingCasual) {
             if (isWatch) {
               labelText = `⌚ HOLDING WATCH (${(det.held_by_hand || 'HAND').replace('_', ' ')})`;
@@ -954,7 +999,98 @@ export const CameraDetailModal = ({
             </div>
             <div className="modal-cam-titles">
               <h3 className="modal-cam-name">{camName}</h3>
-              <span className="modal-cam-loc">{camLocation}</span>
+              <div className="modal-loc-badge-wrapper" ref={locPickerRef}>
+                <button
+                  type="button"
+                  className="modal-cam-loc-btn"
+                  onClick={() => setIsLocPickerOpen((prev) => !prev)}
+                  title="Click to calibrate GPS or switch sector location"
+                >
+                  <MapPin size={11} className={isLiveGps ? 'loc-pin live-gps' : 'loc-pin'} />
+                  <span className="modal-cam-loc-text">{camLocation}</span>
+                  <span className="modal-cam-gps-tag">({camGps})</span>
+                  <ChevronDown size={11} className={`loc-dropdown-icon ${isLocPickerOpen ? 'open' : ''}`} />
+                </button>
+
+                {isLocPickerOpen && (
+                  <div className="modal-loc-picker-dropdown font-mono">
+                    <div className="loc-picker-title">
+                      <span>LOCATION &amp; SECTOR CALIBRATION</span>
+                      <button type="button" className="loc-close-btn" onClick={() => setIsLocPickerOpen(false)}>✕</button>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="loc-picker-item loc-gps-auto-btn"
+                      onClick={() => {
+                        if (detectLocation) detectLocation();
+                        setCustomLocation(null);
+                        setIsLocPickerOpen(false);
+                      }}
+                    >
+                      <Crosshair size={14} className="text-cyan" />
+                      <div className="text-left">
+                        <div className="font-bold text-white text-xs">Calibrate Live GPS / IP Location</div>
+                        <div className="text-xs text-muted">Auto-detect using device sensor &amp; reverse-geocode</div>
+                      </div>
+                    </button>
+
+                    <div className="loc-picker-divider">PREDEFINED SECTORS</div>
+                    <div className="loc-popular-grid">
+                      {POPULAR_LOCATIONS.map((loc) => (
+                        <button
+                          key={loc.id}
+                          type="button"
+                          className={`loc-picker-sector-btn ${camLocation === loc.fullName || camLocation === loc.name ? 'active' : ''}`}
+                          onClick={() => {
+                            setCustomLocation(loc.fullName);
+                            if (setManualLocation) {
+                              setManualLocation(loc.latitude, loc.longitude, loc.fullName);
+                            }
+                            try {
+                              localStorage.setItem('ibvap_dynamic_location_name', loc.fullName);
+                              localStorage.setItem('ibvap_dynamic_location', JSON.stringify({ latitude: loc.latitude, longitude: loc.longitude, formatted: loc.gps }));
+                            } catch {}
+                            setIsLocPickerOpen(false);
+                          }}
+                        >
+                          <span className="sector-dot" />
+                          <span className="sector-name">{loc.shortName || loc.name}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="loc-picker-divider">CUSTOM SECTOR / BASE NAME</div>
+                    <form
+                      className="loc-custom-form"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (customInputText.trim()) {
+                          const val = customInputText.trim();
+                          setCustomLocation(val);
+                          if (setManualLocation && ctxCoords) {
+                            setManualLocation(ctxCoords.latitude, ctxCoords.longitude, val);
+                          }
+                          try {
+                            localStorage.setItem('ibvap_dynamic_location_name', val);
+                          } catch {}
+                          setIsLocPickerOpen(false);
+                          setCustomInputText('');
+                        }
+                      }}
+                    >
+                      <input
+                        type="text"
+                        placeholder="e.g. Forward Post Alpha, Border HQ..."
+                        value={customInputText}
+                        onChange={(e) => setCustomInputText(e.target.value)}
+                        className="loc-custom-input"
+                      />
+                      <button type="submit" className="loc-custom-save-btn">APPLY</button>
+                    </form>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

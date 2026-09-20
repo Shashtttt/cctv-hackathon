@@ -110,6 +110,8 @@ class FRSSubjectCreate(BaseModel):
     threat_level: str = "MEDIUM"
     avatar_url: str = ""
     notes: str = ""
+    is_weapon_authorized: bool = False
+    is_authorized: bool = False
 
 
 class FRSSubjectResponse(BaseModel):
@@ -124,6 +126,8 @@ class FRSSubjectResponse(BaseModel):
     last_seen: Optional[str]
     last_seen_at: Optional[datetime.datetime]
     enrolled_at: datetime.datetime
+    is_weapon_authorized: bool = False
+    is_authorized: bool = False
 
 
 class EmbeddingEnrollRequest(BaseModel):
@@ -139,6 +143,19 @@ class ANPRVehicleCreate(BaseModel):
     threat_level: str = "HIGH"
     notes: str = ""
     flagged_date: Optional[str] = None
+    is_weapon_authorized: bool = False
+    is_authorized: bool = False
+
+
+class FRSSubjectUpdate(BaseModel):
+    name: Optional[str] = None
+    alias: Optional[str] = None
+    category: Optional[str] = None
+    threat_level: Optional[str] = None
+    avatar_url: Optional[str] = None
+    notes: Optional[str] = None
+    is_weapon_authorized: Optional[bool] = None
+    is_authorized: Optional[bool] = None
 
 
 class ANPRVehicleResponse(BaseModel):
@@ -149,6 +166,19 @@ class ANPRVehicleResponse(BaseModel):
     threat_level: str
     notes: str
     flagged_date: Optional[str]
+    is_weapon_authorized: bool = False
+    is_authorized: bool = False
+
+
+class ANPRVehicleUpdate(BaseModel):
+    owner: Optional[str] = None
+    status: Optional[str] = None
+    vehicle_type: Optional[str] = None
+    threat_level: Optional[str] = None
+    notes: Optional[str] = None
+    flagged_date: Optional[str] = None
+    is_weapon_authorized: Optional[bool] = None
+    is_authorized: Optional[bool] = None
 
 
 class AlertSummaryResponse(BaseModel):

@@ -30,48 +30,7 @@ import { fetchFRSWatchlist, addFRSSubject, deleteFRSSubject } from '../services/
 import { testFirestoreConnection } from '../services/firestoreService';
 import './SettingsPage.css';
 
-const defaultAuthorizedList = [
-  {
-    id: '1',
-    initials: 'RK',
-    name: 'Raj Kumar',
-    tag: 'P-115',
-    role: 'Security Officer',
-    status: 'active',
-    statusText: 'Active',
-    scanStatus: 'SCAN: OK'
-  },
-  {
-    id: '2',
-    initials: 'AS',
-    name: 'Amit Sharma',
-    tag: 'P-121',
-    role: 'Border Patrol Officer',
-    status: 'active',
-    statusText: 'Active',
-    scanStatus: 'SCAN: OK'
-  },
-  {
-    id: '3',
-    initials: 'VS',
-    name: 'Vikram Singh',
-    tag: 'P-109',
-    role: 'Quick Response Team (QRT)',
-    status: 'active',
-    statusText: 'Active',
-    scanStatus: 'SCAN: OK'
-  },
-  {
-    id: '4',
-    initials: 'NP',
-    name: 'Neha Patel',
-    tag: 'P-134',
-    role: 'Terminal Access Specialist',
-    status: 'inactive',
-    statusText: 'Inactive (Leave / Revoked)',
-    scanStatus: 'L3-DENIED'
-  }
-];
+const defaultAuthorizedList = [];
 
 const SettingsPage = () => {
   // Toggle States for Alert Preferences
@@ -126,7 +85,7 @@ const SettingsPage = () => {
     const loadWatchlist = async () => {
       try {
         const subjects = await fetchFRSWatchlist();
-        if (Array.isArray(subjects) && subjects.length > 0) {
+        if (Array.isArray(subjects)) {
           const mapped = subjects.map((s, idx) => {
             const initials = s.name ? s.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'OP';
             return {

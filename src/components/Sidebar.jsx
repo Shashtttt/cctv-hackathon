@@ -6,7 +6,8 @@ import {
   Bell, 
   FileText, 
   Settings,
-  ShieldCheck
+  ShieldCheck,
+  UserCheck
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -58,6 +59,15 @@ export default function Sidebar({ activeTab = 'dashboard', onSelectTab }) {
         >
           <ShieldCheck size={18} className="nav-icon" />
           <span>Cyber & Chain</span>
+        </button>
+
+        {/* Clearance Registry */}
+        <button
+          className={`sidebar-nav-item ${activeTab === 'registry' ? 'active' : ''}`}
+          onClick={() => onSelectTab && onSelectTab('registry')}
+        >
+          <UserCheck size={18} className="nav-icon" />
+          <span>Clearance Registry</span>
         </button>
 
         {/* Reports */}
