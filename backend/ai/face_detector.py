@@ -154,11 +154,41 @@ class FaceDetector:
     ) -> Optional[np.ndarray]:
         """
         Align face crop using the 5-landmark similarity transform (as required by SFace).
-        Returns a (112, 112) BGR image.
+        Returns a (112, 112) BGR image.  Never returns None — falls back through
+        three layers: landmark warp → bbox crop → centre-of-frame crop.
         """
+        import cv2  # type: ignore
+
+        def _bbox_crop() -> Optional[np.ndarray]:
+            """Layer 2: plain bbox resize."""
+            try:
+                x, y, fw, fh = (int(v) for v in face_row[:4])
+                fh, fw = max(fh, 1), max(fw, 1)
+                h, w = frame.shape[:2]
+                x1, y1 = max(0, x), max(0, y)
+                x2, y2 = min(w, x + fw), min(h, y + fh)
+                crop = frame[y1:y2, x1:x2]
+                if crop.size > 0:
+                    return cv2.resize(crop, target_size)
+            except Exception as exc:
+                log.debug("_align_crop bbox fallback failed: %s", exc)
+            return None
+
+        def _centre_crop() -> np.ndarray:
+            """Layer 3: centre-of-frame crop — always succeeds."""
+            h, w = frame.shape[:2]
+            s = min(h, w) // 2
+            cx, cy = w // 2, h // 2
+            x1, y1 = max(0, cx - s // 2), max(0, cy - s // 2)
+            x2, y2 = min(w, cx + s // 2), min(h, cy + s // 2)
+            crop = frame[y1:y2, x1:x2]
+            if crop.size > 0:
+                return cv2.resize(crop, target_size)
+            # Absolute last resort: black image
+            return np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8)
+
+        # Layer 1: landmark-based similarity warp
         try:
-            import cv2                                       # type: ignore
-            # SFace reference landmarks (112×112)
             ref_pts = np.float32([
                 [38.29459953, 51.69630051],
                 [73.53179932, 51.50139999],
@@ -174,26 +204,46 @@ class FaceDetector:
                 [face_row[12], face_row[13]],
             ])
             M = cv2.estimateAffinePartial2D(src_pts, ref_pts, method=cv2.LMEDS)[0]
-            if M is None:
-                x, y, fw, fh = (int(v) for v in face_row[:4])
-                crop = frame[y:y + fh, x:x + fw]
-                return cv2.resize(crop, target_size) if crop.size > 0 else None
-            aligned = cv2.warpAffine(frame, M, target_size)
-            return aligned
-        except Exception:
-            return None
+            if M is not None:
+                aligned = cv2.warpAffine(frame, M, target_size)
+                if aligned is not None and aligned.size > 0:
+                    return aligned
+                log.debug("_align_crop warpAffine produced empty result, using bbox fallback")
+            else:
+                log.debug("_align_crop: estimateAffinePartial2D returned None, using bbox fallback")
+        except Exception as exc:
+            log.debug("_align_crop landmark warp failed: %s", exc)
+
+        # Layer 2: bbox crop
+        result = _bbox_crop()
+        if result is not None:
+            return result
+
+        # Layer 3: centre crop (guaranteed non-None)
+        log.debug("_align_crop: all fallbacks exhausted, using centre crop")
+        return _centre_crop()
 
     @staticmethod
     def _simulate(frame: np.ndarray) -> List[FaceDetection]:
+        import cv2  # type: ignore
         import random
         if random.random() < 0.4:
             return []
-        h, w = frame.shape[:2] if frame is not None else (720, 1280)
+        h, w = frame.shape[:2] if frame is not None and frame.size > 0 else (720, 1280)
         x = random.randint(w // 4, 3 * w // 4)
         y = random.randint(h // 4, h // 2)
         s = random.randint(40, 80)
+        # Build a simulated face crop so embedding paths never receive None
+        x1, y1 = max(0, x), max(0, y)
+        x2, y2 = min(w, x + s), min(h, y + s)
+        if frame is not None and frame.size > 0 and x2 > x1 and y2 > y1:
+            raw = frame[y1:y2, x1:x2]
+            face_crop = cv2.resize(raw, (112, 112)) if raw.size > 0 else np.zeros((112, 112, 3), dtype=np.uint8)
+        else:
+            face_crop = np.zeros((112, 112, 3), dtype=np.uint8)
         return [FaceDetection(
             bbox=(x, y, s, s),
             landmarks=[(x + s // 4, y + s // 3)] * 5,
             confidence=random.uniform(0.70, 0.95),
+            face_crop=face_crop,
         )]

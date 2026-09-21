@@ -4,9 +4,9 @@ import axios from 'axios';
 const api = axios.create({
   baseURL: '/api/v1',
   timeout: 8000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  // Do NOT set a global Content-Type here.
+  // JSON requests: axios sets 'application/json' automatically for object payloads.
+  // File uploads: browser sets 'multipart/form-data' with correct boundary automatically.
 });
 
 // System Health
@@ -356,9 +356,12 @@ export const deleteFRSSubject = async (subjectId) => {
 export const uploadFRSSubjectPhoto = async (subjectId, file) => {
   const formData = new FormData();
   formData.append('photo', file);
+  // Do NOT manually set Content-Type for multipart/form-data.
+  // Browser must set it automatically so it includes the correct boundary parameter.
+  // Manually setting it strips the boundary and breaks the upload on the backend.
   const response = await api.post(`/frs/watchlist/${subjectId}/enroll-photo`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 15000,
+    headers: { 'Content-Type': undefined },
+    timeout: 30000, // YuNet + SFace embedding extraction can take time
   });
   return response.data;
 };

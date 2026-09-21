@@ -91,19 +91,33 @@ export const useWebSocket = () => {
 
               if (!isAuthClearance) {
                 const isUnauthorizedThreat =
+                  // Weapon / armed threats
                   cat === 'ARMED_HOSTILE_INTRUDER' ||
+                  (cat.includes('WEAPON') && !cat.includes('AUTHORIZED')) ||
+                  (cat.includes('ARMED') && !cat.includes('AUTHORIZED')) ||
+                  // ✅ FRS watchlist match of an unauthorized/hostile subject
+                  cat === 'FRS_MATCH' ||
+                  cat === 'WATCHLIST_MATCH' ||
+                  cat === 'INTRUDER_DETECTED' ||
+                  // Zone / perimeter breach
                   cat === 'UNAUTHORIZED_VEHICLE' ||
                   cat === 'VIRTUAL_FENCE_INTRUSION' ||
                   cat === 'RESTRICTED_ZONE_BREACH' ||
+                  cat === 'PERIMETER_BREACH' ||
+                  // ANPR critical hit
                   (cat === 'ANPR_MATCH' && String(p.severity || '').toUpperCase() === 'CRITICAL') ||
+                  // Title-based fallbacks
                   title.includes('unauthorized') ||
                   title.includes('armed hostile') ||
                   title.includes('hostile') ||
-                  (cat.includes('WEAPON') && !cat.includes('AUTHORIZED')) ||
-                  (cat.includes('ARMED') && !cat.includes('AUTHORIZED'));
+                  title.includes('intruder') ||
+                  title.includes('frs match') ||
+                  title.includes('watchlist');
 
                 if (isUnauthorizedThreat) {
-                  soundController.playSirenBurst(3.5);
+                  // Weapon / FRS threat → different urgency level
+                  const isArmedThreat = cat.includes('ARMED') || cat.includes('WEAPON') || title.includes('armed');
+                  soundController.playSirenBurst(isArmedThreat ? 3.5 : 2.5);
                 }
               }
 

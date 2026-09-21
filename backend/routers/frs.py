@@ -130,15 +130,26 @@ async def enroll_photo(subject_id: str, photo: UploadFile = File(...)):
 
     faces = detector.detect(frame)
     if not faces:
-        raise HTTPException(status_code=422, detail="No face detected in the uploaded photo.")
+        raise HTTPException(status_code=422, detail="No face detected in the uploaded photo. Please use a clear, front-facing portrait.")
 
     best_face = max(faces, key=lambda f: f.confidence)
+
+    # If landmark-based alignment failed, fall back to a plain bbox crop resized to 112×112
     if best_face.face_crop is None:
-        raise HTTPException(status_code=422, detail="Face crop alignment failed.")
+        x, y, fw, fh = best_face.bbox
+        h, w = frame.shape[:2]
+        x1 = max(0, x)
+        y1 = max(0, y)
+        x2 = min(w, x + fw)
+        y2 = min(h, y + fh)
+        raw_crop = frame[y1:y2, x1:x2]
+        if raw_crop.size == 0:
+            raise HTTPException(status_code=422, detail="Face detected but crop region is invalid. Please use a higher resolution photo.")
+        best_face.face_crop = cv2.resize(raw_crop, (112, 112))
 
     embedding = recognizer.embed(best_face.face_crop)
     if embedding is None:
-        raise HTTPException(status_code=422, detail="Embedding extraction failed.")
+        raise HTTPException(status_code=422, detail="Embedding extraction failed. Ensure SFace model is loaded.")
 
     # Encode face crop thumbnail as base64 JPEG for avatar_url
     import base64

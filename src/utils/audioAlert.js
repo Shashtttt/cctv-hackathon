@@ -21,13 +21,20 @@ class SoundController {
     window.addEventListener('pointerdown', unlock, { once: true, passive: true });
     window.addEventListener('keydown', unlock, { once: true, passive: true });
     window.addEventListener('click', unlock, { once: true, passive: true });
+
+    // Also attempt eager init — works on HTTPS Chromium without gesture
+    setTimeout(() => this.initContext(), 500);
   }
 
   initContext() {
     if (!this.audioCtx) {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (AudioContextClass) {
-        this.audioCtx = new AudioContextClass();
+        try {
+          this.audioCtx = new AudioContextClass();
+        } catch (e) {
+          console.debug('AudioContext init error:', e);
+        }
       }
     }
     if (this.audioCtx && this.audioCtx.state === 'suspended') {
@@ -35,6 +42,25 @@ class SoundController {
     }
     return this.audioCtx;
   }
+
+  /**
+   * Force-unlock AudioContext. Called before every siren trigger so the
+   * context is ready even if the user hasn't interacted with the page yet.
+   */
+  forceInit() {
+    this.initContext();
+    // If still suspended (autoplay policy), queue a resume on next gesture
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      const resume = () => {
+        this.audioCtx?.resume().catch(() => {});
+        window.removeEventListener('pointerdown', resume);
+        window.removeEventListener('click', resume);
+      };
+      window.addEventListener('pointerdown', resume, { once: true, passive: true });
+      window.addEventListener('click', resume, { once: true, passive: true });
+    }
+  }
+
 
   subscribe(callback) {
     this.listeners.add(callback);
@@ -60,8 +86,10 @@ class SoundController {
    */
   triggerWeaponSiren(holdDurationMs = 2800) {
     if (this.isMuted) return;
-    this.initContext();
-    if (!this.audioCtx) return;
+    this.forceInit(); // ensures AudioContext exists and is resumed
+
+    // If context still not available or suspended, bail — will fire on next gesture
+    if (!this.audioCtx || this.audioCtx.state === 'suspended') return;
 
     // Reset auto-stop countdown timer
     if (this.sirenTimer) {

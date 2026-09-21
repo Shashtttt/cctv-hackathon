@@ -142,13 +142,13 @@ class DirectAIAnalyzer:
         now_ts = time.time()
         analytics_modes = analytics_modes or ["INTRUSION", "LOITERING", "FRS", "ANPR", "ACTIVITY"]
 
-        # 0. Ensure watchlists synced from DB
-        if now_ts - self._last_watchlist_sync > 5.0 or not self._anpr_watchlist_meta:
+        # 0. Ensure watchlists synced from DB (every 30s — SQLite off the hot path)
+        if now_ts - self._last_watchlist_sync > 30.0 or not self._anpr_watchlist_meta:
             self.sync_watchlists_from_db()
 
-        # 0b. Preprocessing Pipeline (CLAHE / Fast Dehaze for night & fog feeds)
-        from .image_preprocessor import preprocessor
-        frame_enhanced = preprocessor.process(frame_bgr, mode="AUTO")
+        # 0b. Preprocessing is handled by the router (brightness-gated CLAHE).
+        # Use the frame as-is here — no duplicate CLAHE pass.
+        frame_enhanced = frame_bgr
 
         # 1. YOLOv8 Pose & Human/Vehicle Detection
         detections: List[Detection] = self.yolo.detect(frame_enhanced)
@@ -277,11 +277,13 @@ class DirectAIAnalyzer:
             )
             det.is_in_fence = is_in_fence
 
-            # A. Human Face Identification & Security Clearance (Run first for persons)
+            # A. Human Face Identification & Security Clearance
+            # Gate FRS behind annotate flag: face embeds are expensive (~80ms each).
+            # Non-annotated frames still classify activity/pose but skip embedding.
             if det.class_id in HUMAN_CLASSES:
                 x1, y1, x2, y2 = det.bbox.to_pixel(w, h)
                 crop = frame_bgr[y1:y2, x1:x2]
-                if crop.size > 0 and "FRS" in analytics_modes and len(self.face_rec._watchlist) > 0 and (x2 - x1) > 35 and (y2 - y1) > 45:
+                if annotate and crop.size > 0 and "FRS" in analytics_modes and len(self.face_rec._watchlist) > 0 and (x2 - x1) > 35 and (y2 - y1) > 45:
                     faces = self.face_det.detect_in_crop(frame_bgr, (x1, y1, x2, y2))
                     for face in faces:
                         if face.face_crop is not None:
@@ -485,7 +487,8 @@ class DirectAIAnalyzer:
                     alerts.append(alert)
 
             # I. Vehicle & ANPR License Plate Recognition
-            if det.class_id in VEHICLE_CLASSES:
+            # Gate ANPR behind annotate flag: OCR is expensive (~100ms per crop).
+            if annotate and det.class_id in VEHICLE_CLASSES:
                 x1, y1, x2, y2 = det.bbox.to_pixel(w, h)
                 crop = frame_bgr[y1:y2, x1:x2]
                 if crop.size > 0 and hasattr(self, "anpr") and self.anpr:
@@ -827,6 +830,6 @@ class DirectAIAnalyzer:
             # GPS + Timestamp Line (in emerald green)
             cv2.putText(frame, sub_line, (20, banner_y + 35), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 230, 0), 1, cv2.LINE_AA)
 
-        encode_params = [cv2.IMWRITE_JPEG_QUALITY, 85]
+        encode_params = [cv2.IMWRITE_JPEG_QUALITY, 72]
         _, buf = cv2.imencode(".jpg", frame, encode_params)
         return buf.tobytes()

@@ -144,15 +144,25 @@ export const SentinelCameraProvider = ({ children }) => {
           const weapons = dets.filter(d => d.is_weapon || d.held_item_type === 'WEAPON').length;
           const unusual = dets.filter(d => d.is_unusual).length;
 
-          // Sound alarm ONLY if genuine unauthorized weapon detected
+          // Unauthorized FRS watchlist matches: person detected, not authorized
+          const unauthorizedPersons = dets.filter(d =>
+            d.frs_match_name &&
+            !d.is_authorized &&
+            d.threat_level !== 'AUTHORIZED'
+          ).length;
+
+          // Sound alarm for weapons (continuous) or unauthorized person matches (burst)
           if (unauthorizedWeapons > 0) {
             soundController.triggerWeaponSiren(2000);
+          } else if (unauthorizedPersons > 0) {
+            soundController.playSirenBurst(2.5);
           }
 
           // Build human-readable identification summary
           let identifiedSummary = 'Perimeter Secure';
           if (unauthorizedWeapons > 0) {
             identifiedSummary = `⚠️ ARMED THREAT DETECTED (${unauthorizedWeapons})`;
+
           } else if (authPersonnel.length > 0) {
             const names = authPersonnel.map(d => d.frs_match_name || d.authorization_role || 'Authorized Sentry').filter(Boolean).join(', ');
             const isArmedSentry = dets.some(d => (d.is_authorized || d.threat_level === 'AUTHORIZED' || d.is_weapon_authorized) && (d.is_holding || d.held_item_type === 'WEAPON'));

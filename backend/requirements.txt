@@ -1,41 +1,80 @@
-# Backend Dependencies
-# Install with: pip install -r requirements.txt
+# ============================================================
+#  IBVAP — AI Border Surveillance Platform
+#  Python Backend Dependencies
+# ============================================================
+#  Install:        pip install -r requirements.txt
+#  GPU (CUDA 12):  pip install -r requirements.txt --index-url https://download.pytorch.org/whl/cu121
+#  After install:  python backend/download_models.py
+# ============================================================
 
-# Web Framework
+# ── Web Framework ────────────────────────────────────────────
 fastapi>=0.111.0
 uvicorn[standard]>=0.30.0
 websockets>=12.0
-python-multipart>=0.0.9       # File upload support (FRS photo enrollment)
+python-multipart>=0.0.9        # File upload support (FRS photo enrollment)
 
-# Settings
+# ── Settings & Validation ────────────────────────────────────
 pydantic>=2.7.0
 pydantic-settings>=2.3.0
 
-# Database
-aiosqlite>=0.20.0
+# ── Async Database ───────────────────────────────────────────
+aiosqlite>=0.20.0              # Async SQLite (camera configs, alerts, FRS watchlist)
 aiofiles>=23.2.1               # Async snapshot file I/O
 
-# Computer Vision & AI (Core)
-opencv-python-headless>=4.9.0  # Use headless for server; no GUI needed
+# ── HTTP Client ──────────────────────────────────────────────
+requests>=2.31.0               # Sync HTTP (model downloads, IP geolocation)
+httpx>=0.27.0                  # Async HTTP (external API calls)
+
+# ── Computer Vision ──────────────────────────────────────────
+opencv-python-headless>=4.9.0  # Headless CV (no GUI); use opencv-python for desktop
 numpy>=1.26.0
 
-# YOLOv8 — Human, Vehicle & License-Plate Detection
-ultralytics>=8.2.0
+# ── Deep Learning — PyTorch ──────────────────────────────────
+# CPU-only (default, works on any machine):
+torch>=2.3.0
+torchvision>=0.18.0
 
-# ONNX Runtime — YuNet (face detection) + SFace (face recognition)
-onnxruntime>=1.18.0            # CPU runtime
-# onnxruntime-gpu>=1.18.0     # Uncomment if CUDA GPU is available
+# GPU (CUDA) — uncomment ONE of the blocks below instead of the lines above,
+# then run:  pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+#
+# CUDA 12.1: torch>=2.3.0+cu121  torchvision>=0.18.0+cu121
+# CUDA 11.8: torch>=2.3.0+cu118  torchvision>=0.18.0+cu118
+# Apple MPS: torch>=2.3.0        torchvision>=0.18.0   (auto-detected on macOS)
 
-# ANPR — OCR
-easyocr>=1.7.1
-Pillow>=10.3.0
+# ── YOLOv8 — Human, Vehicle & License-Plate Detection ────────
+ultralytics>=8.2.0             # Includes YOLO pose, detect, segment models
+                               # Models auto-downloaded on first run, OR run:
+                               # python backend/download_models.py
 
-# Fuzzy Plate Matching
-python-Levenshtein>=0.25.0
+# ── ONNX Runtime — YuNet (face detect) + SFace (face recog) ──
+onnxruntime>=1.18.0            # CPU runtime (works everywhere)
+# onnxruntime-gpu>=1.18.0      # Uncomment for CUDA GPU inference
 
-# Security (future: JWT auth for operator login)
-python-jose[cryptography]>=3.3.0
-passlib[bcrypt]>=1.7.4
+# ── Face Detection & Recognition (OpenCV DNN) ────────────────
+# YuNet and SFace ONNX weights are downloaded by download_models.py
+# They run via cv2.FaceDetectorYN and cv2.FaceRecognizerSF (included in opencv above)
 
-# Firebase Cloud & Realtime Database Sync
+# ── ANPR — Automatic Number Plate Recognition ────────────────
+easyocr>=1.7.1                 # OCR engine (uses torch + torchvision above)
+Pillow>=10.3.0                 # Image loading/saving used by EasyOCR and PIL.Image
+
+# ── Plate Fuzzy Matching ─────────────────────────────────────
+python-Levenshtein>=0.25.0     # Fast C-extension Levenshtein distance
+Levenshtein>=0.25.0            # Alias package (same C-extension, both listed for compatibility)
+
+# ── Image Processing ─────────────────────────────────────────
+scipy>=1.13.0                  # Signal processing (tamper detector, night enhancer)
+scikit-image>=0.22.0           # Advanced image analysis (tamper detection, SSIM)
+
+# ── Security & Auth ──────────────────────────────────────────
+python-jose[cryptography]>=3.3.0   # JWT token generation / verification
+passlib[bcrypt]>=1.7.4             # Password hashing for operator accounts
+
+# ── Firebase Cloud Sync (optional) ───────────────────────────
+# Enables real-time cloud alert mirroring to Firebase Realtime DB & Firestore.
+# Safe to omit — backend falls back to local-only mode if not installed.
 firebase-admin>=6.5.0
+
+# ── Model Quantization (optional, for edge deployment) ───────
+# onnx>=1.16.0                 # Required only if running model_quantizer.py
+# onnxmltools>=1.12.0          # ONNX model conversion utilities

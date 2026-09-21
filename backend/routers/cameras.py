@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
@@ -13,6 +14,7 @@ from ..schemas import (
     CameraSyncGeoRequest,
 )
 
+log = logging.getLogger("ibvap.routers.cameras")
 router = APIRouter(prefix="/cameras", tags=["Cameras"])
 
 
@@ -363,14 +365,31 @@ async def ingest_camera_frame(cam_id: str, request: Request):
     gps_full_label = f"{loc_name} | GPS: {gps_str}" if (loc_name and gps_str) else (gps_str or loc_name)
 
     analyzer = DirectAIAnalyzer.get_instance()
+
+    # Honor annotate flag from request body (frontend requests annotation only every Nth frame)
+    want_annotate = True
+    if "application/json" in content_type and isinstance(body, dict):
+        annotate_val = body.get("annotate")
+        if annotate_val is not None:
+            want_annotate = bool(annotate_val)
+
+    # Preprocessing Pipeline (CLAHE / Fast Dehaze for night & fog feeds)
+    # Skip on well-lit frames (mean brightness > 80) to save ~20ms per frame
+    from ..ai.image_preprocessor import preprocessor
+    mean_brightness = float(np.mean(frame_bgr))
+    if mean_brightness < 80:
+        frame_enhanced = preprocessor.process(frame_bgr, mode="AUTO")
+    else:
+        frame_enhanced = frame_bgr  # already bright enough, skip CLAHE
+
     result = await asyncio.to_thread(
         analyzer.process_frame,
-        frame_bgr=frame_bgr,
+        frame_bgr=frame_enhanced,
         camera_id=cam.id,
         camera_code=cam.code,
         fence_points=cam.fence_points,
         analytics_modes=cam.analytics_modes,
-        annotate=True,
+        annotate=want_annotate,
         gps_info=gps_full_label,
     )
 

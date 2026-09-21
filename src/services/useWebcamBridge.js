@@ -63,6 +63,9 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
   const frameCountRef = useRef(0);
   const fpsTimerRef = useRef(Date.now());
   const lastWeaponSnapshotTimeRef = useRef(0);
+  const lastUnauthorizedPersonSnapshotTimeRef = useRef(0);
+  const frameSkipCounterRef = useRef(0);
+  const lastRoundTripMsRef = useRef(0);
 
   // Enumerate hardware cameras on mount
   useEffect(() => {
@@ -240,8 +243,10 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
       const canvas = offscreenCanvasRef.current;
       const vw = video.videoWidth || 1280;
       const vh = video.videoHeight || 720;
-      // High-speed frame ingestion (preserving aspect ratio, max 480 width for rapid CPU inference)
-      const scale = Math.min(1.0, 480 / Math.max(vw, 1));
+      // Adaptive resolution: 416px wide (YOLO-friendly, divisible by 32) for speed
+      // Drop to 320px if round-trips are consistently slow (>500ms)
+      const maxW = lastRoundTripMsRef.current > 500 ? 320 : 416;
+      const scale = Math.min(1.0, maxW / Math.max(vw, 1));
       const targetW = Math.round(vw * scale);
       const targetH = Math.round(vh * scale);
       canvas.width = targetW;
@@ -250,18 +255,26 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
       const ctx = canvas.getContext('2d', { alpha: false });
       ctx.drawImage(video, 0, 0, targetW, targetH);
 
-      const b64 = canvas.toDataURL('image/jpeg', 0.65);
+      // Lower JPEG quality for speed — 0.50 still yields good YOLO accuracy
+      const b64 = canvas.toDataURL('image/jpeg', 0.50);
       const t0 = performance.now();
+
+      // Request annotation only every 3rd frame to cut backend encode cost
+      frameSkipCounterRef.current = (frameSkipCounterRef.current + 1) % 3;
+      const wantAnnotation = frameSkipCounterRef.current === 0;
 
       axios.post(`/api/v1/cameras/${cameraId}/ingest`, {
         image: b64,
+        annotate: wantAnnotation,
         gps: geoPositionRef.current || null,
         location: resolvedLocationRef.current || telemetry.location || 'Noida Sector 28',
       }, {
         headers: { 'Content-Type': 'application/json' },
-        timeout: 3500,
-      }).then((res) => {
+        timeout: 5000,
+      })
+.then((res) => {
         const dt = performance.now() - t0;
+        lastRoundTripMsRef.current = dt;
         frameCountRef.current += 1;
 
         const now = Date.now();
@@ -309,7 +322,15 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
           const unauthorizedWeaponDets = dets.filter((d) => isUnauthorizedWeaponThreat(d, dets));
           const hasUnauthorizedWeapons = unauthorizedWeaponDets.length > 0;
 
-          // PLAY SIREN ONLY WHEN GENUINE UNAUTHORIZED WEAPON DETECTED
+          // Unauthorized FRS person matches: matched against watchlist, NOT authorized
+          const unauthorizedPersonDets = dets.filter((d) =>
+            d.frs_match_name &&
+            !d.is_authorized &&
+            d.threat_level !== 'AUTHORIZED'
+          );
+          const hasUnauthorizedPersons = unauthorizedPersonDets.length > 0;
+
+          // PLAY SIREN: weapon (continuous latch) OR unauthorized person (burst)
           if (hasUnauthorizedWeapons) {
             soundController.triggerWeaponSiren(2000);
 
@@ -342,7 +363,37 @@ export const useWebcamBridge = (cameraId = 'cam-01', targetFps = 25, externalVid
                 console.debug('Firestore weapon alert sync notice:', err?.message);
               });
             }
+          } else if (hasUnauthorizedPersons) {
+            // 🚨 Unauthorized watchlist person detected → siren burst
+            soundController.playSirenBurst(2.5);
+
+            // Debounced Firestore alert (6s) to avoid flooding
+            const nowTime = Date.now();
+            if (nowTime - lastUnauthorizedPersonSnapshotTimeRef.current > 6000 && res.data.annotated_frame) {
+              lastUnauthorizedPersonSnapshotTimeRef.current = nowTime;
+              const names = unauthorizedPersonDets.map((d) => d.frs_match_name).join(', ');
+              const alertId = `FRS-${(cameraId || 'CAM-01').toUpperCase()}-${nowTime}`;
+              const alertPayload = {
+                id: alertId,
+                alert_id: alertId,
+                camera_id: (cameraId || 'CAM-01').toUpperCase(),
+                category: 'FRS_MATCH',
+                severity: 'HIGH',
+                title: `⚠️ UNAUTHORIZED PERSON: ${names}`,
+                description: `Watchlist subject '${names}' detected at ${resolvedLocationRef.current || 'Border Sector'}. Immediate response required.`,
+                snapshot_base64: res.data.annotated_frame,
+                snapshot_url: res.data.annotated_frame,
+                captured_at: new Date().toISOString(),
+                location: resolvedLocationRef.current || telemetry.location || 'Border Sector',
+                gps: geoPositionRef.current?.formatted || telemetry.gpsCoords || '',
+                source: 'Webcam-FRS',
+              };
+              syncAlertToFirestore(alertPayload).catch((err) => {
+                console.debug('Firestore FRS alert sync notice:', err?.message);
+              });
+            }
           }
+
 
           setLiveDetections(dets);
           if (res.data.annotated_frame) {
