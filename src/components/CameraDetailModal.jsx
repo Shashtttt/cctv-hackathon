@@ -738,9 +738,13 @@ export const CameraDetailModal = ({
           const isPerson = det.class_id === 0 || cName === 'person';
           const isAuth = Boolean(det.is_authorized) || det.threat_level === 'AUTHORIZED';
           // Tactical UI Palette: Emerald Green for Authorized; Red for unauthorized armed hostiles; Amber for casual objects; Cyan for persons/operators
+          const isBlacklisted = Boolean(det.is_blacklisted || det.threat_level === 'CRITICAL' || det.threat_level === 'UNAUTHORIZED');
+          const hasName = Boolean(det.frs_match_name);
+          const isAuthPerson = Boolean(hasName && isAuth);
+
           let boxColor = '#00f0ff';
-          if (isAuth) boxColor = '#10b981';
-          else if (isWeapon) boxColor = '#ef4444';
+          if (isAuthPerson) boxColor = '#10b981';
+          else if (isWeapon || isBlacklisted) boxColor = '#ef4444';
           else if (!isPerson) boxColor = '#f59e0b';
 
           // Box
@@ -778,10 +782,11 @@ export const CameraDetailModal = ({
           if (det.keypoints) {
             const pts = Array.isArray(det.keypoints) ? det.keypoints : (det.keypoints.points || []);
             if (pts.length > 0) {
+              const boneColor = isAuthPerson ? '#10b981' : '#00f2fe';
               ctx.save();
-              ctx.strokeStyle = '#00f2fe';
+              ctx.strokeStyle = boneColor;
               ctx.lineWidth = 2.5;
-              ctx.shadowColor = '#00f2fe';
+              ctx.shadowColor = boneColor;
               ctx.shadowBlur = 6;
 
               // Draw skeleton limb lines (bones) - require confident joints (>= 0.48) to avoid false criss-cross lines
@@ -789,14 +794,13 @@ export const CameraDetailModal = ({
                 const kpi = pts[i];
                 const kpj = pts[j];
                 if (kpi && kpj) {
-                  const xi = (kpi.x !== undefined ? kpi.x : (Array.isArray(kpi) ? kpi[0] : 0)) * cw;
-                  const yi = (kpi.y !== undefined ? kpi.y : (Array.isArray(kpi) ? kpi[1] : 0)) * ch;
-                  const confi = kpi.conf !== undefined ? kpi.conf : (Array.isArray(kpi) ? kpi[2] : 1.0);
-                  const xj = (kpj.x !== undefined ? kpj.x : (Array.isArray(kpj) ? kpj[0] : 0)) * cw;
-                  const yj = (kpj.y !== undefined ? kpj.y : (Array.isArray(kpj) ? kpj[1] : 0)) * ch;
-                  const confj = kpj.conf !== undefined ? kpj.conf : (Array.isArray(kpj) ? kpj[2] : 1.0);
-
-                  if (confi >= 0.48 && confj >= 0.48) {
+                  const ci = kpi.conf !== undefined ? kpi.conf : (Array.isArray(kpi) ? kpi[2] : 1.0);
+                  const cj = kpj.conf !== undefined ? kpj.conf : (Array.isArray(kpj) ? kpj[2] : 1.0);
+                  if (ci >= 0.48 && cj >= 0.48) {
+                    const xi = (kpi.x !== undefined ? kpi.x : (Array.isArray(kpi) ? kpi[0] : 0)) * cw;
+                    const yi = (kpi.y !== undefined ? kpi.y : (Array.isArray(kpi) ? kpi[1] : 0)) * ch;
+                    const xj = (kpj.x !== undefined ? kpj.x : (Array.isArray(kpj) ? kpj[0] : 0)) * cw;
+                    const yj = (kpj.y !== undefined ? kpj.y : (Array.isArray(kpj) ? kpj[1] : 0)) * ch;
                     ctx.beginPath();
                     ctx.moveTo(xi, yi);
                     ctx.lineTo(xj, yj);
@@ -814,7 +818,7 @@ export const CameraDetailModal = ({
                   // Outer glowing ring
                   ctx.beginPath();
                   ctx.arc(kx, ky, 4.5, 0, 2 * Math.PI);
-                  ctx.fillStyle = '#00f2fe';
+                  ctx.fillStyle = boneColor;
                   ctx.fill();
                   // Inner center dot
                   ctx.beginPath();
@@ -830,10 +834,10 @@ export const CameraDetailModal = ({
                     ctx.fillStyle = 'rgba(6, 11, 19, 0.85)';
                     const tagW = ctx.measureText(tag).width;
                     ctx.fillRect(kx + 6, ky - 6, tagW + 6, 12);
-                    ctx.strokeStyle = 'rgba(0, 242, 254, 0.5)';
+                    ctx.strokeStyle = isAuthPerson ? 'rgba(16, 185, 129, 0.5)' : 'rgba(0, 242, 254, 0.5)';
                     ctx.lineWidth = 1;
                     ctx.strokeRect(kx + 6, ky - 6, tagW + 6, 12);
-                    ctx.fillStyle = '#00f2fe';
+                    ctx.fillStyle = boneColor;
                     ctx.fillText(tag, kx + 9, ky + 3);
                   }
                 }
@@ -847,13 +851,24 @@ export const CameraDetailModal = ({
           ctx.save();
           const confStr = rawConf != null ? `${(rawConf * 100).toFixed(0)}%` : '';
           let labelText = '';
-          if (isAuth) {
+          const personName = (det.frs_match_name || '').trim().toUpperCase();
+          const role = (det.authorization_role || (isAuthPerson ? 'AUTHORIZED SENTRY' : 'IDENTIFIED')).toUpperCase();
+
+          if (isAuthPerson) {
             if (isArmed) {
-              labelText = `🛡️ AUTH SENTRY: ${det.frs_match_name || det.target_id} [ARMED]`;
-            } else if (det.frs_match_name) {
-              labelText = `🛡️ AUTHORIZED: ${det.frs_match_name}`;
+              labelText = `🛡️ AUTH SENTRY: ${personName || det.target_id} [ARMED]`;
+            } else if (personName) {
+              labelText = `🛡️ ${personName} [${role}]${confStr ? ` [${confStr}]` : ''}`;
             } else {
               labelText = `🛡️ AUTHORIZED PERSONNEL [${det.target_id}]`;
+            }
+          } else if (personName) {
+            if (isArmed) {
+              labelText = `🚨 ARMED SUSPECT: ${personName} - ${det.held_item}`;
+            } else if (isBlacklisted) {
+              labelText = `⚠️ [ALERT] SUSPECT: ${personName}${confStr ? ` [${confStr}]` : ''}`;
+            } else {
+              labelText = `👤 ${personName}${confStr ? ` [${confStr}]` : ''}`;
             }
           } else if (isArmed) {
             labelText = `🚨 UNAUTHORIZED ARMED HOSTILE: ${det.target_id} - ${det.held_item}`;
@@ -1363,6 +1378,10 @@ export const CameraDetailModal = ({
                       const keypointList = Array.isArray(det.keypoints) ? det.keypoints : (det.keypoints?.points || []);
                       const isExpanded = expandedTargetCoords[idx] !== false;
 
+                      const isAuth = Boolean(det.is_authorized) || det.threat_level === 'AUTHORIZED';
+                      const personName = (det.frs_match_name || '').trim().toUpperCase();
+                      const isAuthPerson = Boolean(personName && isAuth);
+
                       let title = `${det.target_id || 'TARGET'} #${idx + 1}`;
                       let badge = 'TRACKED';
                       let badgeClass = 'pill-green';
@@ -1371,6 +1390,10 @@ export const CameraDetailModal = ({
                         title = `🚨 WEAPON: ${(det.unusual_item || det.class_name || 'FIREARM').toUpperCase()}`;
                         badge = 'CRITICAL ALERT';
                         badgeClass = 'pill-red';
+                      } else if (personName) {
+                        title = isAuthPerson ? `🛡️ ${personName}` : `⚠️ SUSPECT: ${personName}`;
+                        badge = isAuthPerson ? (det.authorization_role || 'AUTHORIZED SENTRY') : 'IDENTIFIED';
+                        badgeClass = isAuthPerson ? 'pill-green' : 'pill-yellow';
                       } else if (isPerson && isHolding) {
                         title = `👤 ${det.target_id || 'PERSON'} #${idx + 1}`;
                         badge = `HOLDING ${det.held_item}`;

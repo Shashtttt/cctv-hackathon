@@ -59,3 +59,4 @@ snapshots/
 .DS_Store
 *.sw?
 .vite/
+.firebase/

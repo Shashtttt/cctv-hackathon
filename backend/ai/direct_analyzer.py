@@ -14,7 +14,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import cv2
 import numpy as np
@@ -57,6 +57,7 @@ class DirectAIAnalyzer:
         self._prev_positions: Dict[str, Tuple[float, float]] = {}
         self._dwell_tracker: Dict[str, float] = {}   # target_id -> first_seen_ts
         self._last_alert_ts: Dict[str, float] = {}
+        self._frs_identity_cache: Dict[str, dict] = {}  # target_id -> identity data for temporal smoothing
         self.sync_watchlists_from_db()
 
     @classmethod
@@ -186,7 +187,8 @@ class DirectAIAnalyzer:
                         emb = self.face_rec.embed(face.face_crop)
                         if emb is not None:
                             match = self.face_rec.match_against_watchlist(emb)
-                            if match:
+                            # Ensure identity is unique per frame
+                            if match and not any(getattr(d, "frs_match_name", None) == match.name for d in detections):
                                 frs_name = match.name
                                 frs_score = match.score
                                 cat_upper = (getattr(match, "category", "") or "").upper()
@@ -198,8 +200,14 @@ class DirectAIAnalyzer:
                                 else:
                                     threat_lvl = match.threat_level
 
+                    if frs_name:
+                        clean_name = frs_name.upper().replace(" ", "_")
+                        face_target_id = f"AUTH-{clean_name[:14]}" if is_auth_face else f"SUSPECT-{clean_name[:12]}"
+                    else:
+                        face_target_id = f"OPERATOR-{f_idx + 1:02d}"
+
                     face_det = Detection(
-                        target_id=f"OPERATOR-{f_idx + 1:02d}",
+                        target_id=face_target_id,
                         class_id=0,
                         class_name="person",
                         bbox=norm_bbox,
@@ -270,6 +278,8 @@ class DirectAIAnalyzer:
             breach_by_id = {r.target_id: r for r in fence_res}
 
         # 3. Analyze each detected target
+        assigned_names_in_frame: Set[str] = set()
+
         for det in detections:
             br = breach_by_id.get(det.target_id)
             is_in_fence = (br is not None and getattr(br, "is_breaching", False)) or (
@@ -283,6 +293,9 @@ class DirectAIAnalyzer:
             if det.class_id in HUMAN_CLASSES:
                 x1, y1, x2, y2 = det.bbox.to_pixel(w, h)
                 crop = frame_bgr[y1:y2, x1:x2]
+                old_tid = det.target_id
+
+                # A1. High-confidence face matching
                 if annotate and crop.size > 0 and "FRS" in analytics_modes and len(self.face_rec._watchlist) > 0 and (x2 - x1) > 35 and (y2 - y1) > 45:
                     faces = self.face_det.detect_in_crop(frame_bgr, (x1, y1, x2, y2))
                     for face in faces:
@@ -290,7 +303,9 @@ class DirectAIAnalyzer:
                             emb = self.face_rec.embed(face.face_crop)
                             if emb is not None:
                                 match = self.face_rec.match_against_watchlist(emb)
-                                if match:
+                                # CRITICAL: Only match if this person's identity has NOT already been claimed in this frame!
+                                if match and match.name not in assigned_names_in_frame:
+                                    assigned_names_in_frame.add(match.name)
                                     det.frs_match_name = match.name
                                     det.frs_match_score = match.score
                                     det.frs_watchlist_id = match.subject_id
@@ -307,6 +322,8 @@ class DirectAIAnalyzer:
                                         det.is_authorized = True
                                         det.threat_level = "AUTHORIZED"
                                         det.authorization_role = getattr(match, "category", "SENTRY") or "SECURITY_OFFICER"
+                                        clean_name = match.name.upper().replace(" ", "_")[:14]
+                                        det.target_id = f"AUTH-{clean_name}"
                                         alert = self._make_alert(
                                             camera_id=camera_id,
                                             category="AUTHORIZED_PATROL",
@@ -321,6 +338,8 @@ class DirectAIAnalyzer:
                                         if alert:
                                             alerts.append(alert)
                                     else:
+                                        clean_name = match.name.upper().replace(" ", "_")[:12]
+                                        det.target_id = f"SUSPECT-{clean_name}"
                                         alert = self._make_alert(
                                             camera_id=camera_id,
                                             category="FRS_MATCH",
@@ -333,6 +352,50 @@ class DirectAIAnalyzer:
                                         )
                                         if alert:
                                             alerts.append(alert)
+
+                                    # Cache recognized identity for short temporal smoothing (keyed by unique name)
+                                    self._frs_identity_cache[match.name] = {
+                                        "name": match.name,
+                                        "score": match.score,
+                                        "watchlist_id": match.subject_id,
+                                        "is_auth": is_auth,
+                                        "auth_role": det.authorization_role if is_auth else None,
+                                        "threat_level": det.threat_level,
+                                        "ts": now_ts,
+                                        "cx": det.bbox.cx,
+                                        "cy": det.bbox.cy,
+                                        "target_id": det.target_id,
+                                    }
+                                    break
+
+                # A2. Fallback: Short temporal smoothing ONLY for the EXACT same person
+                if not getattr(det, "frs_match_name", None):
+                    for person_name, c_data in list(self._frs_identity_cache.items()):
+                        # If this identity is already assigned to someone else in this frame, skip!
+                        if person_name in assigned_names_in_frame:
+                            continue
+                        if now_ts - c_data["ts"] < 2.5:
+                            dist = ((det.bbox.cx - c_data["cx"]) ** 2 + (det.bbox.cy - c_data["cy"]) ** 2) ** 0.5
+                            # MUST be the exact same spatial location (< 0.08 normalized screen dist)
+                            if dist < 0.08:
+                                assigned_names_in_frame.add(person_name)
+                                det.frs_match_name = c_data["name"]
+                                det.frs_match_score = c_data["score"]
+                                det.frs_watchlist_id = c_data.get("watchlist_id")
+                                det.is_authorized = c_data["is_auth"]
+                                det.threat_level = c_data["threat_level"]
+                                det.authorization_role = c_data["auth_role"]
+                                det.target_id = c_data["target_id"]
+                                c_data["cx"] = det.bbox.cx
+                                c_data["cy"] = det.bbox.cy
+                                c_data["ts"] = now_ts
+                                break
+
+                # Keep held item references in sync if target_id changed
+                if det.target_id != old_tid:
+                    for other in detections:
+                        if getattr(other, "held_by_target_id", None) == old_tid:
+                            other.held_by_target_id = det.target_id
 
                 # Activity & Pose classification
                 prev_pos = self._prev_positions.get(det.target_id)
@@ -745,6 +808,11 @@ class DirectAIAnalyzer:
                     label_parts.append(f"[AUTH VEHICLE: {det.plate_text or det.target_id}]")
                 else:
                     label_parts.append(f"[AUTHORIZED: {det.frs_match_name or det.target_id}]")
+            elif getattr(det, "frs_match_name", None):
+                if is_armed:
+                    label_parts.append(f"[ARMED SUSPECT: {det.frs_match_name} - {det.held_item}]")
+                else:
+                    label_parts.append(f"[SUSPECT: {det.frs_match_name}]")
             elif is_armed:
                 label_parts.append(f"[UNAUTHORIZED ARMED HOSTILE: {det.target_id} - {det.held_item}]")
             elif det.class_id in VEHICLE_CLASSES and getattr(det, "plate_text", None):

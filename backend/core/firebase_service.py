@@ -26,7 +26,7 @@ except ImportError:
 def initialize_firebase_admin(
     credentials_path: Optional[str] = None,
     database_url: Optional[str] = None,
-    project_id: str = "ibvap-hackathon"
+    project_id: str = "ibvap-acbd6"
 ) -> bool:
     """Initialize Firebase Admin SDK singleton."""
     global _firebase_initialized, _db_ref
@@ -46,7 +46,7 @@ def initialize_firebase_admin(
             _db_ref = None
         return True
 
-    db_url = database_url or os.getenv("FIREBASE_DATABASE_URL", "https://ibvap-hackathon-default-rtdb.firebaseio.com")
+    db_url = database_url or os.getenv("FIREBASE_DATABASE_URL", "https://ibvap-acbd6-default-rtdb.firebaseio.com")
     
     # Candidate credential file locations
     candidates = [

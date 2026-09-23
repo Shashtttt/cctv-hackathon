@@ -269,10 +269,24 @@ export function CameraFeedItem({
         name => (d.class_name || '').toLowerCase().includes(name)
       );
 
-      let color = '#00f0ff'; // Cyan for Person
-      if (isWeapon) color = '#ef4444'; // Red for Weapon
-      else if (isVehicle) color = '#3b82f6'; // Blue for Vehicle
-      else if (!isPerson) color = '#f59e0b'; // Amber for Casual Objects
+      const isAuthorized = Boolean(
+        d.is_authorized || 
+        d.threat_level === 'AUTHORIZED' || 
+        d.is_weapon_authorized
+      );
+      const hasName = Boolean(d.frs_match_name);
+      const isBlacklisted = Boolean(d.is_blacklisted || d.threat_level === 'CRITICAL' || d.threat_level === 'UNAUTHORIZED');
+
+      let color = '#00f0ff'; // Cyan for standard Person
+      if (hasName && isAuthorized) {
+        color = '#10b981'; // Emerald Green strictly for identified Authorized Personnel / Sentry
+      } else if (isWeapon || isBlacklisted) {
+        color = '#ef4444'; // Red for Weapon / Blacklisted / Hostile
+      } else if (isVehicle) {
+        color = '#3b82f6'; // Blue for Vehicle
+      } else if (!isPerson) {
+        color = '#f59e0b'; // Amber for Casual Objects
+      }
 
       ctx.save();
       ctx.strokeStyle = color;
@@ -290,19 +304,47 @@ export function CameraFeedItem({
       ctx.stroke();
 
       // Faint semi-transparent box
-      ctx.fillStyle = isWeapon ? 'rgba(239, 68, 68, 0.12)' : (isPerson ? 'rgba(0, 240, 255, 0.05)' : 'rgba(245, 158, 11, 0.05)');
+      const isAuthBox = isAuthorized || (hasName && !isBlacklisted);
+      ctx.fillStyle = isWeapon 
+        ? 'rgba(239, 68, 68, 0.12)' 
+        : isAuthBox 
+          ? 'rgba(16, 185, 129, 0.09)' 
+          : (isPerson ? 'rgba(0, 240, 255, 0.05)' : 'rgba(245, 158, 11, 0.05)');
       ctx.fillRect(x, y, bw, bh);
       ctx.strokeRect(x, y, bw, bh);
 
-      // Label badge: Target ID, Class Name, Confidence %, Position Coordinates, Dwell Time
+      // Label badge: Authorized Name / Role, Target ID, Class Name, Confidence %, Position Coordinates, Dwell Time
       const conf = Math.round((d.confidence || 0.85) * 100);
       const targetId = d.target_id || (isPerson ? `PERSON-0${detIdx + 1}` : `ITEM-0${detIdx + 1}`);
-      let labelText = `${targetId} ${(d.class_name || 'TARGET').toUpperCase()} [${conf}%]`;
+
+      let labelText = '';
+      if (hasName) {
+        const personName = (d.frs_match_name || '').trim().toUpperCase();
+        const role = (d.authorization_role || (isAuthorized ? 'AUTHORIZED SENTRY' : 'IDENTIFIED')).toUpperCase();
+        if (isAuthorized) {
+          labelText = `🛡️ ${personName} [${role}] [${conf}%]`;
+        } else if (isBlacklisted) {
+          labelText = `⚠️ [ALERT] SUSPECT: ${personName} [${conf}%]`;
+        } else {
+          labelText = `👤 ${personName} [${conf}%]`;
+        }
+      } else if (isVehicle && d.plate_text) {
+        labelText = `🚗 VEHICLE [${d.plate_text.toUpperCase()}] [${conf}%]`;
+      } else {
+        labelText = `${targetId} ${(d.class_name || 'TARGET').toUpperCase()} [${conf}%]`;
+      }
+
       labelText += ` • [X:${Math.round(x)} Y:${Math.round(y)}]`;
       if (d.pose_label && isPerson) labelText += ` • [${d.pose_label}]`;
-      if (d.is_holding) labelText += ` • [HOLDING ${(d.held_item || 'ITEM').toUpperCase()}]`;
+      if (d.is_holding) {
+        if (isAuthorized && (d.held_item_type === 'WEAPON' || isWeapon)) {
+          labelText += ` • [SERVICE WEAPON: ${(d.held_item || 'WEAPON').toUpperCase()} (CLEARED)]`;
+        } else {
+          labelText += ` • [HOLDING ${(d.held_item || 'ITEM').toUpperCase()}]`;
+        }
+      }
       const dwellSec = Math.round(d.loiter_seconds || d.dwell_time || 0);
-      if (dwellSec > 0) labelText += ` • DWELL:${dwellSec}s`;
+      if (dwellSec > 0 && !isAuthorized) labelText += ` • DWELL:${dwellSec}s`;
 
       ctx.font = 'bold 11px monospace';
       const tw = ctx.measureText(labelText).width;
@@ -328,10 +370,12 @@ export function CameraFeedItem({
             [12, 14], [14, 16], // Right Leg
           ];
 
+          const isAuthSentry = isAuthorized || (hasName && !isBlacklisted);
+          const boneColor = isAuthSentry ? '#10b981' : '#00f0ff';
           ctx.save();
-          ctx.strokeStyle = '#00f0ff';
+          ctx.strokeStyle = boneColor;
           ctx.lineWidth = 2;
-          ctx.shadowColor = '#00f0ff';
+          ctx.shadowColor = boneColor;
           ctx.shadowBlur = 5;
 
           SKELETON_CONNECTIONS.forEach(([i, j]) => {
@@ -362,7 +406,7 @@ export function CameraFeedItem({
             if (kconf >= 0.48) {
               ctx.beginPath();
               ctx.arc(kx, ky, 3.5, 0, 2 * Math.PI);
-              ctx.fillStyle = '#00f0ff';
+              ctx.fillStyle = boneColor;
               ctx.fill();
               ctx.beginPath();
               ctx.arc(kx, ky, 1.5, 0, 2 * Math.PI);
@@ -555,7 +599,18 @@ export function CameraFeedItem({
             <span className="hud-cam-code">{camCode}</span>
             {effectiveDetections.length > 0 && (
               <span className="hud-ai-count">
-                AI: {effectiveDetections.map(d => d.class_name).filter((v, i, a) => a.indexOf(v) === i).join(', ').toUpperCase()}
+                AI: {effectiveDetections.map(d => {
+                  if (d.frs_match_name) {
+                    const isAuth = d.is_authorized || d.threat_level === 'AUTHORIZED';
+                    return isAuth 
+                      ? `🛡️ ${d.frs_match_name.toUpperCase()} (AUTH)`
+                      : `⚠️ ${d.frs_match_name.toUpperCase()}`;
+                  }
+                  if (d.plate_text) {
+                    return `🚗 ${d.plate_text.toUpperCase()}`;
+                  }
+                  return (d.class_name || 'OBJECT').toUpperCase();
+                }).filter((v, i, a) => a.indexOf(v) === i).join(', ')}
               </span>
             )}
             <span className="hud-gps-tag">
