@@ -22,10 +22,16 @@ export const useWebSocket = () => {
   const socketRef = useRef(null);
 
   useEffect(() => {
-    // Determine WebSocket URL dynamically based on location
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/ws/alerts`;
+    // Determine WebSocket URL dynamically or from environment
+    let wsUrl;
+    const wsEnv = import.meta.env.VITE_WS_URL;
+    if (wsEnv) {
+      wsUrl = `${wsEnv.replace(/\/$/, '')}/ws/alerts`;
+    } else {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host;
+      wsUrl = `${protocol}//${host}/ws/alerts`;
+    }
 
     let reconnectTimer = null;
     let isUnmounted = false;

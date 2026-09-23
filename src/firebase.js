@@ -5,13 +5,13 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 export const firebaseConfig = {
-  apiKey: "AIzaSyBdmIEhvSgR6mW0R1mLp_jjxrRoQo90Hd4",
-  authDomain: "ibvap-acbd6.firebaseapp.com",
-  projectId: "ibvap-acbd6",
-  storageBucket: "ibvap-acbd6.firebasestorage.app",
-  messagingSenderId: "278761100660",
-  appId: "1:278761100660:web:7ecc888cf23cf81ae48821",
-  measurementId: "G-RVKZH8G1SM"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyD-Ha7lBlMWbM4Xx78GpSPcGOKMUYweJv0",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "cctv-hackathon-ibvap.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "cctv-hackathon-ibvap",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "cctv-hackathon-ibvap.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "584149324959",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:584149324959:web:4086e5688826043254feaa",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-RVKZH8G1SM"
 };
 
 export const app = initializeApp(firebaseConfig);

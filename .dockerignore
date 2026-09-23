@@ -1,0 +1,11 @@
+.git
+.github
+.venv
+node_modules
+dist
+.firebase
+*.db-shm
+*.db-wal
+__pycache__
+*.pyc
+hello-antigravity
